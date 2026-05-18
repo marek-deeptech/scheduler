@@ -1,26 +1,45 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* ── Fonts & warm palette ──────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans:    var(--font-figtree);
+  --font-heading: var(--font-poppins);
+  --font-mono:    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Warm neutral — replaces cold Tailwind gray */
+  --color-gray-50:  #fafaf9;
+  --color-gray-100: #f4f4f2;
+  --color-gray-200: #e8e7e4;
+  --color-gray-300: #d4d2ce;
+  --color-gray-400: #a8a49f;
+  --color-gray-500: #787470;
+  --color-gray-600: #575350;
+  --color-gray-700: #433f39;
+  --color-gray-800: #282421;
+  --color-gray-900: #1a1715;
+  --color-gray-950: #0d0b09;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ── Root vars ─────────────────────────────────────────────────── */
+:root {
+  --background: #f6f6f4;
+  --foreground: #1a1715;
 }
 
+/* ── Base ──────────────────────────────────────────────────────── */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-figtree), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-poppins), system-ui, sans-serif;
+}
+
+/* ── Unified link hover ─────────────────────────────────────────── */
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
