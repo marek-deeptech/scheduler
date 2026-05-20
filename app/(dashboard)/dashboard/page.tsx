@@ -357,12 +357,15 @@ export default function DashboardPage() {
             return (
               <span key={i} className="block">
                 {i > 0 && <TipDivider />}
-                <span className="flex flex-wrap gap-1 px-3 pt-2">
+                <span className="flex flex-wrap items-center gap-1 px-3 pt-2">
                   {p.reasons.map(r => (
                     <span key={r} className="text-[10px] font-semibold px-1.5 py-0.5 bg-red-50 text-red-600 rounded-full border border-red-100">
                       {CONFLICT_ICON[r]} {CONFLICT_LABEL[r]}
                     </span>
                   ))}
+                  <span className="text-[10px] text-gray-400 ml-auto">
+                    {new Date(p.a.start_time).toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  </span>
                 </span>
                 {sharedArtists.length > 0 && (
                   <span className="flex items-center gap-1.5 px-3 pt-1 pb-0.5">
