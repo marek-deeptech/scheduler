@@ -347,20 +347,40 @@ export default function DashboardPage() {
       <TipHeader>Konflikty grafiku</TipHeader>
       {conflictPairs.length === 0
         ? <TipEmpty text="Brak konfliktów" />
-        : conflictPairs.map((p, i) => (
-            <span key={i} className="block">
-              {i > 0 && <TipDivider />}
-              <span className="flex flex-wrap gap-1 px-3 pt-2">
-                {p.reasons.map(r => (
-                  <span key={r} className="text-[10px] font-semibold px-1.5 py-0.5 bg-red-50 text-red-600 rounded-full border border-red-100">
-                    {CONFLICT_ICON[r]} {CONFLICT_LABEL[r]}
+        : conflictPairs.map((p, i) => {
+            const sharedArtists = p.sharedArtistIds
+              .map(id => allArtistList.find(a => a.id === id)?.name)
+              .filter(Boolean) as string[]
+            const roomId   = p.reasons.includes('room') ? (p.a.room_id ?? p.b.room_id) : null
+            const roomName = roomId ? allRooms.find(r => r.id === roomId)?.name : null
+
+            return (
+              <span key={i} className="block">
+                {i > 0 && <TipDivider />}
+                <span className="flex flex-wrap gap-1 px-3 pt-2">
+                  {p.reasons.map(r => (
+                    <span key={r} className="text-[10px] font-semibold px-1.5 py-0.5 bg-red-50 text-red-600 rounded-full border border-red-100">
+                      {CONFLICT_ICON[r]} {CONFLICT_LABEL[r]}
+                    </span>
+                  ))}
+                </span>
+                {sharedArtists.length > 0 && (
+                  <span className="flex items-center gap-1.5 px-3 pt-1 pb-0.5">
+                    <span className="text-[10px] text-gray-400">👤</span>
+                    <span className="text-[10px] font-semibold text-gray-700">{sharedArtists.join(', ')}</span>
                   </span>
-                ))}
+                )}
+                {roomName && (
+                  <span className="flex items-center gap-1.5 px-3 pt-1 pb-0.5">
+                    <span className="text-[10px] text-gray-400">📍</span>
+                    <span className="text-[10px] font-semibold text-gray-700">{roomName}</span>
+                  </span>
+                )}
+                <TipRow label={p.a.title} sub={`${fmtTime(p.a.start_time)}–${fmtTime(p.a.end_time)}`} dot="bg-red-400" />
+                <TipRow label={p.b.title} sub={`${fmtTime(p.b.start_time)}–${fmtTime(p.b.end_time)}`} dot="bg-red-300" />
               </span>
-              <TipRow label={p.a.title} sub={`${fmtTime(p.a.start_time)}–${fmtTime(p.a.end_time)}`} dot="bg-red-400" />
-              <TipRow label={p.b.title} sub={`${fmtTime(p.b.start_time)}–${fmtTime(p.b.end_time)}`} dot="bg-red-300" />
-            </span>
-          ))
+            )
+          })
       }
       <span className="block pb-1" />
     </>
