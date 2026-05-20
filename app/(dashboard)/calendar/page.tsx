@@ -49,15 +49,15 @@ interface Room    { id: string; theatre_id: string; name: string }
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TEAM_STYLE: Record<string, { pill: string; dot: string }> = {
-  Cast:      { pill: 'bg-gray-100 text-gray-700', dot: 'bg-gray-500' },
-  Technique: { pill: 'bg-gray-100 text-gray-700', dot: 'bg-gray-500' },
-  Wardrobe:  { pill: 'bg-gray-100 text-gray-700', dot: 'bg-gray-500' },
-  default:   { pill: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' },
+  Cast:      { pill: 'bg-gray-100 text-gray-900', dot: 'bg-gray-500' },
+  Technique: { pill: 'bg-gray-100 text-gray-900', dot: 'bg-gray-500' },
+  Wardrobe:  { pill: 'bg-gray-100 text-gray-900', dot: 'bg-gray-500' },
+  default:   { pill: 'bg-gray-100 text-gray-900', dot: 'bg-gray-400' },
 }
 
 const THEATRE_STYLE: Record<string, { pill: string; dot: string; border: string }> = {
-  'Teatr Polonia': { pill: 'bg-red-100 text-red-800',       dot: 'bg-red-500',    border: 'border-l-red-500'    },
-  'Och-Teatr':     { pill: 'bg-yellow-100 text-yellow-800', dot: 'bg-yellow-400', border: 'border-l-yellow-400' },
+  'Teatr Polonia': { pill: 'bg-gray-100 text-gray-900', dot: 'bg-red-500',    border: 'border-l-red-500'    },
+  'Och-Teatr':     { pill: 'bg-gray-100 text-gray-900', dot: 'bg-yellow-400', border: 'border-l-yellow-400' },
 }
 
 const AVAIL_STYLE: Record<string, { pill: string; bg: string; icon: string }> = {
@@ -157,8 +157,11 @@ function EventPill({ event, isConflicting, onClick }: { event: EventRecord; isCo
       onClick={e => { e.stopPropagation(); onClick() }}
       className={`w-full text-left rounded border-l-2 px-1.5 py-1 hover:opacity-80 transition-opacity ${style.pill} ${style.border}`}
     >
+      {event.theatres?.name && (
+        <div className="text-[10px] font-medium text-gray-500 leading-tight truncate mb-0.5">{event.theatres.name}</div>
+      )}
       <div className="flex items-start justify-between gap-1">
-        <span className="text-xs font-semibold leading-tight truncate">{event.type ?? event.title}</span>
+        <span className="text-sm font-semibold leading-tight truncate text-gray-900">{event.type ?? event.title}</span>
         {isConflicting && <span className="text-red-500 text-xs shrink-0 leading-tight">⚠</span>}
       </div>
       <div className="text-[10px] opacity-60 mt-0.5 leading-tight truncate">
@@ -431,9 +434,12 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
                         zIndex: 10 + col,
                       }}
                     >
+                      {ev.theatres?.name && (
+                        <div className="text-[10px] font-medium text-gray-500 leading-tight truncate mb-0.5">{ev.theatres.name}</div>
+                      )}
                       <div className="flex items-start gap-1">
                         {conflictingIds.has(ev.id) && <span className="text-red-500 text-xs shrink-0">⚠</span>}
-                        <span className="text-xs font-semibold leading-tight truncate">{ev.type ?? ev.title}</span>
+                        <span className="text-sm font-semibold leading-tight truncate text-gray-900">{ev.type ?? ev.title}</span>
                       </div>
                       <div className="text-[10px] opacity-60 leading-tight">
                         {fmtTime(ev.start_time)} – {fmtTime(ev.end_time)}
