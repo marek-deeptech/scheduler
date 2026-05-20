@@ -1,18 +1,18 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
 import { useTheatre } from '@/lib/theatre-context'
 import ProductionModal from '@/components/ProductionModal'
 
-interface EventRow {
-  id: string
-  start_time: string
-  end_time: string
-  type: string | null
-  room_id: string | null
-  event_artists: { artist_id: string }[]
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface CastMember  { id: string; name: string; role: string | null; avatar_url: string | null }
+interface EventRow    {
+  id: string; title: string; type: string | null
+  start_time: string; end_time: string
+  room: string | null; artist_count: number
 }
 
 interface ProductionRow {
@@ -23,28 +23,26 @@ interface ProductionRow {
   start_date: string | null
   end_date: string | null
   theatre_id: string | null
-  status: string | null
-  comment: string | null
   theatreName: string | null
-  actorCount: number
-  rehearsalCount: number
+  status: string
+  comment: string | null
+  cast: CastMember[]
+  events: EventRow[]
   hasConflict: boolean
 }
 
-interface ArtistRecord {
-  id: string
-  name: string
-  role: string | null
-  teams?: { name: string } | null
-}
+interface ArtistRecord { id: string; name: string; role: string | null; teams?: { name: string } | null }
 
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-const STATUS_STYLE: Record<string, { badge: string; bar: string }> = {
-  'Koncepcja':   { badge: 'bg-slate-100 text-slate-600',  bar: 'bg-slate-300' },
-  'W produkcji': { badge: 'bg-blue-100 text-blue-700',    bar: 'bg-blue-400'  },
-  'Na afiszu':   { badge: 'bg-green-100 text-green-700',  bar: 'bg-green-400' },
-  'Zawieszony':  { badge: 'bg-amber-100 text-amber-700',  bar: 'bg-amber-400' },
-  'Zdjęty':      { badge: 'bg-red-100 text-red-500',      bar: 'bg-red-400'   },
+const STATUS_OPTIONS = ['Koncepcja', 'W produkcji', 'Na afiszu', 'Zawieszony', 'Zdjęty']
+
+const STATUS_STYLE: Record<string, { badge: string; dot: string }> = {
+  'Koncepcja':   { badge: 'bg-slate-100 text-slate-600',  dot: 'bg-slate-400'  },
+  'W produkcji': { badge: 'bg-blue-100 text-blue-700',    dot: 'bg-blue-400'   },
+  'Na afiszu':   { badge: 'bg-green-100 text-green-700',  dot: 'bg-green-400'  },
+  'Zawieszony':  { badge: 'bg-amber-100 text-amber-700',  dot: 'bg-amber-400'  },
+  'Zdjęty':      { badge: 'bg-red-100 text-red-500',      dot: 'bg-red-400'    },
 }
 
 const THEATRE_BAR: Record<string, string> = {
@@ -52,30 +50,324 @@ const THEATRE_BAR: Record<string, string> = {
   'Och-Teatr':     'bg-yellow-400',
 }
 
-function detectConflict(events: EventRow[]): boolean {
-  for (let i = 0; i < events.length; i++) {
-    for (let j = i + 1; j < events.length; j++) {
-      const a = events[i], b = events[j]
-      const overlap =
-        new Date(a.start_time) < new Date(b.end_time) &&
-        new Date(b.start_time) < new Date(a.end_time)
-      if (!overlap) continue
-      // Artist conflict
-      const aIds = a.event_artists.map(ea => ea.artist_id)
-      const bIds = b.event_artists.map(ea => ea.artist_id)
-      if (aIds.some(id => bIds.includes(id))) return true
-      // Room conflict
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function pad(n: number) { return String(n).padStart(2, '0') }
+function fmtDate(iso: string | null) {
+  if (!iso) return null
+  const d = new Date(iso.includes('T') ? iso : iso + 'T12:00:00')
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
+}
+function fmtTime(iso: string) {
+  const d = new Date(iso)
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+function fmtDayShort(iso: string) {
+  const d = new Date(iso)
+  return d.toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+function initials(name: string) {
+  return name.split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase()
+}
+function detectConflict(evs: any[]): boolean {
+  for (let i = 0; i < evs.length; i++) {
+    for (let j = i + 1; j < evs.length; j++) {
+      const a = evs[i], b = evs[j]
+      if (!(new Date(a.start_time) < new Date(b.end_time) && new Date(b.start_time) < new Date(a.end_time))) continue
+      const aIds = (a.event_artists ?? []).map((ea: any) => ea.artist_id)
+      const bIds = (b.event_artists ?? []).map((ea: any) => ea.artist_id)
+      if (aIds.some((id: string) => bIds.includes(id))) return true
       if (a.room_id && b.room_id && a.room_id === b.room_id) return true
     }
   }
   return false
 }
 
-function formatDate(iso: string | null) {
-  if (!iso) return null
-  const [y, m, d] = iso.split('-')
-  return `${d}.${m}.${y}`
+// ─── Avatar ───────────────────────────────────────────────────────────────────
+
+function Avatar({ member, size = 'sm' }: { member: CastMember; size?: 'sm' | 'md' }) {
+  const sz = size === 'md' ? 'w-9 h-9 text-xs' : 'w-7 h-7 text-[10px]'
+  return member.avatar_url ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={member.avatar_url} alt={member.name} title={member.name}
+      className={`${sz} rounded-full object-cover border-2 border-white shrink-0`} />
+  ) : (
+    <div title={member.name}
+      className={`${sz} rounded-full bg-gray-200 border-2 border-white flex items-center justify-center font-semibold text-gray-600 shrink-0`}>
+      {initials(member.name)}
+    </div>
+  )
 }
+
+// ─── Production card ──────────────────────────────────────────────────────────
+
+function ProductionCard({ prod, isSelected, onClick, onEdit }: {
+  prod: ProductionRow
+  isSelected: boolean
+  onClick: () => void
+  onEdit: () => void
+}) {
+  const now      = new Date()
+  const upcoming = prod.events.filter(e => new Date(e.start_time) >= now).slice(0, 1)[0]
+  const style    = STATUS_STYLE[prod.status] ?? STATUS_STYLE['Koncepcja']
+  const barColor = prod.theatreName ? (THEATRE_BAR[prod.theatreName] ?? 'bg-gray-300') : 'bg-gray-300'
+  const castPreview = prod.cast.slice(0, 5)
+  const extraCast   = Math.max(0, prod.cast.length - 5)
+
+  return (
+    <div
+      onClick={onClick}
+      className={`bg-white border rounded-2xl overflow-hidden flex flex-col cursor-pointer transition-all ${
+        isSelected ? 'border-gray-900 shadow-lg ring-1 ring-gray-900' : 'border-gray-200 hover:shadow-md hover:border-gray-300'
+      }`}
+    >
+      <div className={`h-1 w-full ${barColor}`} />
+
+      <div className="p-5 flex flex-col flex-1 gap-3">
+
+        {/* Theatre + status */}
+        <div className="flex items-start justify-between gap-2">
+          <span className="text-xs font-medium text-gray-400 truncate">{prod.theatreName ?? '—'}</span>
+          <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${style.badge}`}>
+            {prod.status}
+          </span>
+        </div>
+
+        {/* Title + director */}
+        <div>
+          <h3 className="text-lg font-bold text-gray-900 leading-tight">{prod.title}</h3>
+          {prod.director && <p className="text-xs text-gray-400 mt-0.5">reż. {prod.director}</p>}
+        </div>
+
+        {/* Premiere */}
+        {prod.premiere_date && (
+          <p className="text-xs text-gray-500">
+            <span className="text-gray-400">Premiera </span>
+            <span className="font-semibold text-gray-700">{fmtDate(prod.premiere_date)}</span>
+          </p>
+        )}
+
+        {/* Cast avatar stack */}
+        {prod.cast.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <div className="flex -space-x-2">
+              {castPreview.map(m => <Avatar key={m.id} member={m} />)}
+            </div>
+            {extraCast > 0 && (
+              <span className="text-[11px] text-gray-400 ml-1">+{extraCast}</span>
+            )}
+            <span className="text-[11px] text-gray-400 ml-auto">{prod.cast.length} os.</span>
+          </div>
+        )}
+
+        {/* Next event */}
+        {upcoming && (
+          <div className="flex items-center gap-1.5 py-1.5 px-2.5 bg-gray-50 rounded-xl">
+            <span className="text-gray-400 text-[10px] shrink-0">Następne</span>
+            <span className="text-xs font-medium text-gray-700 truncate">
+              {upcoming.type ?? upcoming.title}
+            </span>
+            <span className="text-[10px] text-gray-400 shrink-0 ml-auto">{fmtDayShort(upcoming.start_time)}</span>
+          </div>
+        )}
+
+        {/* Footer stats */}
+        <div className="flex items-center gap-3 pt-2 border-t border-gray-50 mt-auto">
+          <span className="text-xs text-gray-400">{prod.events.length} wydarzeń</span>
+          {prod.hasConflict && (
+            <span className="text-[11px] font-semibold text-red-500 flex items-center gap-1">
+              ⚠ Konflikt
+            </span>
+          )}
+          <button
+            onClick={e => { e.stopPropagation(); onEdit() }}
+            className="ml-auto text-[11px] font-medium text-gray-400 hover:text-gray-700 border border-gray-100 hover:border-gray-300 rounded-lg px-2.5 py-1 transition-colors"
+          >
+            Edytuj
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Detail panel ─────────────────────────────────────────────────────────────
+
+function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
+  prod: ProductionRow
+  onEdit: () => void
+  onClose: () => void
+  onStatusChange: (status: string) => Promise<void>
+}) {
+  const now = new Date()
+  const upcoming = prod.events.filter(e => new Date(e.start_time) >= now)
+  const past     = prod.events.filter(e => new Date(e.start_time) < now)
+  const style    = STATUS_STYLE[prod.status] ?? STATUS_STYLE['Koncepcja']
+  const [changingStatus, setChangingStatus] = useState(false)
+
+  async function handleStatus(s: string) {
+    setChangingStatus(true)
+    await onStatusChange(s)
+    setChangingStatus(false)
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Panel header */}
+      <div className="px-5 py-4 border-b border-gray-100 shrink-0">
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <h2 className="text-base font-bold text-gray-900 leading-tight">{prod.title}</h2>
+          <button onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0 text-lg leading-none">
+            ×
+          </button>
+        </div>
+        <p className="text-xs text-gray-400">
+          {prod.theatreName ?? ''}
+          {prod.director ? ` · reż. ${prod.director}` : ''}
+        </p>
+
+        {/* Status selector */}
+        <div className="flex flex-wrap gap-1 mt-3">
+          {STATUS_OPTIONS.map(s => (
+            <button
+              key={s}
+              disabled={changingStatus}
+              onClick={() => handleStatus(s)}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${
+                prod.status === s
+                  ? (STATUS_STYLE[s]?.badge ?? 'bg-gray-100 text-gray-600')
+                  : 'bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+
+        {/* Dates */}
+        <div className="flex flex-wrap gap-3 mt-3 text-xs">
+          {prod.premiere_date && (
+            <span className="text-gray-500">
+              <span className="text-gray-400">Premiera </span>
+              <span className="font-semibold">{fmtDate(prod.premiere_date)}</span>
+            </span>
+          )}
+          {prod.start_date && (
+            <span className="text-gray-500">
+              <span className="text-gray-400">Od </span>
+              <span className="font-semibold">{fmtDate(prod.start_date)}</span>
+            </span>
+          )}
+          {prod.end_date && (
+            <span className="text-gray-500">
+              <span className="text-gray-400">Do </span>
+              <span className="font-semibold">{fmtDate(prod.end_date)}</span>
+            </span>
+          )}
+        </div>
+
+        <button
+          onClick={onEdit}
+          className="mt-3 w-full py-2 text-xs font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+        >
+          Edytuj szczegóły
+        </button>
+      </div>
+
+      {/* Scrollable body */}
+      <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+
+        {/* Cast */}
+        <div className="px-5 py-4">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">
+            Obsada ({prod.cast.length})
+          </p>
+          {prod.cast.length === 0 ? (
+            <p className="text-xs text-gray-400 italic">Brak przypisanych osób</p>
+          ) : (
+            <div className="space-y-2">
+              {prod.cast.map(m => (
+                <div key={m.id} className="flex items-center gap-2.5">
+                  <Avatar member={m} size="md" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-gray-800 truncate">{m.name}</p>
+                    {m.role && <p className="text-[11px] text-gray-400 truncate">{m.role}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Upcoming events */}
+        {upcoming.length > 0 && (
+          <div className="px-5 py-4">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">
+              Zaplanowane ({upcoming.length})
+            </p>
+            <div className="space-y-1.5">
+              {upcoming.map(ev => (
+                <div key={ev.id} className="flex items-start gap-2.5 py-1.5 px-2.5 rounded-xl bg-gray-50">
+                  <div className="shrink-0 text-center w-8 mt-0.5">
+                    <p className="text-[10px] text-gray-400 leading-none">
+                      {new Date(ev.start_time).toLocaleDateString('pl-PL', { weekday: 'short' })}
+                    </p>
+                    <p className="text-sm font-bold text-gray-700 leading-tight">
+                      {new Date(ev.start_time).getDate()}
+                    </p>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-gray-800 truncate">{ev.type ?? ev.title}</p>
+                    <p className="text-[10px] text-gray-400">
+                      {fmtTime(ev.start_time)}–{fmtTime(ev.end_time)}
+                      {ev.room ? ` · ${ev.room}` : ''}
+                    </p>
+                  </div>
+                  {ev.artist_count > 0 && (
+                    <span className="text-[10px] text-gray-400 shrink-0 mt-1">{ev.artist_count} os.</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Past events */}
+        {past.length > 0 && (
+          <div className="px-5 py-4">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">
+              Odbyte ({past.length})
+            </p>
+            <div className="space-y-1">
+              {past.slice().reverse().map(ev => (
+                <div key={ev.id} className="flex items-center gap-2.5 py-1 px-2 opacity-50">
+                  <span className="text-[10px] text-gray-400 w-12 shrink-0">
+                    {fmtDate(ev.start_time)?.slice(0, 5)}
+                  </span>
+                  <span className="text-xs text-gray-600 truncate">{ev.type ?? ev.title}</span>
+                  <span className="text-[10px] text-gray-400 ml-auto shrink-0">
+                    {fmtTime(ev.start_time)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Notes */}
+        {prod.comment && (
+          <div className="px-5 py-4">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Notatki</p>
+            <p className="text-xs text-gray-600 leading-relaxed">{prod.comment}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ProductionsPage() {
   const { t } = useLanguage()
@@ -86,23 +378,22 @@ export default function ProductionsPage() {
   const [rooms,       setRooms]       = useState<{ id: string; theatre_id: string; name: string }[]>([])
   const [artists,     setArtists]     = useState<ArtistRecord[]>([])
   const [loading,     setLoading]     = useState(true)
+
+  const [selectedId,  setSelectedId]  = useState<string | null>(null)
   const [modal,       setModal]       = useState<ProductionRow | null | undefined>(undefined)
-  // undefined = closed, null = create, ProductionRow = edit
+  const [statusFilter, setStatusFilter] = useState<string>('all')
 
   useEffect(() => { fetchData() }, [selectedTheatreId])
 
   async function fetchData() {
     setLoading(true)
 
-    let query = supabase
-      .from('productions')
-      .select(`
-        id, title, director, premiere_date, start_date, end_date, theatre_id, status,
-        theatres(name),
-        artist_productions(artist_id),
-        events(id, start_time, end_time, type, room_id, event_artists(artist_id))
-      `)
-      .order('title')
+    let query = supabase.from('productions').select(`
+      id, title, director, premiere_date, start_date, end_date, theatre_id, status, comment,
+      theatres(name),
+      artist_productions(artists(id, name, role, avatar_url)),
+      events(id, title, type, start_time, end_time, room_id, rooms(name), event_artists(artist_id))
+    `).order('title')
 
     if (selectedTheatreId) query = query.eq('theatre_id', selectedTheatreId)
 
@@ -114,145 +405,80 @@ export default function ProductionsPage() {
     ])
 
     const rows: ProductionRow[] = (prodData ?? []).map((p: any) => {
-      const th = Array.isArray(p.theatres) ? p.theatres[0] : p.theatres
-      const events: EventRow[] = (p.events ?? []).map((e: any) => ({
-        id:           e.id,
-        start_time:   e.start_time,
-        end_time:     e.end_time,
-        type:         e.type,
-        room_id:      e.room_id ?? null,
-        event_artists: e.event_artists ?? [],
-      }))
+      const th     = Array.isArray(p.theatres) ? p.theatres[0] : p.theatres
+      const rawEvs = p.events ?? []
+      const cast: CastMember[] = (p.artist_productions ?? [])
+        .map((ap: any) => {
+          const a = Array.isArray(ap.artists) ? ap.artists[0] : ap.artists
+          return a ? { id: a.id, name: a.name, role: a.role ?? null, avatar_url: a.avatar_url ?? null } : null
+        })
+        .filter(Boolean)
+        .sort((a: CastMember, b: CastMember) => a.name.localeCompare(b.name))
+      const events: EventRow[] = rawEvs
+        .map((e: any) => {
+          const rm = Array.isArray(e.rooms) ? e.rooms[0] : e.rooms
+          return {
+            id:           e.id,
+            title:        e.title,
+            type:         e.type ?? null,
+            start_time:   e.start_time,
+            end_time:     e.end_time,
+            room:         rm?.name ?? null,
+            artist_count: (e.event_artists ?? []).length,
+          }
+        })
+        .sort((a: EventRow, b: EventRow) => a.start_time.localeCompare(b.start_time))
+
       return {
-        id:             p.id,
-        title:          p.title,
-        director:       p.director,
-        premiere_date:  p.premiere_date,
-        start_date:     p.start_date,
-        end_date:       p.end_date,
-        theatre_id:     p.theatre_id,
-        status:         p.status,
-        comment:        p.comment ?? null,
-        theatreName:    th?.name ?? null,
-        actorCount:     (p.artist_productions ?? []).length,
-        rehearsalCount: events.length,
-        hasConflict:    detectConflict(events),
+        id:            p.id,
+        title:         p.title,
+        director:      p.director ?? null,
+        premiere_date: p.premiere_date ?? null,
+        start_date:    p.start_date ?? null,
+        end_date:      p.end_date ?? null,
+        theatre_id:    p.theatre_id ?? null,
+        theatreName:   th?.name ?? null,
+        status:        p.status ?? 'Koncepcja',
+        comment:       p.comment ?? null,
+        cast,
+        events,
+        hasConflict:   detectConflict(rawEvs),
       }
     })
 
     setProductions(rows)
     setTheatres(thData ?? [])
     setArtists((artistData ?? []).map((a: any) => ({
-      id:    a.id,
-      name:  a.name,
-      role:  a.role,
+      id: a.id, name: a.name, role: a.role,
       teams: Array.isArray(a.teams) ? (a.teams[0] ?? null) : (a.teams ?? null),
     })))
     setRooms(roomData ?? [])
     setLoading(false)
   }
 
+  async function handleStatusChange(id: string, status: string) {
+    await supabase.from('productions').update({ status }).eq('id', id)
+    setProductions(prev => prev.map(p => p.id === id ? { ...p, status } : p))
+  }
+
+  // Filtered + selected
+  const filtered = useMemo(() => {
+    if (statusFilter === 'all') return productions
+    return productions.filter(p => p.status === statusFilter)
+  }, [productions, statusFilter])
+
+  const selectedProd = productions.find(p => p.id === selectedId) ?? null
+
+  // Status counts for filter pills
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: productions.length }
+    for (const p of productions) c[p.status] = (c[p.status] ?? 0) + 1
+    return c
+  }, [productions])
+
   return (
-    <div className="max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">{t.productions.title}</h2>
-          <p className="text-sm text-gray-500 mt-1">{productions.length} produkcji</p>
-        </div>
-        <button
-          onClick={() => setModal(null)}
-          className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors"
-        >
-          + Nowa produkcja
-        </button>
-      </div>
-
-      {loading ? (
-        <p className="text-gray-400 text-sm">{t.productions.loading}</p>
-      ) : productions.length === 0 ? (
-        <div className="text-center py-20 text-gray-400">
-          <p className="text-5xl mb-4">🎭</p>
-          <p className="text-lg font-medium">{t.productions.empty}</p>
-          <p className="text-sm mt-1">{t.productions.emptyHint}</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {productions.map(p => {
-            const status  = p.status ?? 'Koncepcja'
-            const style   = STATUS_STYLE[status] ?? STATUS_STYLE['Koncepcja']
-            const barColor = p.theatreName ? (THEATRE_BAR[p.theatreName] ?? 'bg-gray-300') : 'bg-gray-300'
-            const premiere = formatDate(p.premiere_date)
-
-            return (
-              <div
-                key={p.id}
-                className="bg-white border border-gray-200 rounded-2xl overflow-hidden flex flex-col hover:shadow-md transition-shadow"
-              >
-                {/* Theatre colour bar */}
-                <div className={`h-1 w-full ${barColor}`} />
-
-                <div className="p-5 flex flex-col flex-1 gap-3">
-                  {/* Top row: theatre + status */}
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-xs font-medium text-gray-400 truncate">
-                      {p.theatreName ?? '—'}
-                    </span>
-                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${style.badge}`}>
-                      {status}
-                    </span>
-                  </div>
-
-                  {/* Title */}
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-900 leading-tight">{p.title}</h3>
-                    {p.director && (
-                      <p className="text-sm text-gray-500 mt-0.5">reż. {p.director}</p>
-                    )}
-                  </div>
-
-                  {/* Premiere */}
-                  {premiere && (
-                    <div className="flex items-center gap-1.5 text-sm">
-                      <span className="text-gray-400 text-xs">Premiera</span>
-                      <span className="font-semibold text-gray-800">{premiere}</span>
-                    </div>
-                  )}
-
-                  {/* Stats */}
-                  <div className="flex items-center gap-4 pt-1 border-t border-gray-50">
-                    <div className="flex flex-col items-center">
-                      <span className="text-xl font-bold text-gray-900">{p.actorCount}</span>
-                      <span className="text-[10px] text-gray-400 uppercase tracking-wide">Aktorów</span>
-                    </div>
-                    <div className="w-px h-8 bg-gray-100" />
-                    <div className="flex flex-col items-center">
-                      <span className="text-xl font-bold text-gray-900">{p.rehearsalCount}</span>
-                      <span className="text-[10px] text-gray-400 uppercase tracking-wide">Wydarzeń</span>
-                    </div>
-                    <div className="flex-1" />
-                    {p.hasConflict && (
-                      <div className="flex items-center gap-1 px-2 py-1 bg-red-50 rounded-lg">
-                        <span className="text-sm">⚠️</span>
-                        <span className="text-[11px] font-semibold text-red-600">Konflikt</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Edit button */}
-                  <button
-                    onClick={() => setModal(p)}
-                    className="mt-auto w-full py-2 text-xs font-medium text-gray-500 border border-gray-100 rounded-xl hover:bg-gray-50 hover:text-gray-800 transition-colors"
-                  >
-                    Edytuj
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
+    <>
+      {/* Edit modal */}
       {modal !== undefined && (
         <ProductionModal
           production={modal}
@@ -263,6 +489,89 @@ export default function ProductionsPage() {
           onSaved={() => { setModal(undefined); fetchData() }}
         />
       )}
-    </div>
+
+      <div className="flex gap-0 -m-8 h-[calc(100vh-0px)] overflow-hidden">
+
+        {/* ── Left: list ──────────────────────────────────────────────────── */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+          {/* Toolbar */}
+          <div className="flex items-center justify-between px-8 py-5 shrink-0 border-b border-gray-100 bg-white">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">{t.productions.title}</h2>
+              <p className="text-xs text-gray-400 mt-0.5">{productions.length} produkcji</p>
+            </div>
+            <button
+              onClick={() => setModal(null)}
+              className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              + Nowa produkcja
+            </button>
+          </div>
+
+          {/* Status filter */}
+          <div className="px-8 py-3 border-b border-gray-100 bg-white shrink-0 flex items-center gap-1.5 overflow-x-auto">
+            {[{ key: 'all', label: 'Wszystkie' }, ...STATUS_OPTIONS.map(s => ({ key: s, label: s }))].map(f => (
+              <button
+                key={f.key}
+                onClick={() => setStatusFilter(f.key)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
+                  statusFilter === f.key
+                    ? f.key === 'all'
+                      ? 'bg-gray-900 text-white'
+                      : (STATUS_STYLE[f.key]?.badge ?? 'bg-gray-100 text-gray-700')
+                    : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                {f.label}
+                {counts[f.key] != null && (
+                  <span className="ml-1.5 opacity-60">{counts[f.key]}</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Grid */}
+          <div className="flex-1 overflow-y-auto px-8 py-6">
+            {loading ? (
+              <div className="flex items-center justify-center h-40 text-gray-400 text-sm">Ładowanie…</div>
+            ) : filtered.length === 0 ? (
+              <div className="text-center py-20 text-gray-400">
+                <p className="text-5xl mb-4">🎭</p>
+                <p className="text-lg font-medium">
+                  {statusFilter === 'all' ? t.productions.empty : `Brak produkcji: ${statusFilter}`}
+                </p>
+                {statusFilter === 'all' && <p className="text-sm mt-1">{t.productions.emptyHint}</p>}
+              </div>
+            ) : (
+              <div className={`grid gap-4 ${selectedProd ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'}`}>
+                {filtered.map(p => (
+                  <ProductionCard
+                    key={p.id}
+                    prod={p}
+                    isSelected={selectedId === p.id}
+                    onClick={() => setSelectedId(prev => prev === p.id ? null : p.id)}
+                    onEdit={() => setModal(p)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Right: detail panel ──────────────────────────────────────────── */}
+        <div className={`shrink-0 border-l border-gray-200 bg-white transition-all duration-200 overflow-hidden ${selectedProd ? 'w-80' : 'w-0'}`}>
+          {selectedProd && (
+            <DetailPanel
+              prod={selectedProd}
+              onEdit={() => setModal(selectedProd)}
+              onClose={() => setSelectedId(null)}
+              onStatusChange={s => handleStatusChange(selectedProd.id, s)}
+            />
+          )}
+        </div>
+
+      </div>
+    </>
   )
 }
