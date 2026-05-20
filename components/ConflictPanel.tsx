@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { type ConflictReason, CONFLICT_LABEL, CONFLICT_ICON } from '@/lib/conflicts'
+import { IconMapPin, IconTheatre } from '@/lib/icons'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,15 +100,15 @@ function EventCard({
           <p className="text-xs text-gray-400 truncate">{event.title}</p>
         )}
         <p className="text-xs text-gray-500 mt-1">
-          🗓 {fmtDate(event.start_time)} · {fmtTime(event.start_time)} – {fmtTime(event.end_time)}
+          {fmtDate(event.start_time)} · {fmtTime(event.start_time)} – {fmtTime(event.end_time)}
         </p>
         {(room || theatre) && (
-          <p className="text-xs text-gray-500 mt-0.5">
-            📍 {[room, theatre].filter(Boolean).join(' · ')}
+          <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+            <IconMapPin size={12} className="text-gray-400 inline" /> {[room, theatre].filter(Boolean).join(' · ')}
           </p>
         )}
         {event.production_title && (
-          <p className="text-xs text-gray-500 mt-0.5">🎭 {event.production_title}</p>
+          <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1"><IconTheatre size={12} className="text-gray-400 inline" /> {event.production_title}</p>
         )}
       </div>
       <button

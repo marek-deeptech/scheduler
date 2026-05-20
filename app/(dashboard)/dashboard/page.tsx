@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
 import { findConflicts, CONFLICT_LABEL, CONFLICT_ICON, type ConflictResult, type ConflictReason } from '@/lib/conflicts'
 import ConflictPanel from '@/components/ConflictPanel'
+import { IconUser, IconMapPin, IconSun, IconHeart, IconXCircle, IconStar, IconInbox, IconCalendar, IconWarning } from '@/lib/icons'
 
 /* ─── Constants ──────────────────────────────────────────────────── */
 const DAYS_SHORT = ['Nd', 'Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob']
@@ -369,13 +370,13 @@ export default function DashboardPage() {
                 </span>
                 {sharedArtists.length > 0 && (
                   <span className="flex items-center gap-1.5 px-3 pt-1 pb-0.5">
-                    <span className="text-[10px] text-gray-400">👤</span>
+                    <IconUser size={11} className="text-gray-400 shrink-0" />
                     <span className="text-[10px] font-semibold text-gray-700">{sharedArtists.join(', ')}</span>
                   </span>
                 )}
                 {roomName && (
                   <span className="flex items-center gap-1.5 px-3 pt-1 pb-0.5">
-                    <span className="text-[10px] text-gray-400">📍</span>
+                    <IconMapPin size={11} className="text-gray-400 shrink-0" />
                     <span className="text-[10px] font-semibold text-gray-700">{roomName}</span>
                   </span>
                 )}
@@ -390,7 +391,6 @@ export default function DashboardPage() {
   )
 
   function alertTip(status: string) {
-    const icon = status === 'Na urlopie' ? '🏖️' : '🤒'
     const group = alertArtists.filter(a => a.status === status)
     return (
       <>
@@ -485,7 +485,7 @@ export default function DashboardPage() {
       {nextPremiere && daysToPremi !== null && (
         <div className="bg-gray-900 rounded-2xl px-6 py-4 flex items-center justify-between text-white">
           <div className="flex items-center gap-4">
-            <div className="text-3xl">🌟</div>
+            <div><IconStar size={28} className="text-gray-400" /></div>
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Najbliższa premiera</p>
               <Link href="/productions"
@@ -521,7 +521,7 @@ export default function DashboardPage() {
 
           {todayEvents.length === 0 ? (
             <div className="text-center py-10 text-gray-400">
-              <p className="text-2xl mb-2">📭</p>
+              <div className="flex justify-center mb-2"><IconInbox size={28} className="text-gray-400" /></div>
               <p className="text-xs">Brak wydarzeń dzisiaj</p>
             </div>
           ) : (
@@ -565,7 +565,7 @@ export default function DashboardPage() {
 
           {upcoming.length === 0 ? (
             <div className="text-center py-12 text-gray-400">
-              <p className="text-2xl mb-2">📅</p>
+              <div className="flex justify-center mb-2"><IconCalendar size={28} className="text-gray-400" /></div>
               <p className="text-xs">Brak zaplanowanych wydarzeń</p>
             </div>
           ) : (
@@ -638,7 +638,7 @@ export default function DashboardPage() {
                       className="flex items-start gap-2.5 px-3 py-2.5 bg-red-50 rounded-xl border border-red-100 cursor-pointer hover:bg-red-100 transition-colors w-full"
                       onClick={() => setShowConflictPanel(true)}
                     >
-                      <span className="text-base shrink-0">⚠️</span>
+                      <span className="shrink-0"><IconWarning size={16} className="text-red-500" /></span>
                       <span>
                         <p className="text-xs font-semibold text-red-700">Konflikty grafiku</p>
                         <div className="flex flex-wrap gap-1 mt-1">
@@ -660,12 +660,11 @@ export default function DashboardPage() {
                 {(['Na urlopie','Choroba','Niedyspozyjny'] as const).map(status => {
                   const group = alertArtists.filter(a => a.status === status)
                   if (!group.length) return null
-                  const icon  = status === 'Na urlopie' ? '🏖️' : status === 'Choroba' ? '🤒' : '🚫'
                   const label = STATUS_LABEL[status]
                   return (
                     <Tooltip key={status} tip={alertTip(status)} align="right">
                       <span className="flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 rounded-xl border border-amber-100 cursor-help w-full">
-                        <span className="text-base shrink-0">{icon}</span>
+                        <span className="shrink-0">{status === 'Na urlopie' ? <IconSun size={14} /> : status === 'Choroba' ? <IconHeart size={14} /> : <IconXCircle size={14} />}</span>
                         <span>
                           <p className="text-xs font-semibold text-amber-700">{label}</p>
                           <p className="text-xs text-amber-600 mt-0.5 underline decoration-dotted underline-offset-2">

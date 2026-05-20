@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
 import { useTheatre } from '@/lib/theatre-context'
 import ProductionModal from '@/components/ProductionModal'
+import { IconWarning, IconTheatre } from '@/lib/icons'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -176,7 +177,7 @@ function ProductionCard({ prod, isSelected, onClick, onEdit }: {
           <span className="text-xs text-gray-400">{prod.events.length} wydarzeń</span>
           {prod.hasConflict && (
             <span className="text-[11px] font-semibold text-red-500 flex items-center gap-1">
-              ⚠ Konflikt
+              <IconWarning size={12} className="text-red-500" /> Konflikt
             </span>
           )}
           <button
@@ -537,7 +538,7 @@ export default function ProductionsPage() {
               <div className="flex items-center justify-center h-40 text-gray-400 text-sm">Ładowanie…</div>
             ) : filtered.length === 0 ? (
               <div className="text-center py-20 text-gray-400">
-                <p className="text-5xl mb-4">🎭</p>
+                <div className="flex justify-center mb-4"><IconTheatre size={48} className="text-gray-300 mx-auto" /></div>
                 <p className="text-lg font-medium">
                   {statusFilter === 'all' ? t.productions.empty : `Brak produkcji: ${statusFilter}`}
                 </p>

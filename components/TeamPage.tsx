@@ -1,10 +1,12 @@
 'use client'
 
+import React from 'react'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
 import { Artist } from '@/types'
 import Avatar from '@/components/Avatar'
+import { IconTheatre, IconWrench, IconHanger } from '@/lib/icons'
 
 const teamColor: Record<string, string> = {
   Cast:      'bg-gray-100 text-gray-700',
@@ -12,10 +14,10 @@ const teamColor: Record<string, string> = {
   Wardrobe:  'bg-gray-100 text-gray-700',
 }
 
-const teamIcon: Record<string, string> = {
-  Cast: '🎬',
-  Technique: '🔧',
-  Wardrobe: '👗',
+const TEAM_ICON: Record<string, React.ReactNode> = {
+  Cast:      <IconTheatre size={48} className="text-gray-300 mx-auto mb-4" />,
+  Technique: <IconWrench size={48} className="text-gray-300 mx-auto mb-4" />,
+  Wardrobe:  <IconHanger size={48} className="text-gray-300 mx-auto mb-4" />,
 }
 
 export default function TeamPage({ teamName }: { teamName: string | null }) {
@@ -43,12 +45,12 @@ export default function TeamPage({ teamName }: { teamName: string | null }) {
 
   const displayName = teamName ?? 'Other'
   const color = teamColor[displayName] ?? 'bg-gray-100 text-gray-600'
-  const icon = teamIcon[displayName] ?? '📦'
+  const icon = TEAM_ICON[displayName] ?? null
 
   return (
     <div className="max-w-4xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
-        <span className="text-3xl">{icon}</span>
+        {icon && <span>{icon}</span>}
         <div>
           <h2 className="text-2xl font-bold text-gray-900">{displayName}</h2>
           <p className="text-sm text-gray-500 mt-0.5">{artists.length} {t.artists.total(artists.length)}</p>

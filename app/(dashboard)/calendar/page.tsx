@@ -6,6 +6,7 @@ import { useLanguage } from '@/lib/language-context'
 import EventModal from '@/components/EventModal'
 import { useTheatre } from '@/lib/theatre-context'
 import { findConflicts, conflictingIdSet, CONFLICT_LABEL, CONFLICT_ICON, type ConflictResult } from '@/lib/conflicts'
+import { IconWarning, IconTheatre, IconUsers, IconSun, IconHeart, IconXCircle } from '@/lib/icons'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,10 +61,10 @@ const THEATRE_STYLE: Record<string, { pill: string; dot: string; border: string 
   'Och-Teatr':     { pill: 'bg-gray-100 text-gray-900', dot: 'bg-yellow-400', border: 'border-l-yellow-400' },
 }
 
-const AVAIL_STYLE: Record<string, { pill: string; bg: string; icon: string }> = {
-  vacation: { pill: 'bg-amber-100 text-amber-700', bg: 'bg-amber-100', icon: '🌴' },
-  sick:     { pill: 'bg-red-100 text-red-600',     bg: 'bg-red-100',   icon: '🤒' },
-  busy:     { pill: 'bg-gray-100 text-gray-600',   bg: 'bg-gray-100',  icon: '🚫' },
+const AVAIL_STYLE: Record<string, { pill: string; bg: string; icon: () => React.ReactNode }> = {
+  vacation: { pill: 'bg-amber-100 text-amber-700', bg: 'bg-amber-100', icon: () => <IconSun size={12} /> },
+  sick:     { pill: 'bg-red-100 text-red-600',     bg: 'bg-red-100',   icon: () => <IconHeart size={12} /> },
+  busy:     { pill: 'bg-gray-100 text-gray-600',   bg: 'bg-gray-100',  icon: () => <IconXCircle size={12} /> },
 }
 
 const HOUR_START = 7
@@ -162,18 +163,20 @@ function EventPill({ event, isConflicting, onClick }: { event: EventRecord; isCo
       )}
       <div className="flex items-start justify-between gap-1">
         <span className="text-sm font-semibold leading-tight truncate text-gray-900">{event.type ?? event.title}</span>
-        {isConflicting && <span className="text-red-500 text-xs shrink-0 leading-tight">⚠</span>}
+        {isConflicting && <span className="shrink-0 leading-tight"><IconWarning size={12} className="text-red-500" /></span>}
       </div>
       <div className="text-[10px] opacity-60 mt-0.5 leading-tight truncate">
         {fmtTime(event.start_time)} – {fmtTime(event.end_time)}
         {location && <> · {location}</>}
       </div>
       {event.productions && (
-        <div className="text-[10px] opacity-50 mt-0.5 leading-tight truncate">🎭 {event.productions.title}</div>
+        <div className="flex items-center gap-1 text-[10px] opacity-50 mt-0.5 leading-tight truncate">
+          <IconTheatre size={10} /><span>{event.productions.title}</span>
+        </div>
       )}
       {event.event_artists.length > 0 && (
-        <div className="text-[10px] opacity-50 mt-0.5 leading-tight truncate">
-          👥 {artistNames.join(', ')}{extraArtists > 0 ? ` +${extraArtists}` : ''}
+        <div className="flex items-center gap-1 text-[10px] opacity-50 mt-0.5 leading-tight truncate">
+          <IconUsers size={10} /><span>{artistNames.join(', ')}{extraArtists > 0 ? ` +${extraArtists}` : ''}</span>
         </div>
       )}
     </button>
@@ -438,7 +441,7 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
                         <div className="text-[10px] font-medium text-gray-500 leading-tight truncate mb-0.5">{ev.theatres.name}</div>
                       )}
                       <div className="flex items-start gap-1">
-                        {conflictingIds.has(ev.id) && <span className="text-red-500 text-xs shrink-0">⚠</span>}
+                        {conflictingIds.has(ev.id) && <span className="shrink-0"><IconWarning size={12} className="text-red-500" /></span>}
                         <span className="text-sm font-semibold leading-tight truncate text-gray-900">{ev.type ?? ev.title}</span>
                       </div>
                       <div className="text-[10px] opacity-60 leading-tight">
@@ -448,12 +451,13 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
                         <div className="text-[10px] opacity-50 leading-tight truncate">{location}</div>
                       )}
                       {height > 68 && ev.productions && (
-                        <div className="text-[10px] opacity-50 leading-tight truncate">🎭 {ev.productions.title}</div>
+                        <div className="flex items-center gap-1 text-[10px] opacity-50 leading-tight truncate">
+                          <IconTheatre size={10} /><span>{ev.productions.title}</span>
+                        </div>
                       )}
                       {height > 90 && ev.event_artists.length > 0 && (
-                        <div className="text-[10px] opacity-50 leading-tight truncate">
-                          👥 {ev.event_artists.slice(0, 2).map(ea => ea.artists?.name?.split(' ')[0]).join(', ')}
-                          {ev.event_artists.length > 2 ? ` +${ev.event_artists.length - 2}` : ''}
+                        <div className="flex items-center gap-1 text-[10px] opacity-50 leading-tight truncate">
+                          <IconUsers size={10} /><span>{ev.event_artists.slice(0, 2).map(ea => ea.artists?.name?.split(' ')[0]).join(', ')}{ev.event_artists.length > 2 ? ` +${ev.event_artists.length - 2}` : ''}</span>
                         </div>
                       )}
                     </button>
@@ -870,7 +874,7 @@ export default function CalendarPage() {
               ))}
               <span className="w-px h-3 bg-gray-200 mx-1" />
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400" />{tc.vacation}</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" />⚠ {tc.conflict}</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /><IconWarning size={8} className="text-red-500 inline" /> {tc.conflict}</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-400" />{tc.busy}</span>
             </div>
           )}
@@ -927,7 +931,7 @@ export default function CalendarPage() {
                           >
                             <div className="flex items-start justify-between gap-1">
                               <p className="text-xs font-semibold">{ev.type ?? ev.title}</p>
-                              {isConflicting && <span className="text-red-500 text-xs shrink-0">⚠</span>}
+                              {isConflicting && <span className="shrink-0"><IconWarning size={12} className="text-red-500" /></span>}
                             </div>
                             {ev.type && ev.title !== ev.type && <p className="text-[10px] opacity-60 mt-0.5">{ev.title}</p>}
                             <p className="text-[10px] opacity-70 mt-0.5">
@@ -936,7 +940,7 @@ export default function CalendarPage() {
                               {new Date(ev.end_time).toLocaleTimeString(localeStr, { hour: '2-digit', minute: '2-digit' })}
                               {ev.rooms && ` · ${ev.rooms.name}`}
                             </p>
-                            {ev.productions && <p className="text-[10px] opacity-60 mt-0.5">🎭 {ev.productions.title}</p>}
+                            {ev.productions && <div className="flex items-center gap-1 text-[10px] opacity-60 mt-0.5"><IconTheatre size={10} /><span>{ev.productions.title}</span></div>}
                             {ev.event_artists.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-1.5">
                                 {ev.event_artists.map(ea => (
@@ -990,7 +994,7 @@ export default function CalendarPage() {
                         return (
                           <div key={av.id} className={`flex items-center justify-between rounded-xl px-3 py-2 ${s.pill}`}>
                             <div>
-                              <p className="text-xs font-medium">{s.icon} {av.artists?.name}</p>
+                              <p className="text-xs font-medium flex items-center gap-1">{s.icon()} {av.artists?.name}</p>
                               <p className="text-[10px] opacity-70">{label}{av.note ? ` · ${av.note}` : ''}</p>
                             </div>
                             <button onClick={() => handleDeleteAvail(av.id)} className="text-[10px] opacity-40 hover:opacity-100">✕</button>

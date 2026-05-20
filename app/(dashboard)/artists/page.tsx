@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import ArtistModal from '@/components/ArtistModal'
+import { IconMail, IconPhone, IconTheatre, IconSun, IconHeart } from '@/lib/icons'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -166,14 +167,14 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose }: {
           {artist.email && (
             <a href={`mailto:${artist.email}`}
               className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-800 transition-colors group">
-              <span className="text-gray-300 group-hover:text-gray-500">✉</span>
+              <IconMail size={12} className="text-gray-300 group-hover:text-gray-500" />
               {artist.email}
             </a>
           )}
           {artist.phone && (
             <a href={`tel:${artist.phone}`}
               className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-800 transition-colors group">
-              <span className="text-gray-300 group-hover:text-gray-500">✆</span>
+              <IconPhone size={12} className="text-gray-300 group-hover:text-gray-500" />
               {artist.phone}
             </a>
           )}
@@ -241,7 +242,9 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose }: {
                         {ev.room ? ` · ${ev.room}` : ''}
                       </p>
                       {ev.productionTitle && (
-                        <p className="text-[10px] text-gray-400 truncate">🎭 {ev.productionTitle}</p>
+                        <div className="flex items-center gap-1 text-[10px] text-gray-400 truncate">
+                          <IconTheatre size={10} className="text-gray-400 shrink-0" /><span>{ev.productionTitle}</span>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -259,7 +262,7 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose }: {
                   const isActive = v.start_time <= now.toISOString() && v.end_time >= now.toISOString()
                   return (
                     <div key={v.id} className={`flex items-start gap-2 py-1.5 px-2.5 rounded-xl ${isActive ? 'bg-amber-50 border border-amber-100' : 'bg-gray-50'}`}>
-                      <span className="text-sm shrink-0">🏖️</span>
+                      <IconSun size={16} className="text-gray-500 shrink-0" />
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-gray-700">
                           {fmtDate(v.start_time)} – {fmtDate(v.end_time)}
@@ -274,7 +277,7 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose }: {
                   const isActive = s.start_time <= now.toISOString() && s.end_time >= now.toISOString()
                   return (
                     <div key={s.id} className={`flex items-start gap-2 py-1.5 px-2.5 rounded-xl ${isActive ? 'bg-red-50 border border-red-100' : 'bg-gray-50'}`}>
-                      <span className="text-sm shrink-0">🤒</span>
+                      <IconHeart size={16} className="text-gray-500 shrink-0" />
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-gray-700">
                           {fmtDate(s.start_time)} – {fmtDate(s.end_time)}
@@ -524,7 +527,7 @@ export default function ArtistsPage() {
               <div className="flex items-center justify-center h-40 text-gray-400 text-sm">Ładowanie…</div>
             ) : filtered.length === 0 ? (
               <div className="text-center py-20 text-gray-400">
-                <p className="text-4xl mb-3">🎭</p>
+                <div className="flex justify-center mb-3"><IconTheatre size={48} className="text-gray-300 mx-auto" /></div>
                 <p className="text-sm font-medium">Brak artystów</p>
                 {search && <p className="text-xs mt-1">Spróbuj innego wyszukiwania</p>}
               </div>

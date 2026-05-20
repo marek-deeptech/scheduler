@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import ArtistModal from '@/components/ArtistModal'
@@ -47,7 +48,7 @@ export interface TeamSectionProps {
   /** DB team name ('Cast', 'Technique', 'Wardrobe') or null = all artists */
   teamName: string | null
   title: string
-  emptyIcon?: string
+  emptyIcon?: React.ReactNode
   /** Label shown inside production cards under member list */
   sectionLabel?: string
   /** Text for the remove-from-team confirm dialog */
@@ -169,7 +170,7 @@ function MemberPickerModal({ teamId, currentMemberIds, onClose, onSaved }: {
 export default function TeamSection({
   teamName,
   title,
-  emptyIcon = '🎭',
+  emptyIcon = null,
   sectionLabel = 'Artyści',
   removeLabel = 'Usunąć tę osobę z zespołu?',
 }: TeamSectionProps) {
