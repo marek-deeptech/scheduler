@@ -6,18 +6,18 @@ export const translations = {
     nav: {
       sections: {
         main: 'Main',
-        resources: 'Resources',
-        reports: 'Reports',
+        support: 'Support',
+        extra: 'Extra',
       },
       dashboard: 'Dashboard',
       calendar: 'Calendar',
       artists: 'Artists',
       productions: 'Productions',
-      cast: 'Cast',
       technique: 'Technique',
       wardrobe: 'Wardrobe',
       other: 'Other',
       reports: 'Reports',
+      settings: 'Settings',
     },
     dashboard: {
       title: 'Dashboard',
@@ -160,18 +160,18 @@ export const translations = {
     nav: {
       sections: {
         main: 'Główne',
-        resources: 'Zasoby',
-        reports: 'Raporty',
+        support: 'Obsługa',
+        extra: 'Dodatkowe',
       },
       dashboard: 'Pulpit',
       calendar: 'Kalendarz',
       artists: 'Artyści',
       productions: 'Produkcje',
-      cast: 'Obsada',
       technique: 'Technika',
       wardrobe: 'Garderoba',
       other: 'Inne',
       reports: 'Raporty',
+      settings: 'Ustawienia',
     },
     dashboard: {
       title: 'Pulpit',

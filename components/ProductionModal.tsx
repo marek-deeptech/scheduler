@@ -188,7 +188,16 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
   async function handleDelete() {
     if (!production || !confirm('Usunąć tę produkcję?')) return
     setDeleting(true)
-    await supabase.from('productions').delete().eq('id', production.id)
+    const pid = production.id
+    // Delete child records in order: event_artists → events → artist_productions → production
+    const { data: evs } = await supabase.from('events').select('id').eq('production_id', pid)
+    if (evs && evs.length > 0) {
+      const ids = evs.map((e: { id: string }) => e.id)
+      await supabase.from('event_artists').delete().in('event_id', ids)
+      await supabase.from('events').delete().eq('production_id', pid)
+    }
+    await supabase.from('artist_productions').delete().eq('production_id', pid)
+    await supabase.from('productions').delete().eq('id', pid)
     setDeleting(false)
     onSaved()
   }

@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
+import { findConflicts, CONFLICT_LABEL, CONFLICT_ICON, type ConflictResult, type ConflictReason } from '@/lib/conflicts'
+import ConflictPanel from '@/components/ConflictPanel'
 
 /* ─── Constants ──────────────────────────────────────────────────── */
 const DAYS_SHORT = ['Nd', 'Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob']
@@ -25,8 +27,15 @@ const STATUS_LABEL: Record<string, string> = {
 interface EventRow {
   id: string; title: string; start_time: string; end_time: string
   location: string | null; type: string | null
-  production_title: string | null; artist_ids: string[]
+  production_title: string | null
+  room_id: string | null; theatre_id: string | null
+  artist_ids: string[]
 }
+
+interface DashConflict {
+  a: EventRow; b: EventRow; reasons: ConflictReason[]; sharedArtistIds: string[]
+}
+interface SimpleRecord { id: string; name: string }
 interface ArtistRow { id: string; name: string; status: string | null; role: string | null }
 interface TechRow   { id: string; name: string; role: string | null; status: string | null; eventCount: number }
 interface ProdRow   { id: string; title: string; status: string }
@@ -48,20 +57,28 @@ function prodColor(title: string) {
 }
 function mapEvent(e: any): EventRow {
   const prod = Array.isArray(e.productions) ? e.productions[0] : e.productions
-  return { id: e.id, title: e.title, start_time: e.start_time, end_time: e.end_time,
-           location: e.location ?? null, type: e.type ?? null,
-           production_title: prod?.title ?? null,
-           artist_ids: (e.event_artists ?? []).map((ea: any) => ea.artist_id) }
+  return {
+    id: e.id, title: e.title, start_time: e.start_time, end_time: e.end_time,
+    location: e.location ?? null, type: e.type ?? null,
+    production_title: prod?.title ?? null,
+    room_id: e.room_id ?? null, theatre_id: e.theatre_id ?? null,
+    artist_ids: (e.event_artists ?? []).map((ea: any) => ea.artist_id),
+  }
 }
-function findConflictPairs(events: EventRow[]): { a: EventRow; b: EventRow }[] {
-  const pairs: { a: EventRow; b: EventRow }[] = []
-  for (let i = 0; i < events.length; i++)
-    for (let j = i + 1; j < events.length; j++) {
-      const a = events[i], b = events[j]
-      if (!(new Date(a.start_time) < new Date(b.end_time) && new Date(b.start_time) < new Date(a.end_time))) continue
-      if (a.artist_ids.some(id => b.artist_ids.includes(id))) pairs.push({ a, b })
-    }
-  return pairs
+
+function buildConflicts(events: EventRow[], techArtistIds: Set<string>): DashConflict[] {
+  const evMap = new Map<string, EventRow>(events.map(e => [e.id, e]))
+  const results = findConflicts(
+    events.map(e => ({
+      id: e.id, start_time: e.start_time, end_time: e.end_time,
+      room_id: e.room_id, theatre_id: e.theatre_id, artist_ids: e.artist_ids,
+    })),
+    techArtistIds
+  )
+  return results.map(r => ({
+    a: evMap.get(r.aId)!, b: evMap.get(r.bId)!,
+    reasons: r.reasons, sharedArtistIds: r.sharedArtistIds,
+  }))
 }
 
 /* ─── Tooltip component ──────────────────────────────────────────── */
@@ -119,7 +136,11 @@ export default function DashboardPage() {
   const [weekShows,     setWeekShows]     = useState<EventRow[]>([])
   const [activeProd,    setActiveProd]    = useState(0)
   const [inPrepList,    setInPrepList]    = useState<ProdRow[]>([])
-  const [conflictPairs, setConflictPairs] = useState<{ a: EventRow; b: EventRow }[]>([])
+  const [conflictPairs,     setConflictPairs]     = useState<DashConflict[]>([])
+  const [showConflictPanel, setShowConflictPanel] = useState(false)
+  const [allRooms,          setAllRooms]          = useState<SimpleRecord[]>([])
+  const [allTheatres,       setAllTheatres]       = useState<SimpleRecord[]>([])
+  const [allArtistList,     setAllArtistList]     = useState<SimpleRecord[]>([])
   const [todayEvents,   setTodayEvents]   = useState<EventRow[]>([])
   const [upcoming,      setUpcoming]      = useState<EventRow[]>([])
   const [alertArtists,  setAlertArtists]  = useState<ArtistRow[]>([])
@@ -137,7 +158,7 @@ export default function DashboardPage() {
     const weekEnd = localDate(addDays(now, 7))
     const nowTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
 
-    const evSel = 'id, title, start_time, end_time, location, type, productions(title), event_artists(artist_id)'
+    const evSel = 'id, title, start_time, end_time, location, type, room_id, theatre_id, productions(title), event_artists(artist_id)'
 
     const todayQ   = supabase.from('events').select(evSel)
       .gte('start_time', `${today}T00:00:00`).lte('start_time', `${today}T23:59:59`).order('start_time')
@@ -161,14 +182,26 @@ export default function DashboardPage() {
       { data: upcomData },
       { data: premiereData },
       { data: techTeam },
+      { data: roomsData },
+      { data: theatresData },
     ] = await Promise.all([
-      supabase.from('artists').select('id, name, status, role'),
+      supabase.from('artists').select('id, name, status, role, teams(name)'),
       prodQ,
       todayQ, weekQ, upcomQ, premiereQ,
       supabase.from('teams').select('id').eq('name', 'Technique').single(),
+      supabase.from('rooms').select('id, name').order('name'),
+      supabase.from('theatres').select('id, name').order('name'),
     ])
 
-    const artists: ArtistRow[] = artistData ?? []
+    const artists: ArtistRow[] = (artistData ?? []).map((a: any) => ({
+      id: a.id, name: a.name, status: a.status, role: a.role,
+    }))
+    const techArtistIds = new Set<string>(
+      (artistData ?? []).filter((a: any) => {
+        const team = Array.isArray(a.teams) ? a.teams[0] : a.teams
+        return team?.name === 'Technique'
+      }).map((a: any) => a.id)
+    )
     const prods   = (prodsData ?? []) as ProdRow[]
     const unavail = artists.filter(a => a.status && a.status !== 'Aktywny')
 
@@ -177,8 +210,12 @@ export default function DashboardPage() {
     setActiveProd(prods.filter(p => p.status === 'Na afiszu').length)
     setInPrepList(prods.filter(p => ['W produkcji', 'Koncepcja'].includes(p.status)))
 
+    setAllRooms(roomsData ?? [])
+    setAllTheatres(theatresData ?? [])
+    setAllArtistList(artists.map(a => ({ id: a.id, name: a.name })))
+
     const weekEvs = (weekEvData ?? []).map(mapEvent)
-    const pairs   = findConflictPairs(weekEvs)
+    const pairs   = buildConflicts(weekEvs, techArtistIds)
     setWeekEvCount(weekEvs.filter(e => !SHOW_TYPES.has(e.type ?? '')).length)
     setWeekShows(weekEvs.filter(e => SHOW_TYPES.has(e.type ?? '')))
     setConflictPairs(pairs)
@@ -281,12 +318,19 @@ export default function DashboardPage() {
 
   const conflictTip = (
     <>
-      <TipHeader>Nakładające się próby</TipHeader>
+      <TipHeader>Konflikty grafiku</TipHeader>
       {conflictPairs.length === 0
         ? <TipEmpty text="Brak konfliktów" />
         : conflictPairs.map((p, i) => (
             <span key={i} className="block">
               {i > 0 && <TipDivider />}
+              <span className="flex flex-wrap gap-1 px-3 pt-2">
+                {p.reasons.map(r => (
+                  <span key={r} className="text-[10px] font-semibold px-1.5 py-0.5 bg-red-50 text-red-600 rounded-full border border-red-100">
+                    {CONFLICT_ICON[r]} {CONFLICT_LABEL[r]}
+                  </span>
+                ))}
+              </span>
               <TipRow label={p.a.title} sub={`${fmtTime(p.a.start_time)}–${fmtTime(p.a.end_time)}`} dot="bg-red-400" />
               <TipRow label={p.b.title} sub={`${fmtTime(p.b.start_time)}–${fmtTime(p.b.end_time)}`} dot="bg-red-300" />
             </span>
@@ -332,8 +376,10 @@ export default function DashboardPage() {
     },
     {
       label: 'Konflikty grafiku', value: conflictPairs.length,
-      sub: 'wymagają uwagi', warn: conflictPairs.length > 0,
+      sub: conflictPairs.length > 0 ? 'Kliknij, aby zobaczyć szczegóły' : 'Brak konfliktów',
+      warn: conflictPairs.length > 0,
       tip: conflictTip, tipAlign: 'right' as const,
+      onClick: conflictPairs.length > 0 ? () => setShowConflictPanel(true) : undefined,
     },
   ]
 
@@ -349,14 +395,33 @@ export default function DashboardPage() {
   }
 
   return (
+    <>
+    {showConflictPanel && (
+      <ConflictPanel
+        conflicts={conflictPairs.map(p => ({
+          a: { id: p.a.id, title: p.a.title, type: p.a.type, start_time: p.a.start_time, end_time: p.a.end_time, room_id: p.a.room_id, theatre_id: p.a.theatre_id, production_title: p.a.production_title },
+          b: { id: p.b.id, title: p.b.title, type: p.b.type, start_time: p.b.start_time, end_time: p.b.end_time, room_id: p.b.room_id, theatre_id: p.b.theatre_id, production_title: p.b.production_title },
+          reasons: p.reasons,
+          sharedArtistIds: p.sharedArtistIds,
+        }))}
+        allArtists={allArtistList}
+        allRooms={allRooms}
+        allTheatres={allTheatres}
+        onClose={() => setShowConflictPanel(false)}
+      />
+    )}
     <div className="max-w-7xl mx-auto space-y-5">
 
       {/* ── Stat cards ─────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {statCards.map(s => (
-          <div key={s.label} className="bg-white border border-gray-200 rounded-2xl px-5 py-4 flex flex-col gap-1">
+          <div
+            key={s.label}
+            className={`bg-white border border-gray-200 rounded-2xl px-5 py-4 flex flex-col gap-1 transition-shadow ${s.onClick ? 'cursor-pointer hover:shadow-md hover:border-gray-300' : ''}`}
+            onClick={s.onClick}
+          >
             <p className="text-xs text-gray-400 font-medium">{s.label}</p>
-            <p className="text-4xl font-bold text-gray-900 leading-none mt-1">{s.value}</p>
+            <p className={`text-4xl font-bold leading-none mt-1 ${s.warn ? 'text-red-600' : 'text-gray-900'}`}>{s.value}</p>
             <Tooltip tip={s.tip} align={s.tipAlign}>
               <span className={`text-xs font-medium mt-1 underline decoration-dotted underline-offset-2 cursor-help transition-colors
                 ${s.warn ? 'text-red-500 decoration-red-300' : 'text-gray-400 decoration-gray-300'}`}>
@@ -520,13 +585,24 @@ export default function DashboardPage() {
 
                 {conflictPairs.length > 0 && (
                   <Tooltip tip={conflictTip} align="right">
-                    <span className="flex items-start gap-2.5 px-3 py-2.5 bg-red-50 rounded-xl border border-red-100 cursor-help w-full">
+                    <span
+                      className="flex items-start gap-2.5 px-3 py-2.5 bg-red-50 rounded-xl border border-red-100 cursor-pointer hover:bg-red-100 transition-colors w-full"
+                      onClick={() => setShowConflictPanel(true)}
+                    >
                       <span className="text-base shrink-0">⚠️</span>
                       <span>
                         <p className="text-xs font-semibold text-red-700">Konflikty grafiku</p>
-                        <p className="text-xs text-red-500 mt-0.5 underline decoration-dotted underline-offset-2">
-                          {conflictPairs.length} nakładających się prób
-                        </p>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {(['artist', 'room', 'tech_venue'] as const)
+                            .map(r => ({ r, count: conflictPairs.filter(p => p.reasons.includes(r)).length }))
+                            .filter(({ count }) => count > 0)
+                            .map(({ r, count }) => (
+                              <span key={r} className="text-[10px] font-semibold text-red-600 underline decoration-dotted underline-offset-2">
+                                {CONFLICT_ICON[r]} {count} × {CONFLICT_LABEL[r]}
+                              </span>
+                            ))
+                          }
+                        </div>
                       </span>
                     </span>
                   </Tooltip>
@@ -609,5 +685,6 @@ export default function DashboardPage() {
         </div>
       </div>
     </div>
+    </>
   )
 }

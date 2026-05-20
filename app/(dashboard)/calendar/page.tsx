@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
 import EventModal from '@/components/EventModal'
 import { useTheatre } from '@/lib/theatre-context'
+import { findConflicts, conflictingIdSet, CONFLICT_LABEL, CONFLICT_ICON, type ConflictResult } from '@/lib/conflicts'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -507,6 +508,20 @@ export default function CalendarPage() {
 
   useEffect(() => { fetchData(fetchRange.start, fetchRange.end) }, [fetchRange, selectedTheatreId])
 
+  // Auto-open EventModal when navigated here with ?editEvent=<id>
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const id = params.get('editEvent')
+    if (!id) return
+    window.history.replaceState({}, '', window.location.pathname)
+    supabase.from('events')
+      .select('*, productions(title), theatres(name), rooms(name), event_artists(artist_id, artists(id, name, teams(id, name)))')
+      .eq('id', id)
+      .single()
+      .then(({ data }) => { if (data) setModalEvent(data as unknown as EventRecord) })
+  }, [])
+
   async function fetchData(rangeStart: string, rangeEnd: string) {
     setLoading(true)
 
@@ -550,6 +565,29 @@ export default function CalendarPage() {
 
   // ── Calendar data ──────────────────────────────────────────────────────────
 
+  // ── Conflict detection (all 3 types) ──────────────────────────────────────
+
+  const allConflictResults = useMemo(() => {
+    const techIds = new Set<string>()
+    for (const ev of filteredEvents)
+      for (const ea of ev.event_artists)
+        if (ea.artists?.teams?.name === 'Technique') techIds.add(ea.artist_id)
+
+    return findConflicts(
+      filteredEvents.map(ev => ({
+        id:         ev.id,
+        start_time: ev.start_time,
+        end_time:   ev.end_time,
+        room_id:    ev.room_id,
+        theatre_id: ev.theatre_id,
+        artist_ids: ev.event_artists.map(ea => ea.artist_id),
+      })),
+      techIds
+    )
+  }, [filteredEvents])
+
+  const conflictingEventIds = useMemo(() => conflictingIdSet(allConflictResults), [allConflictResults])
+
   const calendarData = useMemo(() => {
     const data: Record<string, { events: EventRecord[]; vacations: AvailRecord[]; busy: AvailRecord[]; hasConflict: boolean }> = {}
     const ensure = (d: string) => { if (!data[d]) data[d] = { events: [], vacations: [], busy: [], hasConflict: false } }
@@ -565,36 +603,12 @@ export default function CalendarPage() {
       }
 
     for (const dayData of Object.values(data)) {
-      const evs = dayData.events
-      outer: for (let i = 0; i < evs.length; i++) {
-        for (let j = i + 1; j < evs.length; j++) {
-          const a = evs[i], b = evs[j]
-          if (new Date(a.start_time) >= new Date(b.end_time) || new Date(b.start_time) >= new Date(a.end_time)) continue
-          const aIds = a.event_artists.map(ea => ea.artist_id)
-          const bIds = b.event_artists.map(ea => ea.artist_id)
-          if (aIds.some(id => bIds.includes(id))) { dayData.hasConflict = true; break outer }
-        }
-      }
+      dayData.hasConflict = dayData.events.some(ev => conflictingEventIds.has(ev.id))
     }
     return data
-  }, [filteredEvents, filteredAvail])
+  }, [filteredEvents, filteredAvail, conflictingEventIds])
 
   const grid = useMemo(() => getMonthGrid(year, month), [year, month])
-
-  const conflictingEventIds = useMemo(() => {
-    const ids = new Set<string>()
-    const evs = filteredEvents
-    for (let i = 0; i < evs.length; i++) {
-      for (let j = i + 1; j < evs.length; j++) {
-        const a = evs[i], b = evs[j]
-        if (new Date(a.start_time) >= new Date(b.end_time) || new Date(b.start_time) >= new Date(a.end_time)) continue
-        const aIds = a.event_artists.map(ea => ea.artist_id)
-        const bIds = b.event_artists.map(ea => ea.artist_id)
-        if (aIds.some(id => bIds.includes(id))) { ids.add(a.id); ids.add(b.id) }
-      }
-    }
-    return ids
-  }, [filteredEvents])
 
   // ── Navigation ─────────────────────────────────────────────────────────────
 
@@ -648,6 +662,12 @@ export default function CalendarPage() {
   const todayStr     = toDateStr(now)
   const selectedData = selectedDay ? calendarData[selectedDay] : null
   const localeStr    = locale === 'pl' ? 'pl-PL' : 'en-US'
+
+  const selectedDayConflicts = useMemo((): ConflictResult[] => {
+    if (!selectedDay || !selectedData) return []
+    const dayIds = new Set(selectedData.events.map(ev => ev.id))
+    return allConflictResults.filter(r => dayIds.has(r.aId) || dayIds.has(r.bId))
+  }, [selectedDay, selectedData, allConflictResults])
   const weekDays     = getWeekDays(weekStart)
   const teams        = ['Cast', 'Technique', 'Wardrobe']
   const inputCls     = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black'
@@ -859,7 +879,15 @@ export default function CalendarPage() {
                   <p className="font-semibold text-gray-900 text-sm capitalize">
                     {new Date(selectedDay + 'T12:00:00').toLocaleDateString(localeStr, { weekday: 'long', day: 'numeric', month: 'long' })}
                   </p>
-                  {selectedData?.hasConflict && <span className="text-xs font-medium text-red-500">⚠ {tc.conflict}</span>}
+                  {selectedData?.hasConflict && (
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {[...new Set(selectedDayConflicts.flatMap(r => r.reasons))].map(reason => (
+                        <span key={reason} className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-100 rounded-full px-1.5 py-0.5">
+                          {CONFLICT_ICON[reason]} {CONFLICT_LABEL[reason]}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-1">
                   <button
@@ -883,13 +911,18 @@ export default function CalendarPage() {
                       {selectedData.events.map(ev => {
                         const team  = dominantTeam(ev)
                         const style = TEAM_STYLE[team] ?? TEAM_STYLE.default
+                        const evConflicts = selectedDayConflicts.filter(r => r.aId === ev.id || r.bId === ev.id)
+                        const isConflicting = evConflicts.length > 0
                         return (
                           <button
                             key={ev.id}
                             onClick={() => setModalEvent(ev)}
-                            className={`w-full text-left rounded-xl p-3 ${style.pill} hover:opacity-80 transition-opacity`}
+                            className={`w-full text-left rounded-xl p-3 transition-opacity hover:opacity-80 ${isConflicting ? 'bg-red-50 border border-red-200' : style.pill}`}
                           >
-                            <p className="text-xs font-semibold">{ev.type ?? ev.title}</p>
+                            <div className="flex items-start justify-between gap-1">
+                              <p className="text-xs font-semibold">{ev.type ?? ev.title}</p>
+                              {isConflicting && <span className="text-red-500 text-xs shrink-0">⚠</span>}
+                            </div>
                             {ev.type && ev.title !== ev.type && <p className="text-[10px] opacity-60 mt-0.5">{ev.title}</p>}
                             <p className="text-[10px] opacity-70 mt-0.5">
                               {new Date(ev.start_time).toLocaleTimeString(localeStr, { hour: '2-digit', minute: '2-digit' })}
@@ -907,7 +940,30 @@ export default function CalendarPage() {
                                 ))}
                               </div>
                             )}
-                            <p className="text-[9px] opacity-40 mt-1.5">Kliknij, aby edytować</p>
+                            {/* Conflict annotations */}
+                            {evConflicts.length > 0 && (
+                              <div className="mt-2 pt-1.5 border-t border-red-200 space-y-1">
+                                {evConflicts.map((cr, ci) => {
+                                  const otherId = cr.aId === ev.id ? cr.bId : cr.aId
+                                  const otherEv = filteredEvents.find(e => e.id === otherId)
+                                  return (
+                                    <div key={ci} className="text-[10px] text-red-600 leading-snug">
+                                      {cr.reasons.map(r => CONFLICT_ICON[r]).join(' ')}
+                                      {' '}
+                                      <span className="font-semibold">{cr.reasons.map(r => CONFLICT_LABEL[r]).join(' · ')}</span>
+                                      {otherEv && (
+                                        <span className="opacity-70">
+                                          {' '}↔ {otherEv.type ?? otherEv.title} ({fmtTime(otherEv.start_time)})
+                                        </span>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                            <p className="text-[9px] opacity-40 mt-1.5">
+                              {isConflicting ? '↑ Kliknij aby edytować i usunąć konflikt' : 'Kliknij, aby edytować'}
+                            </p>
                           </button>
                         )
                       })}

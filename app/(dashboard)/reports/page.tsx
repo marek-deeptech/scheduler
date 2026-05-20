@@ -7,6 +7,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend,
 } from 'recharts'
+import { findConflicts } from '@/lib/conflicts'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -148,15 +149,12 @@ export default function ReportsPage() {
     const shows      = events.filter(e => SHOW_TYPES.has(e.type ?? ''))
     const fittings   = events.filter(e => FITTING_TYPES.has(e.type ?? ''))
     const rehearsalH = rehearsals.reduce((s, e) => s + hours(e.start_time, e.end_time), 0)
-    let conflicts = 0
-    for (let i = 0; i < events.length; i++)
-      for (let j = i+1; j < events.length; j++) {
-        const a = events[i], b = events[j]
-        if (new Date(a.start_time) >= new Date(b.end_time)) continue
-        if (new Date(b.start_time) >= new Date(a.end_time)) continue
-        const aIds = new Set(a.event_artists.map(x => x.artist_id))
-        if (b.event_artists.some(x => aIds.has(x.artist_id))) conflicts++
-      }
+    const conflictResults = findConflicts(events.map(e => ({
+      id: e.id, start_time: e.start_time, end_time: e.end_time,
+      room_id: e.room_id, theatre_id: e.theatre_id,
+      artist_ids: e.event_artists.map(x => x.artist_id),
+    })))
+    const conflicts = conflictResults.length
     return { rehearsals: rehearsals.length, shows: shows.length, rehearsalH, conflicts, fittings: fittings.length }
   }, [events])
 

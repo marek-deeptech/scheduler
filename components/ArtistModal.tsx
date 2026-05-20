@@ -266,7 +266,7 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
   }
 
   async function handleDelete() {
-    if (!artist || !confirm('Usunąć tego artystę?')) return
+    if (!artist || !confirm('Usunąć tę osobę?')) return
     setDeleting(true)
     await supabase.from('artists').delete().eq('id', artist.id)
     setDeleting(false)
@@ -284,7 +284,7 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <h2 className="text-lg font-semibold text-gray-900">
-            {isEdit ? 'Edytuj artystę' : 'Nowy artysta'}
+            {isEdit ? 'Edytuj osobę' : 'Nowa osoba'}
           </h2>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors text-lg">
             ×

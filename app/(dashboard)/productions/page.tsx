@@ -11,6 +11,7 @@ interface EventRow {
   start_time: string
   end_time: string
   type: string | null
+  room_id: string | null
   event_artists: { artist_id: string }[]
 }
 
@@ -59,9 +60,12 @@ function detectConflict(events: EventRow[]): boolean {
         new Date(a.start_time) < new Date(b.end_time) &&
         new Date(b.start_time) < new Date(a.end_time)
       if (!overlap) continue
+      // Artist conflict
       const aIds = a.event_artists.map(ea => ea.artist_id)
       const bIds = b.event_artists.map(ea => ea.artist_id)
       if (aIds.some(id => bIds.includes(id))) return true
+      // Room conflict
+      if (a.room_id && b.room_id && a.room_id === b.room_id) return true
     }
   }
   return false
@@ -96,7 +100,7 @@ export default function ProductionsPage() {
         id, title, director, premiere_date, start_date, end_date, theatre_id, status,
         theatres(name),
         artist_productions(artist_id),
-        events(id, start_time, end_time, type, event_artists(artist_id))
+        events(id, start_time, end_time, type, room_id, event_artists(artist_id))
       `)
       .order('title')
 
@@ -116,6 +120,7 @@ export default function ProductionsPage() {
         start_time:   e.start_time,
         end_time:     e.end_time,
         type:         e.type,
+        room_id:      e.room_id ?? null,
         event_artists: e.event_artists ?? [],
       }))
       return {
