@@ -146,6 +146,9 @@ export default function DashboardPage() {
   const [alertArtists,  setAlertArtists]  = useState<ArtistRow[]>([])
   const [artistAvails,  setArtistAvails]  = useState<AvailRow[]>([])
   const [availCounts,   setAvailCounts]   = useState({ dostepni: 0, urlop: 0, niedostepni: 0 })
+  const [dostepniList,  setDostepniList]  = useState<ArtistRow[]>([])
+  const [urlopList,     setUrlopList]     = useState<ArtistRow[]>([])
+  const [niedostList,   setNiedostList]   = useState<ArtistRow[]>([])
   const [techToday,     setTechToday]     = useState<TechRow[]>([])
   const [nextPremiere,  setNextPremiere]  = useState<EventRow | null>(null)
 
@@ -160,16 +163,24 @@ export default function DashboardPage() {
 
     const evSel = 'id, title, start_time, end_time, location, type, room_id, theatre_id, productions(title), event_artists(artist_id)'
 
-    const todayQ   = supabase.from('events').select(evSel)
+    // All event queries filtered by theatre when selected
+    let todayQ = supabase.from('events').select(evSel)
       .gte('start_time', `${today}T00:00:00`).lte('start_time', `${today}T23:59:59`).order('start_time')
-    const weekQ    = supabase.from('events').select(evSel)
+    let weekQ = supabase.from('events').select(evSel)
       .gte('start_time', `${today}T00:00:00`).lt('start_time', `${weekEnd}T00:00:00`).order('start_time')
-    const upcomQ   = supabase.from('events').select(evSel)
+    let upcomQ = supabase.from('events').select(evSel)
       .gte('start_time', `${today}T${nowTime}:00`)
       .lt('start_time', `${localDate(addDays(now, 14))}T00:00:00`)
       .order('start_time').limit(15)
-    const premiereQ = supabase.from('events').select(evSel)
+    let premiereQ = supabase.from('events').select(evSel)
       .eq('type', 'Premiera').gte('start_time', `${today}T00:00:00`).order('start_time').limit(1)
+
+    if (selectedTheatreId) {
+      todayQ    = todayQ.eq('theatre_id', selectedTheatreId)
+      weekQ     = weekQ.eq('theatre_id', selectedTheatreId)
+      upcomQ    = upcomQ.eq('theatre_id', selectedTheatreId)
+      premiereQ = premiereQ.eq('theatre_id', selectedTheatreId)
+    }
 
     let prodQ = supabase.from('productions').select('id, title, status')
     if (selectedTheatreId) prodQ = prodQ.eq('theatre_id', selectedTheatreId)
@@ -185,7 +196,8 @@ export default function DashboardPage() {
       { data: roomsData },
       { data: theatresData },
     ] = await Promise.all([
-      supabase.from('artists').select('id, name, status, role, teams(name)'),
+      // artist_productions included so we can scope artists to the selected theatre
+      supabase.from('artists').select('id, name, status, role, teams(name), artist_productions(productions(theatre_id))'),
       prodQ,
       todayQ, weekQ, upcomQ, premiereQ,
       supabase.from('teams').select('id').eq('name', 'Technique').single(),
@@ -193,11 +205,22 @@ export default function DashboardPage() {
       supabase.from('theatres').select('id, name').order('name'),
     ])
 
-    const artists: ArtistRow[] = (artistData ?? []).map((a: any) => ({
+    const allArtistsRaw = (artistData ?? []) as any[]
+
+    // Scope to artists who have at least one production at the selected theatre
+    const scopedRaw = selectedTheatreId
+      ? allArtistsRaw.filter(a =>
+          (a.artist_productions ?? []).some((ap: any) =>
+            ap.productions?.theatre_id === selectedTheatreId
+          )
+        )
+      : allArtistsRaw
+
+    const artists: ArtistRow[] = scopedRaw.map((a: any) => ({
       id: a.id, name: a.name, status: a.status, role: a.role,
     }))
     const techArtistIds = new Set<string>(
-      (artistData ?? []).filter((a: any) => {
+      allArtistsRaw.filter((a: any) => {
         const team = Array.isArray(a.teams) ? a.teams[0] : a.teams
         return team?.name === 'Technique'
       }).map((a: any) => a.id)
@@ -212,7 +235,8 @@ export default function DashboardPage() {
 
     setAllRooms(roomsData ?? [])
     setAllTheatres(theatresData ?? [])
-    setAllArtistList(artists.map(a => ({ id: a.id, name: a.name })))
+    // Keep full list for event-creation dropdowns (not scoped)
+    setAllArtistList(allArtistsRaw.map((a: any) => ({ id: a.id, name: a.name })))
 
     const weekEvs = (weekEvData ?? []).map(mapEvent)
     const pairs   = buildConflicts(weekEvs, techArtistIds)
@@ -226,11 +250,13 @@ export default function DashboardPage() {
     setNextPremiere(premiereData?.[0] ? mapEvent(premiereData[0]) : null)
 
     setAlertArtists(unavail)
-    setAvailCounts({
-      dostepni:    artists.filter(a => !a.status || a.status === 'Aktywny').length,
-      urlop:       artists.filter(a => a.status === 'Na urlopie').length,
-      niedostepni: artists.filter(a => a.status && ['Choroba','Niedyspozyjny'].includes(a.status)).length,
-    })
+    const dostepni    = artists.filter(a => !a.status || a.status === 'Aktywny')
+    const urlop       = artists.filter(a => a.status === 'Na urlopie')
+    const niedostepni = artists.filter(a => a.status && ['Choroba','Niedyspozyjny'].includes(a.status))
+    setAvailCounts({ dostepni: dostepni.length, urlop: urlop.length, niedostepni: niedostepni.length })
+    setDostepniList(dostepni)
+    setUrlopList(urlop)
+    setNiedostList(niedostepni)
 
     // Fetch vacation/sick dates for unavailable artists
     const unavailIds = unavail.map(a => a.id)
@@ -640,19 +666,33 @@ export default function DashboardPage() {
               {pctN > 0 && <div className="bg-red-400 rounded-full" style={{ width: `${pctN}%` }} />}
             </div>
             <div className="space-y-2">
-              {[
-                { label: 'Dostępni',        count: availCounts.dostepni,    color: 'bg-green-400' },
-                { label: 'Urlop',           count: availCounts.urlop,       color: 'bg-amber-400' },
-                { label: 'Niedyspozycyjni', count: availCounts.niedostepni, color: 'bg-red-400'   },
-              ].map(r => (
-                <div key={r.label} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${r.color} shrink-0`} />
-                    <span className="text-xs text-gray-600">{r.label}</span>
+              {([
+                { label: 'Dostępni',        count: availCounts.dostepni,    color: 'bg-green-400', dot: 'bg-green-400', list: dostepniList  },
+                { label: 'Urlop',           count: availCounts.urlop,       color: 'bg-amber-400', dot: 'bg-amber-400', list: urlopList     },
+                { label: 'Niedyspozycyjni', count: availCounts.niedostepni, color: 'bg-red-400',   dot: 'bg-red-400',   list: niedostList   },
+              ] as const).map(r => {
+                const tip = (
+                  <>
+                    <TipHeader>{r.label}</TipHeader>
+                    {r.list.length === 0
+                      ? <TipEmpty text="Brak osób" />
+                      : r.list.map(a => <TipRow key={a.id} label={a.name} sub={a.role ?? undefined} dot={r.dot} />)
+                    }
+                    <span className="block pb-1" />
+                  </>
+                )
+                return (
+                  <div key={r.label} className="flex items-center justify-between">
+                    <Tooltip tip={tip} align="right">
+                      <span className="flex items-center gap-2 cursor-help">
+                        <span className={`w-2 h-2 rounded-full ${r.color} shrink-0`} />
+                        <span className="text-xs text-gray-600 underline decoration-dotted underline-offset-2 decoration-gray-300">{r.label}</span>
+                      </span>
+                    </Tooltip>
+                    <span className="text-xs font-semibold text-gray-800">{r.count}</span>
                   </div>
-                  <span className="text-xs font-semibold text-gray-800">{r.count}</span>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
 
