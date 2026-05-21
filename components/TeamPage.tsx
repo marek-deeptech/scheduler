@@ -15,9 +15,9 @@ const teamColor: Record<string, string> = {
 }
 
 const TEAM_ICON: Record<string, React.ReactNode> = {
-  Cast:      <IconTheatre size={48} className="text-gray-300 mx-auto mb-4" />,
-  Technique: <IconWrench size={48} className="text-gray-300 mx-auto mb-4" />,
-  Wardrobe:  <IconHanger size={48} className="text-gray-300 mx-auto mb-4" />,
+  Cast:      <IconTheatre size={48} className="text-gray-500 mx-auto mb-4" />,
+  Technique: <IconWrench size={48} className="text-gray-500 mx-auto mb-4" />,
+  Wardrobe:  <IconHanger size={48} className="text-gray-500 mx-auto mb-4" />,
 }
 
 export default function TeamPage({ teamName }: { teamName: string | null }) {
@@ -58,9 +58,9 @@ export default function TeamPage({ teamName }: { teamName: string | null }) {
       </div>
 
       {loading ? (
-        <p className="text-gray-400 text-sm">{t.artists.loading}</p>
+        <p className="text-gray-500 text-sm">{t.artists.loading}</p>
       ) : artists.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
+        <div className="text-center py-16 text-gray-500">
           <p className="text-lg">{t.team.empty(displayName)}</p>
           <p className="text-sm mt-1">{t.team.emptyHint}</p>
         </div>

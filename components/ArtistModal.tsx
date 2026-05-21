@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useLanguage } from '@/lib/language-context'
 
 interface ArtistRecord {
   id: string
@@ -55,6 +56,8 @@ function formatDate(iso: string) {
 }
 
 export default function ArtistModal({ artist, productions, presetTeamId, onClose, onSaved }: Props) {
+  const { t } = useLanguage()
+  const am = t.artistModal
   const isEdit = !!artist
 
   const [form, setForm] = useState({
@@ -153,7 +156,14 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
       note:       entry.note || null,
     })
     if (err) { setError(err.message); return false }
-    await syncStatus(artist.id)
+
+    // Auto-set status to match the availability type being added
+    const newStatus = type === 'Urlop' ? 'Na urlopie' : 'Choroba'
+    if (form.status !== newStatus) {
+      await supabase.from('artists').update({ status: newStatus }).eq('id', artist.id)
+      setForm(f => ({ ...f, status: newStatus }))
+    }
+    await loadAvailability(artist.id)
     return true
   }
 
@@ -266,7 +276,7 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
   }
 
   async function handleDelete() {
-    if (!artist || !confirm('Usunąć tę osobę?')) return
+    if (!artist || !confirm(am.confirmDelete)) return
     setDeleting(true)
     await supabase.from('artists').delete().eq('id', artist.id)
     setDeleting(false)
@@ -284,9 +294,9 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <h2 className="text-lg font-semibold text-gray-900">
-            {isEdit ? 'Edytuj osobę' : 'Nowa osoba'}
+            {isEdit ? am.editTitle : am.createTitle}
           </h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors text-lg">
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-600 transition-colors text-lg">
             ×
           </button>
         </div>
@@ -319,12 +329,12 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
               </div>
             </label>
             <div className="min-w-0">
-              <p className="text-sm font-medium text-gray-700">Zdjęcie profilowe</p>
-              <p className="text-xs text-gray-400 mt-0.5">Kliknij aby dodać lub zmienić portret</p>
+              <p className="text-sm font-medium text-gray-700">{am.photoLabel}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{am.photoHint}</p>
               {avatarUrl && (
                 <button type="button" onClick={handleRemoveAvatar}
                   className="mt-1.5 text-xs text-red-500 hover:text-red-700 transition-colors">
-                  Usuń zdjęcie
+                  {am.removePhoto}
                 </button>
               )}
             </div>
@@ -333,7 +343,7 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
           {/* Basic fields */}
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className={labelCls}>Imię i nazwisko *</label>
+              <label className={labelCls}>{am.nameLabel}</label>
               <input
                 required
                 value={form.name}
@@ -343,7 +353,7 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
               />
             </div>
             <div>
-              <label className={labelCls}>Email</label>
+              <label className={labelCls}>{am.emailLabel}</label>
               <input
                 type="email"
                 value={form.email}
@@ -353,7 +363,7 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
               />
             </div>
             <div>
-              <label className={labelCls}>Telefon</label>
+              <label className={labelCls}>{am.phoneLabel}</label>
               <input
                 value={form.phone}
                 onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
@@ -362,7 +372,7 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
               />
             </div>
             <div>
-              <label className={labelCls}>Status</label>
+              <label className={labelCls}>{am.statusLabel}</label>
               <select
                 value={form.status}
                 onChange={e => handleStatusChange(e.target.value)}
@@ -372,12 +382,12 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
               </select>
             </div>
             <div>
-              <label className={labelCls}>Rola / funkcja</label>
+              <label className={labelCls}>{am.roleLabel}</label>
               <input
                 value={form.role}
                 onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
                 className={inputCls}
-                placeholder="np. Aktor, Reżyser"
+                placeholder={am.rolePlaceholder}
               />
             </div>
           </div>
@@ -388,10 +398,10 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
               {/* Urlopy */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className={labelCls + ' mb-0'}>Urlopy</label>
+                  <label className={labelCls + ' mb-0'}>{am.vacationsLabel}</label>
                   <button type="button" onClick={() => { setShowVacForm(v => !v); setError(null) }}
                     className="text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors">
-                    {showVacForm ? 'Anuluj' : '+ Dodaj urlop'}
+                    {showVacForm ? am.cancelVacation : am.addVacation}
                   </button>
                 </div>
                 {showVacForm && (
@@ -411,17 +421,17 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
                       </div>
                     </div>
                     <input value={newVacation.note} onChange={e => setNewVacation(v => ({ ...v, note: e.target.value }))}
-                      placeholder="Notatka (opcjonalnie)"
+                      placeholder={am.noteOptional}
                       className="w-full border border-yellow-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-yellow-400" />
                     <button type="button" onClick={addVacation}
                       disabled={vacSaving || !newVacation.start || !newVacation.end}
                       className="w-full py-1.5 text-xs font-semibold text-yellow-800 bg-yellow-200 rounded-lg hover:bg-yellow-300 disabled:opacity-50 transition-colors">
-                      {vacSaving ? 'Zapisywanie...' : 'Zapisz urlop'}
+                      {vacSaving ? am.savingVacation : am.saveVacation}
                     </button>
                   </div>
                 )}
                 {vacations.length === 0 && !showVacForm ? (
-                  <p className="text-xs text-gray-400 italic">Brak zaplanowanych urlopów</p>
+                  <p className="text-xs text-gray-500 italic">{am.noVacations}</p>
                 ) : (
                   <div className="flex flex-col gap-1">
                     {vacations.map(v => (
@@ -431,7 +441,7 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
                           {v.note && <p className="text-xs text-yellow-600 mt-0.5">{v.note}</p>}
                         </div>
                         <button type="button" onClick={() => removeEntry(v.id)}
-                          className="w-5 h-5 flex items-center justify-center rounded-full bg-white/70 hover:bg-white text-gray-400 hover:text-red-500 transition-colors text-xs font-bold">
+                          className="w-5 h-5 flex items-center justify-center rounded-full bg-white/70 hover:bg-white text-gray-500 hover:text-red-500 transition-colors text-xs font-bold">
                           ✕
                         </button>
                       </div>
@@ -443,10 +453,10 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
               {/* Choroby */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className={labelCls + ' mb-0'}>Choroba</label>
+                  <label className={labelCls + ' mb-0'}>{am.sickLabel}</label>
                   <button type="button" onClick={() => { setShowSickForm(v => !v); setError(null) }}
                     className="text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors">
-                    {showSickForm ? 'Anuluj' : '+ Dodaj chorobę'}
+                    {showSickForm ? am.cancelSick : am.addSick}
                   </button>
                 </div>
                 {showSickForm && (
@@ -466,17 +476,17 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
                       </div>
                     </div>
                     <input value={newSickness.note} onChange={e => setNewSickness(v => ({ ...v, note: e.target.value }))}
-                      placeholder="Notatka (opcjonalnie)"
+                      placeholder={am.noteOptional}
                       className="w-full border border-red-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-400" />
                     <button type="button" onClick={addSickness}
                       disabled={sickSaving || !newSickness.start || !newSickness.end}
                       className="w-full py-1.5 text-xs font-semibold text-red-800 bg-red-100 rounded-lg hover:bg-red-200 disabled:opacity-50 transition-colors">
-                      {sickSaving ? 'Zapisywanie...' : 'Zapisz chorobę'}
+                      {sickSaving ? am.savingSick : am.saveSick}
                     </button>
                   </div>
                 )}
                 {sicknesses.length === 0 && !showSickForm ? (
-                  <p className="text-xs text-gray-400 italic">Brak wpisów chorobowych</p>
+                  <p className="text-xs text-gray-500 italic">{am.noSick}</p>
                 ) : (
                   <div className="flex flex-col gap-1">
                     {sicknesses.map(s => (
@@ -486,7 +496,7 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
                           {s.note && <p className="text-xs text-red-500 mt-0.5">{s.note}</p>}
                         </div>
                         <button type="button" onClick={() => removeEntry(s.id)}
-                          className="w-5 h-5 flex items-center justify-center rounded-full bg-white/70 hover:bg-white text-gray-400 hover:text-red-500 transition-colors text-xs font-bold">
+                          className="w-5 h-5 flex items-center justify-center rounded-full bg-white/70 hover:bg-white text-gray-500 hover:text-red-500 transition-colors text-xs font-bold">
                           ✕
                         </button>
                       </div>
@@ -499,19 +509,19 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
 
           {/* Productions */}
           <div>
-            <label className={labelCls}>Produkcje</label>
+            <label className={labelCls}>{am.productionsLabel}</label>
             {assigned.length > 0 && (
               <div className="mb-3">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Przypisane</p>
+                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{am.assignedProductions}</p>
                 <div className="flex flex-col gap-1">
                   {assigned.map(p => (
                     <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100">
                       <div>
                         <span className="text-sm font-medium text-gray-800">{p.title}</span>
-                        {p.theatres && <span className="ml-2 text-xs text-gray-400">{p.theatres.name}</span>}
+                        {p.theatres && <span className="ml-2 text-xs text-gray-500">{p.theatres.name}</span>}
                       </div>
                       <button type="button" onClick={() => toggleProduction(p.id)}
-                        className="w-5 h-5 flex items-center justify-center rounded-full bg-white/70 hover:bg-white text-gray-400 hover:text-red-500 transition-colors text-xs font-bold">
+                        className="w-5 h-5 flex items-center justify-center rounded-full bg-white/70 hover:bg-white text-gray-500 hover:text-red-500 transition-colors text-xs font-bold">
                         ✕
                       </button>
                     </div>
@@ -521,13 +531,13 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
             )}
             {available.length > 0 && (
               <div>
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Dostępne</p>
+                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{am.availableProductions}</p>
                 <div className="flex flex-col gap-1">
                   {available.map(p => (
                     <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 hover:bg-gray-100 transition-colors">
                       <div>
                         <span className="text-sm text-gray-700">{p.title}</span>
-                        {p.theatres && <span className="ml-2 text-xs text-gray-400">{p.theatres.name}</span>}
+                        {p.theatres && <span className="ml-2 text-xs text-gray-500">{p.theatres.name}</span>}
                       </div>
                       <button type="button" onClick={() => toggleProduction(p.id)}
                         className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 text-xs font-bold transition-colors">
@@ -539,7 +549,7 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
               </div>
             )}
             {productions.length === 0 && (
-              <p className="text-xs text-gray-400 italic">Brak produkcji w bazie</p>
+              <p className="text-xs text-gray-500 italic">{am.noProductionsInDb}</p>
             )}
           </div>
 
@@ -555,17 +565,17 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
             {isEdit ? (
               <button type="button" onClick={handleDelete} disabled={deleting}
                 className="px-4 py-2 text-sm font-medium text-red-500 border border-red-200 rounded-xl hover:bg-red-50 disabled:opacity-50 transition-colors">
-                {deleting ? 'Usuwanie...' : 'Usuń'}
+                {deleting ? am.deleting : am.delete}
               </button>
             ) : <div />}
             <div className="flex gap-2">
               <button type="button" onClick={onClose}
                 className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
-                Anuluj
+                {am.cancel}
               </button>
               <button type="submit" disabled={saving}
                 className="px-5 py-2 text-sm font-medium text-white bg-gray-900 rounded-xl hover:bg-gray-700 disabled:opacity-50 transition-colors">
-                {saving ? 'Zapisywanie...' : 'Zapisz'}
+                {saving ? am.saving : am.save}
               </button>
             </div>
           </div>

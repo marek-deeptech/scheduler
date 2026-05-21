@@ -8,7 +8,7 @@ export default function CastPage() {
     <TeamSection
       teamName="Cast"
       title="Obsada"
-      emptyIcon={<IconTheatre size={48} className="text-gray-300 mx-auto mb-4" />}
+      emptyIcon={<IconTheatre size={48} className="text-gray-500 mx-auto mb-4" />}
       sectionLabel="Obsada"
       removeLabel="Usunąć tę osobę z zespołu Obsady?"
     />

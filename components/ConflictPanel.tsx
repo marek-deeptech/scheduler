@@ -97,18 +97,18 @@ function EventCard({
           {event.type ?? event.title}
         </p>
         {event.type && event.title !== event.type && (
-          <p className="text-xs text-gray-400 truncate">{event.title}</p>
+          <p className="text-xs text-gray-500 truncate">{event.title}</p>
         )}
         <p className="text-xs text-gray-500 mt-1">
           {fmtDate(event.start_time)} · {fmtTime(event.start_time)} – {fmtTime(event.end_time)}
         </p>
         {(room || theatre) && (
           <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
-            <IconMapPin size={12} className="text-gray-400 inline" /> {[room, theatre].filter(Boolean).join(' · ')}
+            <IconMapPin size={12} className="text-gray-500 inline" /> {[room, theatre].filter(Boolean).join(' · ')}
           </p>
         )}
         {event.production_title && (
-          <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1"><IconTheatre size={12} className="text-gray-400 inline" /> {event.production_title}</p>
+          <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1"><IconTheatre size={12} className="text-gray-500 inline" /> {event.production_title}</p>
         )}
       </div>
       <button
@@ -150,7 +150,7 @@ export default function ConflictPanel({ conflicts, allArtists, allRooms, allThea
             </div>
             <button
               onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg text-xl leading-none ml-3 shrink-0"
+              className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg text-xl leading-none ml-3 shrink-0"
             >
               ×
             </button>
@@ -189,7 +189,7 @@ export default function ConflictPanel({ conflicts, allArtists, allRooms, allThea
               {/* divider */}
               <div className="mx-4 flex items-center gap-2">
                 <div className="flex-1 border-t border-dashed border-gray-200" />
-                <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">vs</span>
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">vs</span>
                 <div className="flex-1 border-t border-dashed border-gray-200" />
               </div>
               <EventCard
@@ -203,7 +203,7 @@ export default function ConflictPanel({ conflicts, allArtists, allRooms, allThea
         </div>
 
         {/* Footer hint */}
-        <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-400">
+        <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500">
           Zmiany dokonane w kalendarzu (data, sala, obsada) automatycznie usuwają konflikt.
         </div>
       </div>

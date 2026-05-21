@@ -222,7 +222,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
           <h2 className="text-lg font-semibold text-gray-900">
             {isEdit ? 'Edytuj produkcję' : 'Nowa produkcja'}
           </h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors text-lg">
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-600 transition-colors text-lg">
             ×
           </button>
         </div>
@@ -307,18 +307,18 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
 
             {assigned.length > 0 && (
               <div className="mb-3">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Przypisani</p>
+                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Przypisani</p>
                 <div className="flex flex-col gap-1">
                   {assigned.map(a => (
                     <div key={a.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100">
                       <div>
                         <span className="text-sm font-medium text-gray-800">{a.name}</span>
-                        {a.role && <span className="ml-2 text-xs text-gray-400">{a.role}</span>}
+                        {a.role && <span className="ml-2 text-xs text-gray-500">{a.role}</span>}
                       </div>
                       <button
                         type="button"
                         onClick={() => toggleActor(a.id)}
-                        className="w-5 h-5 flex items-center justify-center rounded-full bg-white/70 hover:bg-white text-gray-400 hover:text-red-500 transition-colors text-xs font-bold"
+                        className="w-5 h-5 flex items-center justify-center rounded-full bg-white/70 hover:bg-white text-gray-500 hover:text-red-500 transition-colors text-xs font-bold"
                       >
                         ✕
                       </button>
@@ -330,13 +330,13 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
 
             {available.length > 0 && (
               <div>
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Dostępni</p>
+                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Dostępni</p>
                 <div className="flex flex-col gap-1">
                   {available.map(a => (
                     <div key={a.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 hover:bg-gray-100 transition-colors">
                       <div>
                         <span className="text-sm text-gray-700">{a.name}</span>
-                        {a.role && <span className="ml-2 text-xs text-gray-400">{a.role}</span>}
+                        {a.role && <span className="ml-2 text-xs text-gray-500">{a.role}</span>}
                       </div>
                       <button
                         type="button"
@@ -352,7 +352,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
             )}
 
             {artists.length === 0 && (
-              <p className="text-xs text-gray-400 italic">Brak artystów w bazie</p>
+              <p className="text-xs text-gray-500 italic">Brak artystów w bazie</p>
             )}
           </div>
 
@@ -371,7 +371,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
               </div>
 
               {events.length === 0 ? (
-                <p className="text-xs text-gray-400 italic py-2">Brak wydarzeń. Kliknij „Dodaj wydarzenie", aby zaplanować próbę, spektakl lub inne wydarzenie.</p>
+                <p className="text-xs text-gray-500 italic py-2">Brak wydarzeń. Kliknij „Dodaj wydarzenie", aby zaplanować próbę, spektakl lub inne wydarzenie.</p>
               ) : (
                 <div className="flex flex-col gap-1.5">
                   {events.map(ev => (
@@ -391,7 +391,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
                         <p className="text-xs font-semibold text-gray-800 truncate">
                           {ev.title !== ev.type ? ev.title : ''}
                         </p>
-                        <p className="text-[11px] text-gray-400">
+                        <p className="text-[11px] text-gray-500">
                           {fmtDate(ev.start_time)} · {fmtTime(ev.start_time)}–{fmtTime(ev.end_time)}
                           {ev.location ? ` · ${ev.location}` : ''}
                         </p>
@@ -399,12 +399,12 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
 
                       {/* Participant count */}
                       {(ev.event_artists?.length ?? 0) > 0 && (
-                        <span className="shrink-0 text-[11px] text-gray-400">
+                        <span className="shrink-0 text-[11px] text-gray-500">
                           {ev.event_artists!.length} os.
                         </span>
                       )}
 
-                      <span className="text-gray-300 text-xs shrink-0">›</span>
+                      <span className="text-gray-500 text-xs shrink-0">›</span>
                     </button>
                   ))}
                 </div>

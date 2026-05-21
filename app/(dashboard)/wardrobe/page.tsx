@@ -8,7 +8,7 @@ export default function WardrobePage() {
     <TeamSection
       teamName="Wardrobe"
       title="Kostiumy i Garderoba"
-      emptyIcon={<IconHanger size={48} className="text-gray-300 mx-auto mb-4" />}
+      emptyIcon={<IconHanger size={48} className="text-gray-500 mx-auto mb-4" />}
       sectionLabel="Garderoba"
       removeLabel="Usunąć tę osobę z zespołu Kostiumów?"
     />

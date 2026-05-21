@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
 import { EVENT_TYPE_CATEGORIES, EVENT_TYPES } from '@/types'
@@ -57,7 +57,8 @@ function splitDateTime(iso: string) {
 }
 
 export default function EventModal({ event, defaultDate, defaultProductionId, artists, productions, theatres, rooms, zIndex = 50, onClose, onSaved }: Props) {
-  const { locale } = useLanguage()
+  const { t, locale } = useLanguage()
+  const em = t.eventModal
   const isEdit = !!event
 
   const initStart = event ? splitDateTime(event.start_time) : { date: defaultDate ?? '', time: '09:00' }
@@ -74,8 +75,79 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
     room_id:       event?.room_id ?? '',
     artist_ids:    event?.event_artists?.map(ea => ea.artist_id) ?? [],
   })
-  const [saving,  setSaving]  = useState(false)
+  const [saving,   setSaving]   = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  // ── Confirmations state ─────────────────────────────────────────────────────
+  interface ConfirmationRow {
+    id: string
+    artist_id: string
+    token: string
+    status: string
+    comment: string | null
+    sent_at: string
+    responded_at: string | null
+    artists: { name: string; email: string | null } | null
+  }
+  const [confirmations, setConfirmations] = useState<ConfirmationRow[]>([])
+  const [confLoading,   setConfLoading]   = useState(false)
+  const [confSending,   setConfSending]   = useState(false)
+  const [confSent,      setConfSent]      = useState(false)
+
+  const fetchConfirmations = useCallback(async () => {
+    if (!isEdit || !event) return
+    setConfLoading(true)
+    const { data } = await supabase
+      .from('event_confirmations')
+      .select('id, artist_id, token, status, comment, sent_at, responded_at, artists(name, email)')
+      .eq('event_id', event.id)
+      .order('sent_at', { ascending: true })
+    setConfirmations((data ?? []) as unknown as ConfirmationRow[])
+    setConfLoading(false)
+  }, [isEdit, event])
+
+  useEffect(() => {
+    if (isEdit) fetchConfirmations()
+  }, [isEdit, fetchConfirmations])
+
+  async function handleSendConfirmations() {
+    if (!event) return
+    // Send to artists that have no record yet OR are still pending
+    const sentArtistIds = confirmations.map(c => c.artist_id)
+    const pendingIds = form.artist_ids.filter(id => {
+      const conf = confirmations.find(c => c.artist_id === id)
+      return !conf || conf.status === 'pending'
+    })
+    if (pendingIds.length === 0) return
+
+    setConfSending(true)
+    setConfSent(false)
+
+    const production = productions.find(p => p.id === form.production_id)
+    const room       = rooms.find(r => r.id === form.room_id)
+
+    await fetch('/api/confirmations/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eventId: event.id,
+        artistIds: pendingIds,
+        eventDetails: {
+          title:            form.title || form.type || 'Wydarzenie',
+          type:             form.type || null,
+          start_time:       buildISO(form.date, form.start_time),
+          end_time:         buildISO(form.date, form.end_time),
+          production_title: production?.title ?? null,
+          room:             room?.name ?? null,
+        },
+      }),
+    }).catch(console.error)
+
+    setConfSending(false)
+    setConfSent(true)
+    setTimeout(() => setConfSent(false), 3000)
+    await fetchConfirmations()
+  }
 
   // Auto-fill title from type if title is empty or matches a type
   useEffect(() => {
@@ -132,14 +204,58 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
     }
 
     setSaving(false)
+
+    const artistIds = form.artist_ids
+    if (artistIds.length > 0) {
+      fetch('/api/notify/event-change', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save',
+          event: {
+            id: isEdit ? event!.id : 'new',
+            title: payload.title,
+            type: payload.type,
+            start_time: payload.start_time,
+            end_time: payload.end_time,
+            production_title: productions.find(p => p.id === form.production_id)?.title ?? null,
+            location: null,
+          },
+          artistIds,
+        }),
+      }).catch(console.error)
+    }
+
     onSaved()
   }
 
   async function handleDelete() {
-    if (!event || !confirm('Usunąć to wydarzenie?')) return
+    if (!event || !confirm(em.confirmDelete)) return
     setDeleting(true)
     await supabase.from('events').delete().eq('id', event.id)
     setDeleting(false)
+
+    const artistIds = event.event_artists?.map(ea => ea.artist_id) ?? []
+    if (artistIds.length > 0) {
+      fetch('/api/notify/event-change', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete',
+          event: {
+            id: event.id,
+            title: event.title,
+            type: event.type,
+            start_time: event.start_time,
+            end_time: event.end_time,
+            production_title: productions.find(p => p.id === event.production_id)?.title ?? null,
+            location: null,
+          },
+          artistIds,
+        }),
+      }).catch(console.error)
+    }
+
     onSaved()
   }
 
@@ -156,9 +272,9 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-lg font-semibold text-gray-900">
-            {isEdit ? 'Edytuj wydarzenie' : 'Nowe wydarzenie'}
+            {isEdit ? em.editTitle : em.createTitle}
           </h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors text-lg">
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-600 transition-colors text-lg">
             ×
           </button>
         </div>
@@ -169,13 +285,13 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
           {/* Produkcja — hidden when pre-filled from ProductionModal */}
           {!defaultProductionId && (
             <div>
-              <label className={labelCls}>Produkcja</label>
+              <label className={labelCls}>{em.production}</label>
               <select
                 value={form.production_id}
                 onChange={e => setForm(f => ({ ...f, production_id: e.target.value }))}
                 className={inputCls}
               >
-                <option value="">Wybierz produkcję</option>
+                <option value="">{em.selectProduction}</option>
                 {productions.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
               </select>
             </div>
@@ -183,13 +299,13 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
 
           {/* Typ */}
           <div>
-            <label className={labelCls}>Typ wydarzenia</label>
+            <label className={labelCls}>{em.type}</label>
             <select
               value={form.type}
               onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
               className={inputCls}
             >
-              <option value="">Wybierz typ</option>
+              <option value="">{em.selectType}</option>
               {Object.entries(EVENT_TYPE_CATEGORIES).map(([category, types]) => (
                 <optgroup key={category} label={category}>
                   {types.map(t => <option key={t} value={t}>{t}</option>)}
@@ -200,19 +316,19 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
 
           {/* Tytuł */}
           <div>
-            <label className={labelCls}>Tytuł <span className="text-gray-400 font-normal">(opcjonalnie)</span></label>
+            <label className={labelCls}>{em.titleLabel} <span className="text-gray-500 font-normal">{em.titleOptional}</span></label>
             <input
               value={form.title}
               onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
               className={inputCls}
-              placeholder="Np. Próba baletowa — Akt II"
+              placeholder={em.titlePlaceholder}
             />
           </div>
 
           {/* Data / Od / Do */}
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className={labelCls}>Data *</label>
+              <label className={labelCls}>{em.date}</label>
               <input
                 required
                 type="date"
@@ -222,7 +338,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
               />
             </div>
             <div>
-              <label className={labelCls}>Od</label>
+              <label className={labelCls}>{em.from}</label>
               <input
                 type="time"
                 value={form.start_time}
@@ -231,7 +347,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
               />
             </div>
             <div>
-              <label className={labelCls}>Do</label>
+              <label className={labelCls}>{em.to}</label>
               <input
                 type="time"
                 value={form.end_time}
@@ -243,39 +359,39 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
 
           {/* Teatr */}
           <div>
-            <label className={labelCls}>Teatr</label>
+            <label className={labelCls}>{em.theatre}</label>
             <select
               value={form.theatre_id}
               onChange={e => setForm(f => ({ ...f, theatre_id: e.target.value, room_id: '' }))}
               className={inputCls}
             >
-              <option value="">Wybierz teatr</option>
+              <option value="">{em.selectTheatre}</option>
               {theatres.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
 
           {/* Sala */}
           <div>
-            <label className={labelCls}>Sala</label>
+            <label className={labelCls}>{em.room}</label>
             <select
               value={form.room_id}
               onChange={e => setForm(f => ({ ...f, room_id: e.target.value }))}
               className={inputCls}
               disabled={!form.theatre_id}
             >
-              <option value="">{form.theatre_id ? 'Wybierz salę' : 'Najpierw wybierz teatr'}</option>
+              <option value="">{form.theatre_id ? em.selectRoom : em.selectTheatreFirst}</option>
               {filteredRooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </div>
 
           {/* Artyści */}
           <div>
-            <label className={labelCls}>Artyści</label>
+            <label className={labelCls}>{em.artists}</label>
 
             {/* Assigned */}
             {form.artist_ids.length > 0 && (
               <div className="mb-3">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Przypisani</p>
+                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{em.assigned}</p>
                 <div className="flex flex-col gap-1">
                   {artists.filter(a => form.artist_ids.includes(a.id)).map(a => {
                     const teamStyle = TEAM_STYLE[a.teams?.name ?? ''] ?? TEAM_STYLE.default
@@ -311,11 +427,11 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
               }
               return (
                 <div>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Dostępni</p>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{em.available}</p>
                   <div className="flex flex-col gap-2">
                     {Object.entries(groups).map(([teamName, members]) => (
                       <div key={teamName}>
-                        <p className="text-[10px] text-gray-400 mb-1 pl-1">{teamName}</p>
+                        <p className="text-[10px] text-gray-500 mb-1 pl-1">{teamName}</p>
                         <div className="flex flex-col gap-1">
                           {members.map(a => {
                             const teamStyle = TEAM_STYLE[a.teams?.name ?? ''] ?? TEAM_STYLE.default
@@ -340,6 +456,89 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
               )
             })()}
           </div>
+
+          {/* ── Potwierdzenia (edit mode only) ───────────────────────────── */}
+          {isEdit && (
+            <div className="border-t border-gray-100 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <label className={labelCls + ' !mb-0'}>{em.confirmationsSection}</label>
+                {confLoading && <span className="text-xs text-gray-400">Ładowanie…</span>}
+              </div>
+
+              {/* List of artist statuses */}
+              {form.artist_ids.length === 0 ? (
+                <p className="text-xs text-gray-400 mb-3">{em.confirmNone}</p>
+              ) : (
+                <div className="flex flex-col gap-1 mb-3">
+                  {form.artist_ids.map(artistId => {
+                    const artist = artists.find(a => a.id === artistId)
+                    const conf   = confirmations.find(c => c.artist_id === artistId)
+                    const status = conf?.status ?? 'unsent'
+
+                    const badgeStyle: Record<string, string> = {
+                      unsent:    'bg-gray-100 text-gray-400',
+                      pending:   'bg-gray-100 text-gray-600',
+                      confirmed: 'bg-green-100 text-green-700',
+                      declined:  'bg-red-100 text-red-600',
+                      maybe:     'bg-amber-100 text-amber-700',
+                    }
+                    const badgeLabel: Record<string, string> = {
+                      unsent:    '— nie wysłano',
+                      pending:   `⏳ ${em.statusPending}`,
+                      confirmed: `✓ ${em.statusConfirmed}`,
+                      declined:  `✗ ${em.statusDeclined}`,
+                      maybe:     `~ ${em.statusMaybe}`,
+                    }
+
+                    return (
+                      <div key={artistId} className="flex items-start justify-between px-3 py-2 rounded-xl bg-gray-50 gap-2">
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-gray-800 truncate block">
+                            {artist?.name ?? artistId}
+                          </span>
+                          {conf?.comment && (
+                            <span className="text-[10px] text-gray-400 italic truncate block">„{conf.comment}"</span>
+                          )}
+                        </div>
+                        <span className={`text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 ${badgeStyle[status] ?? badgeStyle.unsent}`}>
+                          {badgeLabel[status] ?? status}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Send button */}
+              {form.artist_ids.length > 0 && (() => {
+                const pendingCount = form.artist_ids.filter(id => {
+                  const conf = confirmations.find(c => c.artist_id === id)
+                  return !conf || conf.status === 'pending'
+                }).length
+
+                const hasAnySent = confirmations.length > 0
+
+                return (
+                  <button
+                    type="button"
+                    onClick={handleSendConfirmations}
+                    disabled={confSending || pendingCount === 0}
+                    className="w-full py-2.5 text-sm font-medium rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
+                  >
+                    {confSending ? (
+                      <>{em.confirmSending}</>
+                    ) : confSent ? (
+                      <>{em.confirmSent}</>
+                    ) : hasAnySent ? (
+                      <>{em.confirmResend} ({pendingCount})</>
+                    ) : (
+                      <>{em.confirmSend} ({pendingCount})</>
+                    )}
+                  </button>
+                )
+              })()}
+            </div>
+          )}
         </form>
 
         {/* Footer */}
@@ -351,7 +550,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
               disabled={deleting}
               className="px-4 py-2 text-sm font-medium text-red-500 border border-red-200 rounded-xl hover:bg-red-50 disabled:opacity-50 transition-colors"
             >
-              {deleting ? 'Usuwanie...' : 'Usuń'}
+              {deleting ? em.deleting : em.delete}
             </button>
           ) : <div />}
 
@@ -361,7 +560,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
               onClick={onClose}
               className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
             >
-              Anuluj
+              {em.cancel}
             </button>
             <button
               type="submit"
@@ -370,7 +569,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
               disabled={saving || !form.date}
               className="px-5 py-2 text-sm font-medium text-white bg-gray-900 rounded-xl hover:bg-gray-700 disabled:opacity-50 transition-colors"
             >
-              {saving ? 'Zapisywanie...' : 'Zapisz'}
+              {saving ? em.saving : em.save}
             </button>
           </div>
         </div>

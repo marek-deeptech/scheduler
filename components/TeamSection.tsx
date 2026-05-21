@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import ArtistModal from '@/components/ArtistModal'
 import Avatar from '@/components/Avatar'
+import { IconMail, IconPhone } from '@/lib/icons'
+import { useLanguage } from '@/lib/language-context'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,7 +81,7 @@ const AVAIL_STYLE: Record<string, string> = {
   'Niedostępny': 'bg-gray-100 border border-gray-200 text-gray-500',
 }
 
-const DAY_NAMES = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Nd']
+// DAY_NAMES injected per-render from i18n (see component body)
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -107,6 +109,8 @@ function MemberPickerModal({ teamId, currentMemberIds, onClose, onSaved }: {
   onClose: () => void
   onSaved: () => void
 }) {
+  const { t } = useLanguage()
+  const ts = t.teamSection
   const [all, setAll]     = useState<{ id: string; name: string; role: string | null }[]>([])
   const [search, setSearch] = useState('')
   const [saving, setSaving] = useState(false)
@@ -133,32 +137,144 @@ function MemberPickerModal({ teamId, currentMemberIds, onClose, onSaved }: {
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[70vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">Dodaj do zespołu</h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 text-lg">×</button>
+          <h2 className="text-base font-semibold text-gray-900">{ts.addToTeamTitle}</h2>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-lg">×</button>
         </div>
         <div className="px-4 pt-3">
           <input autoFocus type="search" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Szukaj osoby..."
+            placeholder={ts.searchPerson}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
           {visible.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-6 italic">
-              {outside.length === 0 ? 'Wszyscy są już w tym zespole.' : 'Brak wyników.'}
+            <p className="text-sm text-gray-500 text-center py-6 italic">
+              {outside.length === 0 ? ts.alreadyInTeam : ts.noResults}
             </p>
           )}
           {visible.map(a => (
             <div key={a.id} className="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-gray-50">
               <div>
                 <p className="text-sm font-medium text-gray-800">{a.name}</p>
-                {a.role && <p className="text-xs text-gray-400">{a.role}</p>}
+                {a.role && <p className="text-xs text-gray-500">{a.role}</p>}
               </div>
               <button disabled={saving} onClick={() => assign(a.id)}
                 className="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50">
-                Dodaj
+                {ts.add}
               </button>
             </div>
           ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── ContactModal ─────────────────────────────────────────────────────────────
+
+function ContactModal({ member, type, onClose }: {
+  member: Member
+  type: 'email' | 'sms'
+  onClose: () => void
+}) {
+  const { t } = useLanguage()
+  const ts = t.teamSection
+  const [subject,  setSubject]  = useState('')
+  const [body,     setBody]     = useState('')
+  const [sending,  setSending]  = useState(false)
+  const [sent,     setSent]     = useState(false)
+
+  async function handleSendEmail() {
+    if (!subject.trim() || !body.trim()) return
+    setSending(true)
+    await fetch('/api/notify/individual-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artistId: member.id, subject, body }),
+    })
+    setSending(false)
+    setSent(true)
+    setTimeout(onClose, 2500)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            {type === 'email'
+              ? <IconMail size={14} className="text-gray-500" />
+              : <IconPhone size={14} className="text-gray-500" />}
+            <h2 className="text-sm font-semibold text-gray-900">
+              {type === 'email' ? ts.sendEmail : ts.sendSms}
+            </h2>
+          </div>
+          <button onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-lg">×</button>
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          {/* Recipient */}
+          <div className="flex items-center gap-2.5 py-2 px-3 bg-gray-50 rounded-xl">
+            <Avatar name={member.name} avatarUrl={member.avatar_url} size="sm" />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-gray-800">{member.name}</p>
+              <p className="text-[10px] text-gray-500 truncate">
+                {type === 'email' ? member.email : (member.phone ?? '—')}
+              </p>
+            </div>
+          </div>
+
+          {type === 'email' ? (
+            <>
+              <input
+                autoFocus
+                placeholder={ts.subjectLabel}
+                value={subject}
+                onChange={e => setSubject(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              <textarea
+                placeholder={ts.bodyPlaceholder}
+                value={body}
+                onChange={e => setBody(e.target.value)}
+                rows={5}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              {sent && <p className="text-xs text-green-600 font-medium">{ts.emailSent}</p>}
+              <div className="flex justify-between items-center pt-1">
+                <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-600">{ts.cancel}</button>
+                <button
+                  onClick={handleSendEmail}
+                  disabled={sending || !subject.trim() || !body.trim() || sent}
+                  className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-xl disabled:opacity-40 transition-opacity">
+                  {sending ? ts.sending : ts.send}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <textarea
+                autoFocus
+                placeholder={ts.smsBodyPlaceholder}
+                value={body}
+                onChange={e => setBody(e.target.value.slice(0, 160))}
+                rows={4}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-500">{body.length}/160</span>
+              </div>
+              <div className="flex justify-between items-center pt-1">
+                <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-600">{ts.cancel}</button>
+                <a
+                  href={`sms:${member.phone}${body ? `?body=${encodeURIComponent(body)}` : ''}`}
+                  onClick={() => setTimeout(onClose, 300)}
+                  className={`px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-xl transition-opacity
+                    ${!body.trim() ? 'opacity-40 pointer-events-none' : ''}`}>
+                  {ts.openSms}
+                </a>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -171,9 +287,14 @@ export default function TeamSection({
   teamName,
   title,
   emptyIcon = null,
-  sectionLabel = 'Artyści',
-  removeLabel = 'Usunąć tę osobę z zespołu?',
+  sectionLabel,
+  removeLabel,
 }: TeamSectionProps) {
+  const { t } = useLanguage()
+  const ts = t.teamSection
+  const resolvedSectionLabel = sectionLabel ?? ts.colPerson
+  const resolvedRemoveLabel = removeLabel ?? ts.teamEmpty
+  const DAY_NAMES = ts.dayNames
   const [teamId,         setTeamId]         = useState<string | null>(null)
   const [members,        setMembers]        = useState<Member[]>([])
   const [productions,    setProductions]    = useState<ProductionCard[]>([])
@@ -184,6 +305,7 @@ export default function TeamSection({
   const [weekOffset,     setWeekOffset]     = useState(0)
   const [editMember,     setEditMember]     = useState<Member | null | undefined>(undefined)
   const [showPicker,     setShowPicker]     = useState(false)
+  const [contactTarget,  setContactTarget]  = useState<{ member: Member; type: 'email' | 'sms' } | null>(null)
 
   // Week range
   const baseMonday = getMonday(new Date())
@@ -276,7 +398,7 @@ export default function TeamSection({
   }
 
   async function removeMember(memberId: string) {
-    if (!confirm(removeLabel)) return
+    if (!confirm(resolvedRemoveLabel)) return
     await supabase.from('artists').update({ team_id: null }).eq('id', memberId)
     fetchBase()
   }
@@ -300,7 +422,7 @@ export default function TeamSection({
 
   if (loading) return (
     <div className="max-w-6xl mx-auto">
-      <p className="text-gray-400 text-sm">Ładowanie...</p>
+      <p className="text-gray-500 text-sm">{ts.loading}</p>
     </div>
   )
 
@@ -311,18 +433,18 @@ export default function TeamSection({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">{title}</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{members.length} osób · {productions.length} produkcji</p>
+          <p className="text-sm text-gray-500 mt-0.5">{ts.membersCount(members.length, productions.length)}</p>
         </div>
         <div className="flex gap-2">
           {teamName && (
             <button onClick={() => setShowPicker(true)}
               className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              + Dodaj istniejącą osobę
+              {ts.addExisting}
             </button>
           )}
           <button onClick={() => setEditMember(null)}
             className="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-700 transition-colors">
-            + Nowa osoba
+            {ts.addNew}
           </button>
         </div>
       </div>
@@ -331,15 +453,15 @@ export default function TeamSection({
       <section>
         <div className="flex items-center gap-3 mb-5">
           <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-700 text-xs font-bold flex items-center justify-center">1</span>
-          <h3 className="text-lg font-bold text-gray-900">Skład zespołu</h3>
-          <span className="ml-auto text-sm text-gray-400">{members.length} osób</span>
+          <h3 className="text-lg font-bold text-gray-900">{ts.teamComposition}</h3>
+          <span className="ml-auto text-sm text-gray-500">{ts.memberCount(members.length)}</span>
         </div>
 
         {members.length === 0 ? (
-          <div className="text-center py-12 bg-white border border-dashed border-gray-200 rounded-2xl text-gray-400">
+          <div className="text-center py-12 bg-white border border-dashed border-gray-200 rounded-2xl text-gray-500">
             <p className="text-4xl mb-3">{emptyIcon}</p>
-            <p className="font-medium">Zespół jest pusty</p>
-            <p className="text-sm mt-1">Użyj przycisków powyżej, aby dodać osoby</p>
+            <p className="font-medium">{ts.teamEmpty}</p>
+            <p className="text-sm mt-1">{ts.teamEmptyHint}</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -349,17 +471,33 @@ export default function TeamSection({
                 <Avatar name={m.name} avatarUrl={m.avatar_url} size="lg" />
                 <div>
                   <p className="font-semibold text-gray-900 text-sm leading-tight">{m.name}</p>
-                  {m.role && <p className="text-xs text-gray-400 mt-0.5">{m.role}</p>}
+                  {m.role && <p className="text-xs text-gray-500 mt-0.5">{m.role}</p>}
                 </div>
                 <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${STATUS_BADGE[m.status ?? ''] ?? 'bg-gray-100 text-gray-500'}`}>
                   {m.status ?? '—'}
                 </span>
-                {teamName && (
-                  <button onClick={e => { e.stopPropagation(); removeMember(m.id) }}
-                    className="opacity-0 group-hover:opacity-100 text-[10px] text-gray-300 hover:text-red-400 transition-all">
-                    Usuń z zespołu
-                  </button>
-                )}
+                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                  {m.email && (
+                    <button onClick={e => { e.stopPropagation(); setContactTarget({ member: m, type: 'email' }) }}
+                      title={ts.sendEmail}
+                      className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-700 transition-colors">
+                      <IconMail size={11} /> {ts.emailButton}
+                    </button>
+                  )}
+                  {m.phone && (
+                    <button onClick={e => { e.stopPropagation(); setContactTarget({ member: m, type: 'sms' }) }}
+                      title={ts.sendSms}
+                      className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-700 transition-colors">
+                      <IconPhone size={11} /> {ts.smsButton}
+                    </button>
+                  )}
+                  {teamName && (
+                    <button onClick={e => { e.stopPropagation(); removeMember(m.id) }}
+                      className="text-[10px] text-gray-500 hover:text-red-400 transition-colors ml-1">
+                      {ts.removeButton}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -370,40 +508,40 @@ export default function TeamSection({
       <section>
         <div className="flex items-center gap-3 mb-5">
           <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-700 text-xs font-bold flex items-center justify-center">2</span>
-          <h3 className="text-lg font-bold text-gray-900">Produkcje</h3>
-          <span className="ml-auto text-sm text-gray-400">{productions.length} produkcji</span>
+          <h3 className="text-lg font-bold text-gray-900">{ts.productionsSection}</h3>
+          <span className="ml-auto text-sm text-gray-500">{ts.productionsCount(productions.length)}</span>
         </div>
 
         {productions.length === 0 ? (
-          <p className="text-sm text-gray-400 italic bg-white border border-dashed border-gray-200 rounded-2xl py-8 text-center">
-            Nikt nie jest jeszcze przypisany do żadnej produkcji.
+          <p className="text-sm text-gray-500 italic bg-white border border-dashed border-gray-200 rounded-2xl py-8 text-center">
+            {ts.noProductionsAssigned}
           </p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {productions.map(p => (
               <div key={p.id} className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col gap-3 hover:shadow-sm transition-shadow">
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-xs text-gray-400">{p.theatreName ?? '—'}</span>
+                  <span className="text-xs text-gray-500">{p.theatreName ?? '—'}</span>
                   <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${PROD_STATUS_BADGE[p.status ?? ''] ?? 'bg-gray-100 text-gray-500'}`}>
                     {p.status ?? '—'}
                   </span>
                 </div>
                 <div>
                   <p className="font-bold text-gray-900">{p.title}</p>
-                  {p.director && <p className="text-xs text-gray-500 mt-0.5">reż. {p.director}</p>}
+                  {p.director && <p className="text-xs text-gray-500 mt-0.5">{ts.director} {p.director}</p>}
                 </div>
                 <div className="border-t border-gray-50 pt-3">
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">{sectionLabel}</p>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">{resolvedSectionLabel}</p>
                   <div className="flex flex-col gap-1">
                     {p.members.slice(0, 6).map(m => (
                       <div key={m.id} className="flex items-center gap-2">
                         <Avatar name={m.name} avatarUrl={m.avatar_url} size="sm" />
                         <span className="text-xs text-gray-700 truncate">{m.name}</span>
-                        {m.role && <span className="text-[10px] text-gray-400 truncate">· {m.role}</span>}
+                        {m.role && <span className="text-[10px] text-gray-500 truncate">· {m.role}</span>}
                       </div>
                     ))}
                     {p.members.length > 6 && (
-                      <p className="text-[10px] text-gray-400 pl-1">+{p.members.length - 6} więcej</p>
+                      <p className="text-[10px] text-gray-500 pl-1">{ts.more(p.members.length - 6)}</p>
                     )}
                   </div>
                 </div>
@@ -417,7 +555,7 @@ export default function TeamSection({
       <section>
         <div className="flex items-center gap-3 mb-5">
           <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-700 text-xs font-bold flex items-center justify-center">3</span>
-          <h3 className="text-lg font-bold text-gray-900">Grafik tygodniowy</h3>
+          <h3 className="text-lg font-bold text-gray-900">{ts.scheduleSection}</h3>
           <div className="ml-auto flex items-center gap-2">
             <button onClick={() => setWeekOffset(w => w - 1)} className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 transition-colors">‹</button>
             <span className="text-sm font-medium text-gray-700 min-w-[140px] text-center">
@@ -425,26 +563,26 @@ export default function TeamSection({
             </span>
             <button onClick={() => setWeekOffset(w => w + 1)} className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 transition-colors">›</button>
             {weekOffset !== 0 && (
-              <button onClick={() => setWeekOffset(0)} className="text-xs text-gray-400 hover:text-gray-700 transition-colors ml-1">Dziś</button>
+              <button onClick={() => setWeekOffset(0)} className="text-xs text-gray-500 hover:text-gray-700 transition-colors ml-1">{ts.backToToday}</button>
             )}
           </div>
         </div>
 
         {members.length === 0 ? (
-          <p className="text-sm text-gray-400 italic text-center py-8">Dodaj osoby do zespołu, aby zobaczyć grafik.</p>
+          <p className="text-sm text-gray-500 italic text-center py-8">{ts.addPeopleHint}</p>
         ) : (
           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
             <table className="w-full text-sm table-fixed">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs w-44">Osoba</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs w-44">{ts.colPerson}</th>
                   {weekDays.map((day, i) => {
                     const isToday = toDateStr(day) === toDateStr(new Date())
                     return (
                       <th key={i} className={`text-center py-3 font-medium text-xs ${isToday ? 'text-gray-600' : 'text-gray-500'}`}>
                         <span className="flex flex-col items-center gap-0.5">
                           <span>{DAY_NAMES[i]}</span>
-                          <span className={`text-[11px] font-bold w-5 h-5 flex items-center justify-center rounded-full ${isToday ? 'bg-gray-900 text-white' : 'text-gray-400'}`}>
+                          <span className={`text-[11px] font-bold w-5 h-5 flex items-center justify-center rounded-full ${isToday ? 'bg-gray-900 text-white' : 'text-gray-500'}`}>
                             {day.getDate()}
                           </span>
                         </span>
@@ -461,7 +599,7 @@ export default function TeamSection({
                         <Avatar name={member.name} avatarUrl={member.avatar_url} size="sm" />
                         <div>
                           <p className="text-xs font-medium text-gray-800 leading-tight">{member.name}</p>
-                          {member.role && <p className="text-[10px] text-gray-400">{member.role}</p>}
+                          {member.role && <p className="text-[10px] text-gray-500">{member.role}</p>}
                           {member.status && (
                             <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${STATUS_BADGE[member.status] ?? 'bg-gray-100 text-gray-500'}`}>
                               {member.status}
@@ -483,7 +621,7 @@ export default function TeamSection({
                                 {member.status}
                               </div>
                             )}
-                            {avail && (
+                            {avail && !hasStatus && (
                               <div className={`rounded-lg px-1.5 py-1 text-center text-[10px] font-medium ${AVAIL_STYLE[avail.type] ?? 'bg-gray-100 text-gray-500'}`}>
                                 {avail.type}
                               </div>
@@ -491,7 +629,7 @@ export default function TeamSection({
                             {events.map(ev => (
                               <div key={ev.id} className="bg-gray-50 border border-gray-200 rounded-lg px-1.5 py-1">
                                 <p className="text-[10px] font-medium text-gray-700 leading-tight truncate">{ev.type ?? ev.title}</p>
-                                <p className="text-[9px] text-gray-400">
+                                <p className="text-[9px] text-gray-500">
                                   {pad(new Date(ev.start_time).getHours())}:{pad(new Date(ev.start_time).getMinutes())}
                                   –{pad(new Date(ev.end_time).getHours())}:{pad(new Date(ev.end_time).getMinutes())}
                                 </p>
@@ -529,6 +667,14 @@ export default function TeamSection({
           presetTeamId={teamId ?? undefined}
           onClose={() => setEditMember(undefined)}
           onSaved={() => { setEditMember(undefined); fetchBase() }}
+        />
+      )}
+
+      {contactTarget && (
+        <ContactModal
+          member={contactTarget.member}
+          type={contactTarget.type}
+          onClose={() => setContactTarget(null)}
         />
       )}
     </div>

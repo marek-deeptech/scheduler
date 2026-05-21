@@ -62,6 +62,11 @@ const icons = {
       <path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
     </svg>
   ),
+  mail: (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+    </svg>
+  ),
 }
 
 function Sidebar() {
@@ -92,7 +97,7 @@ function Sidebar() {
       selectedTheatreId === id ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
     }`
 
-  const sectionLabel = 'px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400'
+  const sectionLabel = 'px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500'
 
   return (
     <aside className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0">
@@ -108,13 +113,13 @@ function Sidebar() {
 
       {/* Theatre switcher */}
       <div className="px-3 py-3 border-b border-gray-100">
-        <p className={sectionLabel}>Teatr</p>
+        <p className={sectionLabel}>{t.nav.theatreLabel}</p>
         <div className="flex flex-col gap-0.5">
           <button className={theatreBtnCls(null)} onClick={() => setSelectedTheatreId(null)}>
-            Wszystkie
+            {t.nav.allTheatres}
           </button>
-          {theatres === null && <p className="px-1 text-[10px] text-gray-300 italic">Ładowanie...</p>}
-          {theatres !== null && theatres.length === 0 && <p className="px-1 text-[10px] text-red-400 italic">Brak teatrów</p>}
+          {theatres === null && <p className="px-1 text-[10px] text-gray-500 italic">{t.nav.loading}</p>}
+          {theatres !== null && theatres.length === 0 && <p className="px-1 text-[10px] text-red-400 italic">{t.nav.noTheatres}</p>}
           {(theatres ?? []).map(th => {
             const dot = th.name === 'Teatr Polonia' ? 'bg-red-500'
                       : th.name === 'Och-Teatr'     ? 'bg-yellow-400'
@@ -145,7 +150,12 @@ function Sidebar() {
           <div className="space-y-0.5">
             <Link href="/technique" className={linkCls('/technique')}>{icons.wrench}{t.nav.technique}</Link>
             <Link href="/wardrobe"  className={linkCls('/wardrobe')} >{icons.hanger}{t.nav.wardrobe}</Link>
-            <Link href="/other"     className={linkCls('/other')}    >{icons.cube}  {t.nav.other}</Link>
+          </div>
+        </div>
+        <div>
+          <p className={sectionLabel}>{t.nav.sections.communication}</p>
+          <div className="space-y-0.5">
+            <Link href="/messages" className={linkCls('/messages')}>{icons.mail}{t.nav.messages}</Link>
           </div>
         </div>
         <div>
@@ -164,7 +174,7 @@ function Sidebar() {
           className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-gray-500 rounded-lg hover:bg-gray-100 transition-colors"
         >
           <span>{locale === 'en' ? '🇬🇧 English' : '🇵🇱 Polski'}</span>
-          <span className="text-gray-400">{locale === 'en' ? 'PL' : 'EN'}</span>
+          <span className="text-gray-500">{locale === 'en' ? 'PL' : 'EN'}</span>
         </button>
       </div>
     </aside>

@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
+import { useLanguage } from '@/lib/language-context'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend,
@@ -35,6 +36,15 @@ interface ArtistRow {
 interface AvailRow {
   artist_id: string
   type: string
+  start_time: string
+  end_time: string
+}
+
+interface ProdMeta {
+  id: string
+  title: string
+  status: string | null
+  theatreName: string | null
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -46,11 +56,7 @@ const REHEARSAL_TYPES = new Set([
 const SHOW_TYPES    = new Set(['Premiera','Spektakl','Spektakl gościnny'])
 const FITTING_TYPES = new Set(['Przymiarki kostiumowe'])
 
-const PERIOD_OPTIONS = [
-  { value: 'week',  label: 'tydzień'  },
-  { value: 'month', label: 'miesiąc'  },
-  { value: 'year',  label: 'rok'      },
-]
+// PERIOD_OPTIONS built inside component (locale-aware)
 
 const COLORS = ['#3b82f6','#dc2626','#d97706','#16a34a','#7c3aed','#0891b2','#db2777']
 
@@ -106,11 +112,23 @@ function ChartTip({ active, payload, label }: any) {
 
 export default function ReportsPage() {
   const { selectedTheatreId } = useTheatre()
-  const [period,  setPeriod]  = useState('week')
-  const [events,  setEvents]  = useState<EventRow[]>([])
-  const [artists, setArtists] = useState<ArtistRow[]>([])
-  const [avails,  setAvails]  = useState<AvailRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const { t, locale } = useLanguage()
+  const tr = t.reports
+  const td = t.dashboard
+  const localeStr = locale === 'pl' ? 'pl-PL' : 'en-US'
+
+  const PERIOD_OPTIONS = [
+    { value: 'week',  label: tr.periodWeek  },
+    { value: 'month', label: tr.periodMonth },
+    { value: 'year',  label: tr.periodYear  },
+  ]
+
+  const [period,      setPeriod]      = useState('week')
+  const [events,      setEvents]      = useState<EventRow[]>([])
+  const [artists,     setArtists]     = useState<ArtistRow[]>([])
+  const [avails,      setAvails]      = useState<AvailRow[]>([])
+  const [productions, setProductions] = useState<ProdMeta[]>([])
+  const [loading,     setLoading]     = useState(true)
 
   const today = localDate(new Date())
 
@@ -128,17 +146,37 @@ export default function ReportsPage() {
       .order('start_time')
     if (selectedTheatreId) evQ = evQ.eq('theatre_id', selectedTheatreId)
 
-    const [{ data: evData }, { data: artData }, { data: avData }] = await Promise.all([
+    let prodQ = supabase
+      .from('productions')
+      .select('id,title,status,theatre_id,theatres(name)')
+    if (selectedTheatreId) prodQ = prodQ.eq('theatre_id', selectedTheatreId)
+
+    const [
+      { data: evData },
+      { data: artData },
+      { data: avData },
+      { data: prodData },
+    ] = await Promise.all([
       evQ,
       supabase.from('artists').select('id,name,status').order('name'),
-      supabase.from('availabilities').select('artist_id,type')
+      supabase.from('availabilities').select('artist_id,type,start_time,end_time')
         .lte('start_time', `${end}T23:59:59`)
         .gte('end_time',   `${start}T00:00:00`),
+      prodQ,
     ])
 
     setEvents((evData ?? []) as unknown as EventRow[])
     setArtists((artData ?? []) as ArtistRow[])
     setAvails(avData ?? [])
+    setProductions(
+      ((prodData ?? []) as unknown as { id: string; title: string; status: string | null; theatres: { name: string } | null }[])
+        .map(p => ({
+          id: p.id,
+          title: p.title,
+          status: p.status,
+          theatreName: p.theatres?.name ?? null,
+        }))
+    )
     setLoading(false)
   }
 
@@ -187,9 +225,9 @@ export default function ReportsPage() {
       else available++
     }
     return [
-      { name: 'Dostępni',        value: available,   fill: '#16a34a' },
-      { name: 'Urlop',           value: urlop,        fill: '#d97706' },
-      { name: 'Niedyspozycyjni', value: niedostepni,  fill: '#dc2626' },
+      { name: td.availAvailable,   value: available,   fill: '#16a34a' },
+      { name: td.statusVacation,   value: urlop,        fill: '#d97706' },
+      { name: td.availUnavailable, value: niedostepni,  fill: '#dc2626' },
     ].filter(s => s.value > 0)
   }, [artists, avails])
 
@@ -198,7 +236,7 @@ export default function ReportsPage() {
     for (const ev of events) {
       if (!REHEARSAL_TYPES.has(ev.type ?? '')) continue
       const key = ev.production_id ?? '__none__'
-      if (!map[key]) map[key] = { title: ev.productions?.title ?? 'Bez produkcji', count: 0 }
+      if (!map[key]) map[key] = { title: ev.productions?.title ?? tr.colProduction, count: 0 }
       map[key].count++
     }
     return Object.values(map).sort((a, b) => b.count - a.count)
@@ -225,18 +263,89 @@ export default function ReportsPage() {
   }, [events])
 
   const theatreName = useMemo(() => {
-    if (!selectedTheatreId) return 'Wszystkie teatry'
-    return events.find(e => e.theatres?.name)?.theatres?.name ?? 'Teatr'
-  }, [events, selectedTheatreId])
+    if (!selectedTheatreId) return tr.allTheatres
+    return events.find(e => e.theatres?.name)?.theatres?.name ?? t.nav.theatreLabel
+  }, [events, selectedTheatreId, tr, t.nav])
 
-  const generatedStr = new Date().toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' })
+  const productionTable = useMemo(() => {
+    const map: Record<string, {
+      id: string; title: string; status: string | null; theatre: string
+      rehearsals: number; shows: number; nextEvent: EventRow | null
+    }> = {}
+
+    // seed from productions list so we include all, even with 0 events in period
+    for (const p of productions) {
+      map[p.id] = { id: p.id, title: p.title, status: p.status, theatre: p.theatreName ?? '—', rehearsals: 0, shows: 0, nextEvent: null }
+    }
+
+    for (const ev of events) {
+      const pid = ev.production_id
+      if (!pid || !map[pid]) continue
+      if (REHEARSAL_TYPES.has(ev.type ?? '')) map[pid].rehearsals++
+      if (SHOW_TYPES.has(ev.type ?? ''))      map[pid].shows++
+      if (ev.start_time >= `${today}T00:00:00`) {
+        if (!map[pid].nextEvent || ev.start_time < map[pid].nextEvent!.start_time)
+          map[pid].nextEvent = ev
+      }
+    }
+
+    return Object.values(map)
+      .filter(p => p.status !== 'Zdjęty') // exclude archived
+      .sort((a, b) => (b.rehearsals + b.shows) - (a.rehearsals + a.shows))
+  }, [events, productions, today])
+
+  const artistTable = useMemo(() => {
+    const { start, end } = periodRange(period)
+    const map: Record<string, { id: string; name: string; status: string | null; eventCount: number; prodIds: Set<string>; absenceDays: number }> = {}
+
+    for (const a of artists) {
+      map[a.id] = { id: a.id, name: a.name, status: a.status, eventCount: 0, prodIds: new Set(), absenceDays: 0 }
+    }
+    for (const ev of events) {
+      for (const ea of ev.event_artists) {
+        if (!map[ea.artist_id]) continue
+        map[ea.artist_id].eventCount++
+        if (ev.production_id) map[ea.artist_id].prodIds.add(ev.production_id)
+      }
+    }
+
+    const periodStart = new Date(start).getTime()
+    const periodEnd   = new Date(end).getTime() + 86400000
+
+    for (const av of avails) {
+      if (!map[av.artist_id]) continue
+      const s = Math.max(new Date(av.start_time).getTime(), periodStart)
+      const e = Math.min(new Date(av.end_time).getTime(),   periodEnd)
+      const days = Math.max(0, Math.round((e - s) / 86400000))
+      map[av.artist_id].absenceDays += days
+    }
+
+    return Object.values(map)
+      .map(a => ({ ...a, prodCount: a.prodIds.size }))
+      .filter(a => a.eventCount > 0 || a.absenceDays > 0)
+      .sort((a, b) => b.eventCount - a.eventCount)
+  }, [events, artists, avails, period])
+
+  const absenceList = useMemo(() => {
+    return avails
+      .map(av => {
+        const artist = artists.find(a => a.id === av.artist_id)
+        if (!artist) return null
+        const days = Math.max(1, Math.round((new Date(av.end_time).getTime() - new Date(av.start_time).getTime()) / 86400000))
+        return { name: artist.name, type: av.type, start: av.start_time, end: av.end_time, days }
+      })
+      .filter(Boolean)
+      .sort((a, b) => a!.start.localeCompare(b!.start)) as { name: string; type: string; start: string; end: string; days: number }[]
+  }, [avails, artists])
+
+  const generatedStr = new Date().toLocaleDateString(localeStr, { day: 'numeric', month: 'long', year: 'numeric' })
 
   const statCards = [
-    { label: 'Próby łącznie',     value: stats.rehearsals             },
-    { label: 'Spektakle',         value: stats.shows                  },
-    { label: 'Godziny prób',      value: Math.round(stats.rehearsalH) },
-    { label: 'Konflikty grafiku', value: stats.conflicts              },
-    { label: 'Przymiarki oczek.', value: stats.fittings               },
+    { label: tr.statRehearsals, value: stats.rehearsals             },
+    { label: tr.statShows,      value: stats.shows                  },
+    { label: tr.statHours,      value: Math.round(stats.rehearsalH) },
+    { label: tr.statConflicts,  value: stats.conflicts              },
+    { label: tr.statFittings,   value: stats.fittings               },
   ]
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -247,8 +356,8 @@ export default function ReportsPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Raport koordynatora pracy artystycznej</h2>
-          <p className="text-sm text-gray-400 mt-1">{theatreName} · Wygenerowano: {generatedStr}</p>
+          <h2 className="text-2xl font-bold text-gray-900">{tr.pageTitle}</h2>
+          <p className="text-sm text-gray-500 mt-1">{theatreName} · {tr.generated} {generatedStr}</p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <select
@@ -265,7 +374,7 @@ export default function ReportsPage() {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 16l-5-5 1.4-1.4 2.6 2.6V4h2v8.2l2.6-2.6L17 11l-5 5zm-7 4v-4h2v2h10v-2h2v4H5z"/>
             </svg>
-            Eksportuj PDF
+            {tr.exportPdf}
           </button>
         </div>
       </div>
@@ -274,24 +383,87 @@ export default function ReportsPage() {
       <div className="grid grid-cols-5 gap-4">
         {loading
           ? [...Array(5)].map((_, i) => <div key={i} className="bg-white border border-gray-200 rounded-2xl p-5 h-28 animate-pulse" />)
-          : statCards.map(s => (
-              <div key={s.label} className="bg-white border border-gray-200 rounded-2xl px-5 py-6 text-center">
-                <p className="text-xs font-medium text-gray-400 mb-3 leading-tight">{s.label}</p>
-                <p className="text-4xl font-bold leading-none text-gray-700">{s.value}</p>
-              </div>
-            ))
+          : statCards.map(s => {
+              const isConflict = s.label === tr.statConflicts
+              const hasConflicts = isConflict && (s.value as number) > 0
+              return (
+                <div key={s.label} className={`bg-white border rounded-2xl px-5 py-6 text-center ${hasConflicts ? 'border-red-200 bg-red-50/40' : 'border-gray-200'}`}>
+                  <p className={`text-xs font-medium mb-3 leading-tight ${hasConflicts ? 'text-red-400' : 'text-gray-500'}`}>{s.label}</p>
+                  <p className={`text-4xl font-bold leading-none ${hasConflicts ? 'text-red-600' : 'text-gray-700'}`}>{s.value}</p>
+                </div>
+              )
+            })
         }
       </div>
+
+      {/* Production table */}
+      {!loading && productionTable.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h3 className="text-sm font-semibold text-gray-900">{tr.productionsSection}</h3>
+            <p className="text-xs text-gray-500 mt-0.5">{tr.productionsCount(productionTable.length, !!selectedTheatreId)}</p>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colProduction}</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colStatus}</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colRehearsals}</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colShows}</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colNextEvent}</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colTheatre}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {productionTable.map(p => {
+                const statusColors: Record<string, string> = {
+                  'Na afiszu':   'bg-green-100 text-green-700',
+                  'W produkcji': 'bg-blue-100 text-blue-700',
+                  'Koncepcja':   'bg-slate-100 text-slate-600',
+                  'Zawieszony':  'bg-amber-100 text-amber-700',
+                }
+                const sc = statusColors[p.status ?? ''] ?? 'bg-gray-100 text-gray-500'
+                const nextDate = p.nextEvent
+                  ? new Date(p.nextEvent.start_time).toLocaleDateString(localeStr, { weekday: 'short', day: 'numeric', month: 'short' })
+                  : null
+                return (
+                  <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-6 py-3">
+                      <p className="font-semibold text-gray-900 text-sm">{p.title}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${sc}`}>{p.status ?? '—'}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="text-sm font-bold text-gray-800">{p.rehearsals}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="text-sm font-bold text-gray-800">{p.shows}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {nextDate
+                        ? <span className="text-xs text-gray-600">{nextDate} · {p.nextEvent!.type ?? p.nextEvent!.title}</span>
+                        : <span className="text-xs text-gray-500 italic">{tr.noNextEvent}</span>
+                      }
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500">{p.theatre}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Charts row 1: workload + status */}
       <div className="grid grid-cols-5 gap-4">
 
         {/* Artist workload */}
         <div className="col-span-3 bg-white border border-gray-200 rounded-2xl p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-5">Obciążenie artystów — liczba prób</h3>
+          <h3 className="text-sm font-semibold text-gray-900 mb-5">{tr.chartArtistWorkload}</h3>
           {loading || artistWorkload.length === 0 ? (
-            <div className="flex items-center justify-center h-48 text-xs text-gray-400 italic">
-              {loading ? 'Ładowanie…' : 'Brak danych w tym okresie'}
+            <div className="flex items-center justify-center h-48 text-xs text-gray-500 italic">
+              {loading ? tr.loading : tr.noDataPeriod}
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={Math.max(200, artistWorkload.length * 34)}>
@@ -300,8 +472,8 @@ export default function ReportsPage() {
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={false} tickLine={false} width={68} />
                 <Tooltip content={<ChartTip />} cursor={{ fill: '#f9fafb' }} />
                 <Legend iconType="square" iconSize={9} wrapperStyle={{ fontSize: 11, paddingTop: 14 }} />
-                <Bar dataKey="rehearsals" name="Próby"     fill={COLORS[0]} radius={[0,3,3,0]} barSize={8} />
-                <Bar dataKey="shows"      name="Spektakle" fill={COLORS[1]} radius={[0,3,3,0]} barSize={8} />
+                <Bar dataKey="rehearsals" name={tr.seriesRehearsals} fill={COLORS[0]} radius={[0,3,3,0]} barSize={8} />
+                <Bar dataKey="shows"      name={tr.seriesShows}      fill={COLORS[1]} radius={[0,3,3,0]} barSize={8} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -309,10 +481,10 @@ export default function ReportsPage() {
 
         {/* Artist status donut */}
         <div className="col-span-2 bg-white border border-gray-200 rounded-2xl p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-5">Status artystów</h3>
+          <h3 className="text-sm font-semibold text-gray-900 mb-5">{tr.chartArtistStatus}</h3>
           {loading || artistStatus.length === 0 ? (
-            <div className="flex items-center justify-center h-48 text-xs text-gray-400 italic">
-              {loading ? 'Ładowanie…' : 'Brak danych'}
+            <div className="flex items-center justify-center h-48 text-xs text-gray-500 italic">
+              {loading ? tr.loading : tr.noData}
             </div>
           ) : (
             <div className="flex items-center justify-center gap-6 h-48">
@@ -329,7 +501,7 @@ export default function ReportsPage() {
                     <span className="w-2.5 h-2.5 rounded-full mt-0.5 shrink-0" style={{ background: s.fill }} />
                     <div>
                       <p className="text-sm font-bold text-gray-900 leading-none">{s.value}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{s.name}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{s.name}</p>
                     </div>
                   </div>
                 ))}
@@ -344,10 +516,10 @@ export default function ReportsPage() {
 
         {/* Rehearsals per production */}
         <div className="bg-white border border-gray-200 rounded-2xl p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-5">Próby per produkcja</h3>
+          <h3 className="text-sm font-semibold text-gray-900 mb-5">{tr.chartRehearsalsPerProd}</h3>
           {loading || perProduction.length === 0 ? (
-            <div className="flex items-center justify-center h-44 text-xs text-gray-400 italic">
-              {loading ? 'Ładowanie…' : 'Brak prób w tym okresie'}
+            <div className="flex items-center justify-center h-44 text-xs text-gray-500 italic">
+              {loading ? tr.loading : tr.noRehearsals}
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
@@ -356,7 +528,7 @@ export default function ReportsPage() {
                   angle={-35} textAnchor="end" interval={0} />
                 <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip content={<ChartTip />} cursor={{ fill: '#f9fafb' }} />
-                <Bar dataKey="count" name="Próby" radius={[4,4,0,0]} barSize={36}>
+                <Bar dataKey="count" name={tr.seriesRehearsals} radius={[4,4,0,0]} barSize={36}>
                   {perProduction.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Bar>
               </BarChart>
@@ -366,10 +538,10 @@ export default function ReportsPage() {
 
         {/* Room utilization */}
         <div className="bg-white border border-gray-200 rounded-2xl p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-5">Wykorzystanie sal (godz.)</h3>
+          <h3 className="text-sm font-semibold text-gray-900 mb-5">{tr.chartRoomUsage}</h3>
           {loading || roomUtil.length === 0 ? (
-            <div className="flex items-center justify-center h-44 text-xs text-gray-400 italic">
-              {loading ? 'Ładowanie…' : 'Brak sal przypisanych do wydarzeń'}
+            <div className="flex items-center justify-center h-44 text-xs text-gray-500 italic">
+              {loading ? tr.loading : tr.noRooms}
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
@@ -377,7 +549,7 @@ export default function ReportsPage() {
                 <XAxis type="number" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={false} tickLine={false} width={84} />
                 <Tooltip content={<ChartTip />} cursor={{ fill: '#f9fafb' }} />
-                <Bar dataKey="hours" name="Godziny" radius={[0,4,4,0]} barSize={20}>
+                <Bar dataKey="hours" name={tr.seriesHours} radius={[0,4,4,0]} barSize={20}>
                   {roomUtil.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Bar>
               </BarChart>
@@ -386,10 +558,103 @@ export default function ReportsPage() {
         </div>
       </div>
 
+      {/* Artist workload table */}
+      {!loading && artistTable.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">{tr.workloadSection}</h3>
+              <p className="text-xs text-gray-500 mt-0.5">{tr.workloadSubtitle}</p>
+            </div>
+            <span className="text-xs text-gray-500">{tr.workloadCount(artistTable.length)}</span>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-8">{tr.colRank}</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colArtist}</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colEvents}</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colProductions}</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colAbsenceDays}</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colStatus}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {artistTable.map((a, i) => {
+                const statusColors: Record<string, string> = {
+                  'Aktywny':    'bg-green-100 text-green-700',
+                  'Na urlopie': 'bg-amber-100 text-amber-700',
+                  'Choroba':    'bg-red-100 text-red-600',
+                  'Nieaktywny': 'bg-gray-100 text-gray-500',
+                }
+                const sc = statusColors[a.status ?? ''] ?? 'bg-gray-100 text-gray-500'
+                // workload bar: width relative to max eventCount
+                const maxEvents = artistTable[0]?.eventCount ?? 1
+                const pct = Math.round((a.eventCount / maxEvents) * 100)
+                return (
+                  <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-6 py-3 text-xs text-gray-500 font-medium">{i + 1}</td>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-gray-900 text-sm">{a.name}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2 justify-center">
+                        <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-blue-400 rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-sm font-bold text-gray-800 w-6 text-right">{a.eventCount}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="text-sm font-bold text-gray-800">{a.prodCount}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {a.absenceDays > 0
+                        ? <span className="text-sm font-bold text-amber-600">{a.absenceDays}</span>
+                        : <span className="text-sm text-gray-500">—</span>
+                      }
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${sc}`}>{a.status ?? '—'}</span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Absences */}
+      {!loading && absenceList.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h3 className="text-sm font-semibold text-gray-900">{tr.absencesSection}</h3>
+            <p className="text-xs text-gray-500 mt-0.5">{tr.absencesCount(absenceList.length)}</p>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {absenceList.map((a, i) => {
+              const isVacation = a.type === 'Urlop'
+              const startFmt = new Date(a.start).toLocaleDateString(localeStr, { day: 'numeric', month: 'short' })
+              const endFmt   = new Date(a.end).toLocaleDateString(localeStr,   { day: 'numeric', month: 'short', year: 'numeric' })
+              return (
+                <div key={i} className="flex items-center gap-4 px-6 py-3 hover:bg-gray-50/50">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${isVacation ? 'bg-amber-400' : 'bg-red-400'}`} />
+                  <span className="text-sm font-semibold text-gray-800 w-48 shrink-0">{a.name}</span>
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${isVacation ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}>{a.type}</span>
+                  <span className="text-xs text-gray-500">{startFmt} – {endFmt}</span>
+                  <span className="ml-auto text-xs font-semibold text-gray-700">{tr.days(a.days)}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Event type breakdown */}
       {!loading && typeCounts.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-2xl p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">Rozkład typów wydarzeń</h3>
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">{tr.eventTypesSection}</h3>
           <div className="flex flex-wrap gap-2.5">
             {typeCounts.map((t, i) => (
               <div key={t.name} className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-xl border border-gray-100">

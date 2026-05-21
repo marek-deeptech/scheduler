@@ -4,25 +4,15 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
+import { useLanguage } from '@/lib/language-context'
 import { findConflicts, CONFLICT_LABEL, CONFLICT_ICON, type ConflictResult, type ConflictReason } from '@/lib/conflicts'
 import ConflictPanel from '@/components/ConflictPanel'
 import { IconUser, IconMapPin, IconSun, IconHeart, IconXCircle, IconStar, IconInbox, IconCalendar, IconWarning } from '@/lib/icons'
 
 /* ─── Constants ──────────────────────────────────────────────────── */
-const DAYS_SHORT = ['Nd', 'Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob']
-const MONTHS_PL  = ['stycznia','lutego','marca','kwietnia','maja','czerwca',
-                    'lipca','sierpnia','września','października','listopada','grudnia']
-
 const SHOW_TYPES = new Set(['Spektakl', 'Spektakl gościnny', 'Premiera'])
 
 const PROD_COLORS = ['bg-gray-100 text-gray-600']
-
-const STATUS_LABEL: Record<string, string> = {
-  'Na urlopie':    'Urlop',
-  'Choroba':       'Choroba',
-  'Niedyspozyjny': 'Niedyspozycyjny',
-  'Nieaktywny':    'Nieaktywny',
-}
 
 /* ─── Types ──────────────────────────────────────────────────────── */
 interface EventRow {
@@ -47,10 +37,18 @@ function localDate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
 function addDays(d: Date, n: number) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n) }
-function fmtTime(iso: string) { return new Date(iso).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) }
+function fmtTime(iso: string, localeStr: string) { return new Date(iso).toLocaleTimeString(localeStr, { hour: '2-digit', minute: '2-digit' }) }
+function eventDateParam(iso: string) {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
 function fmtDate(iso: string) {
   const d = new Date(iso)
   return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`
+}
+function theatreLabel(ev: EventRow, theatres: SimpleRecord[], selectedId: string | null): string | null {
+  if (selectedId) return null
+  return theatres.find(t => t.id === ev.theatre_id)?.name ?? null
 }
 function prodColor(title: string) {
   let h = 0; for (const c of title) h = (h * 31 + c.charCodeAt(0)) & 0xffff
@@ -108,7 +106,7 @@ function Tooltip({ children, tip, align = 'left' }: {
 
 /* ─── Tooltip content helpers ────────────────────────────────────── */
 function TipHeader({ children }: { children: React.ReactNode }) {
-  return <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-3 pt-3 pb-1">{children}</p>
+  return <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider px-3 pt-3 pb-1">{children}</p>
 }
 function TipRow({ label, sub, dot }: { label: string; sub?: string; dot?: string }) {
   return (
@@ -116,19 +114,22 @@ function TipRow({ label, sub, dot }: { label: string; sub?: string; dot?: string
       {dot && <span className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${dot}`} />}
       <span className="flex-1 min-w-0">
         <span className="block text-xs font-medium text-gray-800 truncate">{label}</span>
-        {sub && <span className="block text-[11px] text-gray-400">{sub}</span>}
+        {sub && <span className="block text-[11px] text-gray-500">{sub}</span>}
       </span>
     </span>
   )
 }
 function TipEmpty({ text }: { text: string }) {
-  return <p className="text-xs text-gray-400 px-3 py-2.5 italic">{text}</p>
+  return <p className="text-xs text-gray-500 px-3 py-2.5 italic">{text}</p>
 }
 function TipDivider() { return <span className="block h-px bg-gray-100 mx-3" /> }
 
 /* ─── Page ───────────────────────────────────────────────────────── */
 export default function DashboardPage() {
   const { selectedTheatreId } = useTheatre()
+  const { t, locale } = useLanguage()
+  const td = t.dashboard
+  const localeStr = locale === 'pl' ? 'pl-PL' : 'en-US'
 
   const [loading,       setLoading]       = useState(true)
   const [artistCount,   setArtistCount]   = useState(0)
@@ -139,6 +140,7 @@ export default function DashboardPage() {
   const [inPrepList,    setInPrepList]    = useState<ProdRow[]>([])
   const [conflictPairs,     setConflictPairs]     = useState<DashConflict[]>([])
   const [showConflictPanel, setShowConflictPanel] = useState(false)
+  const [conflictAlertSent, setConflictAlertSent] = useState(false)
   const [allRooms,          setAllRooms]          = useState<SimpleRecord[]>([])
   const [allTheatres,       setAllTheatres]       = useState<SimpleRecord[]>([])
   const [allArtistList,     setAllArtistList]     = useState<SimpleRecord[]>([])
@@ -186,6 +188,13 @@ export default function DashboardPage() {
     let prodQ = supabase.from('productions').select('id, title, status')
     if (selectedTheatreId) prodQ = prodQ.eq('theatre_id', selectedTheatreId)
 
+    // Fetch all current Urlop/Choroba records upfront (small table — trivial cost)
+    const availQ = supabase.from('availabilities')
+      .select('artist_id, type, start_time, end_time')
+      .in('type', ['Urlop', 'Choroba'])
+      .gte('end_time', `${today}T00:00:00`)
+      .order('start_time')
+
     const [
       { data: artistData },
       { data: prodsData },
@@ -196,6 +205,7 @@ export default function DashboardPage() {
       { data: techTeam },
       { data: roomsData },
       { data: theatresData },
+      { data: avData },
     ] = await Promise.all([
       // artist_productions included so we can scope artists to the selected theatre
       supabase.from('artists').select('id, name, status, role, teams(name), artist_productions(productions(theatre_id))'),
@@ -204,6 +214,7 @@ export default function DashboardPage() {
       supabase.from('teams').select('id').eq('name', 'Technique').single(),
       supabase.from('rooms').select('id, name').order('name'),
       supabase.from('theatres').select('id, name').order('name'),
+      availQ,
     ])
 
     const allArtistsRaw = (artistData ?? []) as any[]
@@ -258,18 +269,7 @@ export default function DashboardPage() {
     setDostepniList(dostepni)
     setUrlopList(urlop)
     setNiedostList(niedostepni)
-
-    // Fetch vacation/sick dates for unavailable artists
-    const unavailIds = unavail.map(a => a.id)
-    if (unavailIds.length > 0) {
-      const { data: avData } = await supabase
-        .from('availabilities').select('artist_id, type, start_time, end_time')
-        .in('artist_id', unavailIds).in('type', ['Urlop', 'Choroba'])
-        .gte('end_time', `${today}T00:00:00`).order('start_time')
-      setArtistAvails(avData ?? [])
-    } else {
-      setArtistAvails([])
-    }
+    setArtistAvails(avData ?? [])
 
     if (techTeam?.id) {
       const { data: techArtists } = await supabase
@@ -283,8 +283,35 @@ export default function DashboardPage() {
     setLoading(false)
   }
 
+  useEffect(() => { setConflictAlertSent(false) }, [conflictPairs])
+
+  async function handleSendConflictAlert() {
+    setConflictAlertSent(true) // optimistic
+    await fetch('/api/notify/conflict-alert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conflicts: conflictPairs.map(p => ({
+          eventA: { title: p.a.title, start_time: p.a.start_time, end_time: p.a.end_time },
+          eventB: { title: p.b.title, start_time: p.b.start_time, end_time: p.b.end_time },
+          reasons: p.reasons,
+          artistNames: p.sharedArtistIds.map(id => allArtistList.find(a => a.id === id)?.name).filter(Boolean),
+          roomName: p.reasons.includes('room') ? (allRooms.find(r => r.id === (p.a.room_id ?? p.b.room_id))?.name ?? null) : null,
+        })),
+      }),
+    }).catch(() => setConflictAlertSent(false))
+  }
+
   /* ── Derived ── */
   const now      = new Date()
+  const STATUS_LABEL: Record<string, string> = {
+    'Na urlopie':    td.statusVacation,
+    'Choroba':       td.statusSick,
+    'Niedyspozyjny': td.statusUnavailable,
+    'Nieaktywny':    td.statusInactive,
+  }
+  const DAYS_SHORT = td.daysShort
+  const MONTHS_PL  = td.months
   const dayLabel = `${DAYS_SHORT[now.getDay()]}. ${now.getDate()} ${MONTHS_PL[now.getMonth()]}`
   const total    = Math.max(availCounts.dostepni + availCounts.urlop + availCounts.niedostepni, 1)
   const pctD = (availCounts.dostepni    / total) * 100
@@ -300,12 +327,19 @@ export default function DashboardPage() {
   /* ── Tooltip content builders ── */
   const unavailTip = (
     <>
-      <TipHeader>Niedostępni</TipHeader>
+      <TipHeader>{td.tipUnavailableHeader}</TipHeader>
       {unavailList.length === 0
-        ? <TipEmpty text="Wszyscy dostępni" />
+        ? <TipEmpty text={td.tipAllAvailable} />
         : unavailList.map(a => {
-            const dot = a.status === 'Na urlopie' ? 'bg-amber-400' : 'bg-red-400'
-            return <TipRow key={a.id} label={a.name} sub={STATUS_LABEL[a.status!] ?? a.status!} dot={dot} />
+            const dot        = a.status === 'Na urlopie' ? 'bg-amber-400' : a.status === 'Choroba' ? 'bg-red-400' : 'bg-gray-400'
+            const avType     = a.status === 'Na urlopie' ? 'Urlop' : a.status === 'Choroba' ? 'Choroba' : null
+            const avail      = avType ? artistAvails.filter(av => av.artist_id === a.id && av.type === avType) : []
+            const current    = avail[0]
+            const statusLabel = STATUS_LABEL[a.status!] ?? a.status!
+            const sub        = current
+              ? `${statusLabel} · ${fmtDate(current.start_time)} – ${fmtDate(current.end_time)}`
+              : statusLabel
+            return <TipRow key={a.id} label={a.name} sub={sub} dot={dot} />
           })
       }
       <span className="block pb-1" />
@@ -314,13 +348,13 @@ export default function DashboardPage() {
 
   const showsTip = (
     <>
-      <TipHeader>Spektakle w tym tygodniu</TipHeader>
+      <TipHeader>{td.tipShowsHeader}</TipHeader>
       {weekShows.length === 0
-        ? <TipEmpty text="Brak spektakli" />
+        ? <TipEmpty text={td.tipNoShows} />
         : weekShows.map(e => (
             <TipRow key={e.id}
               label={e.title}
-              sub={`${DAYS_SHORT[new Date(e.start_time).getDay()]} ${new Date(e.start_time).getDate()} · ${fmtTime(e.start_time)}`}
+              sub={`${DAYS_SHORT[new Date(e.start_time).getDay()]} ${new Date(e.start_time).getDate()} · ${fmtTime(e.start_time, localeStr)}`}
               dot="bg-green-400" />
           ))
       }
@@ -330,9 +364,9 @@ export default function DashboardPage() {
 
   const inPrepTip = (
     <>
-      <TipHeader>W przygotowaniu</TipHeader>
+      <TipHeader>{td.tipInPrepHeader}</TipHeader>
       {inPrepList.length === 0
-        ? <TipEmpty text="Brak" />
+        ? <TipEmpty text={td.tipNone} />
         : inPrepList.map(p => (
             <TipRow key={p.id} label={p.title}
               sub={p.status}
@@ -345,9 +379,9 @@ export default function DashboardPage() {
 
   const conflictTip = (
     <>
-      <TipHeader>Konflikty grafiku</TipHeader>
+      <TipHeader>{td.tipConflictsHeader}</TipHeader>
       {conflictPairs.length === 0
-        ? <TipEmpty text="Brak konfliktów" />
+        ? <TipEmpty text={td.tipNoConflicts} />
         : conflictPairs.map((p, i) => {
             const sharedArtists = p.sharedArtistIds
               .map(id => allArtistList.find(a => a.id === id)?.name)
@@ -364,24 +398,24 @@ export default function DashboardPage() {
                       {CONFLICT_ICON[r]} {CONFLICT_LABEL[r]}
                     </span>
                   ))}
-                  <span className="text-[10px] text-gray-400 ml-auto">
-                    {new Date(p.a.start_time).toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  <span className="text-[10px] text-gray-500 ml-auto">
+                    {new Date(p.a.start_time).toLocaleDateString(localeStr, { weekday: 'short', day: 'numeric', month: 'short' })}
                   </span>
                 </span>
                 {sharedArtists.length > 0 && (
                   <span className="flex items-center gap-1.5 px-3 pt-1 pb-0.5">
-                    <IconUser size={11} className="text-gray-400 shrink-0" />
+                    <IconUser size={11} className="text-gray-500 shrink-0" />
                     <span className="text-[10px] font-semibold text-gray-700">{sharedArtists.join(', ')}</span>
                   </span>
                 )}
                 {roomName && (
                   <span className="flex items-center gap-1.5 px-3 pt-1 pb-0.5">
-                    <IconMapPin size={11} className="text-gray-400 shrink-0" />
+                    <IconMapPin size={11} className="text-gray-500 shrink-0" />
                     <span className="text-[10px] font-semibold text-gray-700">{roomName}</span>
                   </span>
                 )}
-                <TipRow label={p.a.title} sub={`${fmtTime(p.a.start_time)}–${fmtTime(p.a.end_time)}`} dot="bg-red-400" />
-                <TipRow label={p.b.title} sub={`${fmtTime(p.b.start_time)}–${fmtTime(p.b.end_time)}`} dot="bg-red-300" />
+                <TipRow label={p.a.title} sub={`${fmtTime(p.a.start_time, localeStr)}–${fmtTime(p.a.end_time, localeStr)}`} dot="bg-red-400" />
+                <TipRow label={p.b.title} sub={`${fmtTime(p.b.start_time, localeStr)}–${fmtTime(p.b.end_time, localeStr)}`} dot="bg-red-300" />
               </span>
             )
           })
@@ -397,9 +431,9 @@ export default function DashboardPage() {
         <TipHeader>{STATUS_LABEL[status] ?? status}</TipHeader>
         {group.map(a => {
           const avail = artistAvails.filter(av => av.artist_id === a.id && av.type === (status === 'Na urlopie' ? 'Urlop' : 'Choroba'))
-          const latest = avail[avail.length - 1]
-          const dateStr = latest ? `${fmtDate(latest.start_time)} – ${fmtDate(latest.end_time)}` : undefined
-          return <TipRow key={a.id} label={a.name} sub={dateStr} dot={status === 'Na urlopie' ? 'bg-amber-400' : 'bg-red-400'} />
+          const current = avail[0]
+          const dateStr = current ? `${fmtDate(current.start_time)} – ${fmtDate(current.end_time)}` : undefined
+          return <TipRow key={a.id} label={a.name} sub={dateStr} dot={status === 'Na urlopie' ? 'bg-amber-400' : status === 'Choroba' ? 'bg-red-400' : 'bg-gray-400'} />
         })}
         <span className="block pb-1" />
       </>
@@ -409,23 +443,23 @@ export default function DashboardPage() {
   /* ── Stat cards config ── */
   const statCards = [
     {
-      label: 'Artyści', value: artistCount,
-      sub: `${unavailList.length} niedostępnych`, warn: unavailList.length > 0,
+      label: td.statArtists, value: artistCount,
+      sub: td.unavailableSub(unavailList.length), warn: unavailList.length > 0,
       tip: unavailTip, tipAlign: 'left' as const,
     },
     {
-      label: 'Próby w tygodniu', value: weekEvCount,
-      sub: `${weekShows.length} spektakle`, warn: false,
+      label: td.statRehearsals, value: weekEvCount,
+      sub: td.showsSub(weekShows.length), warn: false,
       tip: showsTip, tipAlign: 'left' as const,
     },
     {
-      label: 'Aktywne produkcje', value: activeProd,
-      sub: `${inPrepList.length} w przygotowaniu`, warn: false,
+      label: td.statProductions, value: activeProd,
+      sub: td.inPrepSub(inPrepList.length), warn: false,
       tip: inPrepTip, tipAlign: 'left' as const,
     },
     {
-      label: 'Konflikty grafiku', value: conflictPairs.length,
-      sub: conflictPairs.length > 0 ? 'Kliknij, aby zobaczyć szczegóły' : 'Brak konfliktów',
+      label: td.statConflicts, value: conflictPairs.length,
+      sub: conflictPairs.length > 0 ? td.statConflictsClickHint : td.statConflictsNone,
       warn: conflictPairs.length > 0,
       tip: conflictTip, tipAlign: 'right' as const,
       onClick: conflictPairs.length > 0 ? () => setShowConflictPanel(true) : undefined,
@@ -435,9 +469,9 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto flex items-center justify-center h-64">
-        <div className="flex items-center gap-3 text-gray-400">
+        <div className="flex items-center gap-3 text-gray-500">
           <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-400 rounded-full animate-spin" />
-          <span className="text-sm">Ładowanie dashboardu…</span>
+          <span className="text-sm">{td.loading}</span>
         </div>
       </div>
     )
@@ -469,11 +503,11 @@ export default function DashboardPage() {
             className={`bg-white border border-gray-200 rounded-2xl px-5 py-4 flex flex-col gap-1 transition-shadow ${s.onClick ? 'cursor-pointer hover:shadow-md hover:border-gray-300' : ''}`}
             onClick={s.onClick}
           >
-            <p className="text-xs text-gray-400 font-medium">{s.label}</p>
+            <p className="text-xs text-gray-500 font-medium">{s.label}</p>
             <p className={`text-4xl font-bold leading-none mt-1 ${s.warn ? 'text-red-600' : 'text-gray-900'}`}>{s.value}</p>
             <Tooltip tip={s.tip} align={s.tipAlign}>
               <span className={`text-xs font-medium mt-1 underline decoration-dotted underline-offset-2 cursor-help transition-colors
-                ${s.warn ? 'text-red-500 decoration-red-300' : 'text-gray-400 decoration-gray-300'}`}>
+                ${s.warn ? 'text-red-500 decoration-red-300' : 'text-gray-500 decoration-gray-300'}`}>
                 {s.sub}
               </span>
             </Tooltip>
@@ -485,22 +519,22 @@ export default function DashboardPage() {
       {nextPremiere && daysToPremi !== null && (
         <div className="bg-gray-900 rounded-2xl px-6 py-4 flex items-center justify-between text-white">
           <div className="flex items-center gap-4">
-            <div><IconStar size={28} className="text-gray-400" /></div>
+            <div><IconStar size={28} className="text-gray-500" /></div>
             <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Najbliższa premiera</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{td.nextPremiere}</p>
               <Link href="/productions"
                 className="text-lg font-bold mt-0.5 hover:underline decoration-white/60 underline-offset-2 block">
                 {nextPremiere.production_title ?? nextPremiere.title}
               </Link>
-              <p className="text-sm text-gray-400 mt-0.5">
-                {new Date(nextPremiere.start_time).toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })}
+              <p className="text-sm text-gray-500 mt-0.5">
+                {new Date(nextPremiere.start_time).toLocaleDateString(localeStr, { weekday: 'long', day: 'numeric', month: 'long' })}
                 {nextPremiere.location ? ` · ${nextPremiere.location}` : ''}
               </p>
             </div>
           </div>
           <div className="text-right shrink-0 pl-4">
             <p className="text-5xl font-black leading-none">{daysToPremi}</p>
-            <p className="text-sm text-gray-400 mt-1">{daysToPremi === 1 ? 'dzień' : 'dni'}</p>
+            <p className="text-sm text-gray-500 mt-1">{td.days(daysToPremi!)}</p>
           </div>
         </div>
       )}
@@ -511,42 +545,45 @@ export default function DashboardPage() {
         {/* LEFT — Today ─────────────────────────────────────────── */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-900">Dzisiaj — {dayLabel}</h3>
+            <h3 className="text-sm font-semibold text-gray-900">{td.todaySection(dayLabel)}</h3>
             {todayEvents.length > 0 && (
               <span className="text-[11px] font-medium text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">
-                {todayEvents.length} {todayEvents.length === 1 ? 'wydarzenie' : 'wydarzeń'}
+                {td.eventCount(todayEvents.length)}
               </span>
             )}
           </div>
 
           {todayEvents.length === 0 ? (
-            <div className="text-center py-10 text-gray-400">
-              <div className="flex justify-center mb-2"><IconInbox size={28} className="text-gray-400" /></div>
-              <p className="text-xs">Brak wydarzeń dzisiaj</p>
+            <div className="text-center py-10 text-gray-500">
+              <div className="flex justify-center mb-2"><IconInbox size={28} className="text-gray-500" /></div>
+              <p className="text-xs">{td.noTodayEvents}</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
               {todayEvents.map(ev => (
                 <div key={ev.id} className="flex gap-3 px-4 py-3">
-                  <div className="text-xs font-semibold text-gray-400 w-10 shrink-0 pt-0.5 tabular-nums">
-                    {fmtTime(ev.start_time)}
+                  <div className="text-xs font-semibold text-gray-500 w-10 shrink-0 pt-0.5 tabular-nums">
+                    {fmtTime(ev.start_time, localeStr)}
                   </div>
                   <div className="border-l-2 border-gray-300 pl-3 flex-1 min-w-0">
-                    <Link href="/calendar"
+                    <Link href={`/calendar?date=${eventDateParam(ev.start_time)}`}
                       className="text-sm font-semibold text-gray-900 hover:text-gray-600 transition-colors truncate block">
                       {ev.title}
                     </Link>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {[ev.location, `do ${fmtTime(ev.end_time)}`].filter(Boolean).join(' · ')}
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {[ev.location, `${td.until} ${fmtTime(ev.end_time, localeStr)}`].filter(Boolean).join(' · ')}
                     </p>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      {(() => { const th = theatreLabel(ev, allTheatres, selectedTheatreId); return th ? (
+                        <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{th}</span>
+                      ) : null })()}
                       {ev.production_title && (
                         <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                           {ev.production_title}
                         </span>
                       )}
                       {ev.artist_ids.length > 0 && (
-                        <span className="text-[11px] text-gray-400">{ev.artist_ids.length} os.</span>
+                        <span className="text-[11px] text-gray-500">{ev.artist_ids.length} os.</span>
                       )}
                     </div>
                   </div>
@@ -559,14 +596,14 @@ export default function DashboardPage() {
         {/* MIDDLE — Upcoming ──────────────────────────────────────── */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900">Nadchodzące wydarzenia</h3>
-            <span className="text-xs text-gray-400">14 dni</span>
+            <h3 className="text-sm font-semibold text-gray-900">{td.upcomingSection}</h3>
+            <span className="text-xs text-gray-500">{td.upcomingDays}</span>
           </div>
 
           {upcoming.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">
-              <div className="flex justify-center mb-2"><IconCalendar size={28} className="text-gray-400" /></div>
-              <p className="text-xs">Brak zaplanowanych wydarzeń</p>
+            <div className="text-center py-12 text-gray-500">
+              <div className="flex justify-center mb-2"><IconCalendar size={28} className="text-gray-500" /></div>
+              <p className="text-xs">{td.noUpcomingEvents}</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
@@ -581,8 +618,8 @@ export default function DashboardPage() {
                   <div key={ev.id}>
                     {newDay && (
                       <div className="flex items-center gap-3 px-5 pt-3 pb-1">
-                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-                          {DAYS_SHORT[d.getDay()]} {d.getDate()} {MONTHS_PL[d.getMonth()]}
+                        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                          {DAYS_SHORT[d.getDay()]} {d.getDate()} {locale === 'pl' ? MONTHS_PL[d.getMonth()].substring(0,3) : MONTHS_PL[d.getMonth()].substring(0,3)}
                         </span>
                         <div className="flex-1 h-px bg-gray-100" />
                       </div>
@@ -590,19 +627,22 @@ export default function DashboardPage() {
                     <div className="flex gap-4 px-5 py-3">
                       <div className="w-10 shrink-0 pt-0.5">
                         <span className="text-xs font-semibold tabular-nums text-gray-500">
-                          {fmtTime(ev.start_time)}
+                          {fmtTime(ev.start_time, localeStr)}
                         </span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <Link href="/calendar"
+                        <Link href={`/calendar?date=${eventDateParam(ev.start_time)}`}
                           className="text-sm font-semibold leading-snug hover:underline underline-offset-2 block text-gray-900 decoration-gray-400">
                           {ev.title}
                         </Link>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {fmtTime(ev.start_time)}–{fmtTime(ev.end_time)}
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {fmtTime(ev.start_time, localeStr)}–{fmtTime(ev.end_time, localeStr)}
                           {ev.location ? ` · ${ev.location}` : ''}
                         </p>
                         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          {(() => { const th = theatreLabel(ev, allTheatres, selectedTheatreId); return th ? (
+                            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{th}</span>
+                          ) : null })()}
                           {ev.type && (
                             <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
                               {ev.type}
@@ -629,7 +669,7 @@ export default function DashboardPage() {
           {/* Alerty */}
           {(alertArtists.length > 0 || conflictPairs.length > 0) && (
             <div className="bg-white border border-gray-200 rounded-2xl px-4 py-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">Alerty</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">{td.alertsSection}</h3>
               <div className="space-y-2">
 
                 {conflictPairs.length > 0 && (
@@ -640,7 +680,7 @@ export default function DashboardPage() {
                     >
                       <span className="shrink-0"><IconWarning size={16} className="text-red-500" /></span>
                       <span>
-                        <p className="text-xs font-semibold text-red-700">Konflikty grafiku</p>
+                        <p className="text-xs font-semibold text-red-700">{td.statConflicts}</p>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {(['artist', 'room', 'tech_venue'] as const)
                             .map(r => ({ r, count: conflictPairs.filter(p => p.reasons.includes(r)).length }))
@@ -652,6 +692,13 @@ export default function DashboardPage() {
                             ))
                           }
                         </div>
+                        <button
+                          onClick={e => { e.stopPropagation(); handleSendConflictAlert() }}
+                          disabled={conflictAlertSent}
+                          className="mt-1.5 text-[10px] text-red-500 hover:text-red-700 underline decoration-dotted underline-offset-2 transition-colors disabled:text-green-600 disabled:no-underline"
+                        >
+                          {conflictAlertSent ? td.conflictAlertSent : td.sendConflictAlert}
+                        </button>
                       </span>
                     </span>
                   </Tooltip>
@@ -663,11 +710,11 @@ export default function DashboardPage() {
                   const label = STATUS_LABEL[status]
                   return (
                     <Tooltip key={status} tip={alertTip(status)} align="right">
-                      <span className="flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 rounded-xl border border-amber-100 cursor-help w-full">
-                        <span className="shrink-0">{status === 'Na urlopie' ? <IconSun size={14} /> : status === 'Choroba' ? <IconHeart size={14} /> : <IconXCircle size={14} />}</span>
+                      <span className="flex items-start gap-2.5 px-3 py-2.5 bg-gray-50 rounded-xl border border-gray-200 cursor-help w-full">
+                        <span className="shrink-0 text-gray-500">{status === 'Na urlopie' ? <IconSun size={14} /> : status === 'Choroba' ? <IconHeart size={14} /> : <IconXCircle size={14} />}</span>
                         <span>
-                          <p className="text-xs font-semibold text-amber-700">{label}</p>
-                          <p className="text-xs text-amber-600 mt-0.5 underline decoration-dotted underline-offset-2">
+                          <p className="text-xs font-semibold text-gray-700">{label}</p>
+                          <p className="text-xs text-gray-500 mt-0.5 underline decoration-dotted underline-offset-2">
                             {group.map(a => a.name.split(' ')[0]).join(', ')}
                           </p>
                         </span>
@@ -681,34 +728,34 @@ export default function DashboardPage() {
 
           {/* Dostępność */}
           <div className="bg-white border border-gray-200 rounded-2xl px-4 py-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Dostępność zespołu</h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">{td.teamAvailSection}</h3>
             <div className="flex h-2 rounded-full overflow-hidden mb-3 gap-0.5">
               {pctD > 0 && <div className="bg-green-400 rounded-full" style={{ width: `${pctD}%` }} />}
               {pctU > 0 && <div className="bg-amber-400 rounded-full" style={{ width: `${pctU}%` }} />}
               {pctN > 0 && <div className="bg-red-400 rounded-full" style={{ width: `${pctN}%` }} />}
             </div>
             <div className="space-y-2">
-              {([
-                { label: 'Dostępni',        count: availCounts.dostepni,    color: 'bg-green-400', dot: 'bg-green-400', list: dostepniList  },
-                { label: 'Urlop',           count: availCounts.urlop,       color: 'bg-amber-400', dot: 'bg-amber-400', list: urlopList     },
-                { label: 'Niedyspozycyjni', count: availCounts.niedostepni, color: 'bg-red-400',   dot: 'bg-red-400',   list: niedostList   },
-              ] as const).map(r => {
+              {[
+                { labelKey: td.availAvailable,   count: availCounts.dostepni,    color: 'bg-green-400', dot: 'bg-green-400', list: dostepniList  },
+                { labelKey: td.availVacation,     count: availCounts.urlop,       color: 'bg-amber-400', dot: 'bg-amber-400', list: urlopList     },
+                { labelKey: td.availUnavailable,  count: availCounts.niedostepni, color: 'bg-red-400',   dot: 'bg-red-400',   list: niedostList   },
+              ].map(r => {
                 const tip = (
                   <>
-                    <TipHeader>{r.label}</TipHeader>
+                    <TipHeader>{r.labelKey}</TipHeader>
                     {r.list.length === 0
-                      ? <TipEmpty text="Brak osób" />
+                      ? <TipEmpty text={td.noMembers} />
                       : r.list.map(a => <TipRow key={a.id} label={a.name} sub={a.role ?? undefined} dot={r.dot} />)
                     }
                     <span className="block pb-1" />
                   </>
                 )
                 return (
-                  <div key={r.label} className="flex items-center justify-between">
+                  <div key={r.labelKey} className="flex items-center justify-between">
                     <Tooltip tip={tip} align="right">
                       <span className="flex items-center gap-2 cursor-help">
                         <span className={`w-2 h-2 rounded-full ${r.color} shrink-0`} />
-                        <span className="text-xs text-gray-600 underline decoration-dotted underline-offset-2 decoration-gray-300">{r.label}</span>
+                        <span className="text-xs text-gray-600 underline decoration-dotted underline-offset-2 decoration-gray-300">{r.labelKey}</span>
                       </span>
                     </Tooltip>
                     <span className="text-xs font-semibold text-gray-800">{r.count}</span>
@@ -721,7 +768,7 @@ export default function DashboardPage() {
           {/* Technika dziś */}
           {techToday.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-2xl px-4 py-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">Technika dziś</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">{td.techTodaySection}</h3>
               <div className="space-y-2.5">
                 {techToday.map(m => (
                   <div key={m.id} className="flex items-center gap-2.5">
@@ -731,7 +778,7 @@ export default function DashboardPage() {
                     }`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-gray-800 truncate">{m.name}</p>
-                      {m.role && <p className="text-[10px] text-gray-400 truncate">{m.role}</p>}
+                      {m.role && <p className="text-[10px] text-gray-500 truncate">{m.role}</p>}
                     </div>
                     {m.eventCount > 0 && (
                       <span className="text-[11px] font-semibold text-gray-600 bg-gray-100 rounded-full px-2 py-0.5 shrink-0">

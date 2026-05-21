@@ -62,7 +62,7 @@ function EditableRow({ name, sub, onSave, onDelete }: {
           {busy ? '…' : 'Zapisz'}
         </button>
         <button onClick={cancel}
-          className="text-xs px-2 py-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100">
+          className="text-xs px-2 py-1.5 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100">
           Anuluj
         </button>
       </div>
@@ -73,15 +73,15 @@ function EditableRow({ name, sub, onSave, onDelete }: {
     <div className="group flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 rounded-xl transition-colors">
       <div className="flex-1 min-w-0">
         <span className="text-sm text-gray-800 font-medium">{name}</span>
-        {sub && <span className="text-xs text-gray-400 ml-2">{sub}</span>}
+        {sub && <span className="text-xs text-gray-500 ml-2">{sub}</span>}
       </div>
       <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
         <button title="Zmień nazwę" onClick={() => setEditing(true)}
-          className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+          className="p-1.5 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors">
           <PencilIcon />
         </button>
         <button title="Usuń" onClick={onDelete}
-          className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+          className="p-1.5 rounded-lg text-gray-500 hover:text-red-500 hover:bg-red-50 transition-colors">
           <TrashIcon />
         </button>
       </div>
@@ -100,7 +100,7 @@ function Section({ title, description, children }: {
     <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-100">
         <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
-        {description && <p className="text-xs text-gray-400 mt-0.5">{description}</p>}
+        {description && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
       </div>
       {children}
     </div>
@@ -112,7 +112,7 @@ function Section({ title, description, children }: {
 function Divider({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3 px-4 pt-3 pb-1">
-      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{label}</span>
+      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{label}</span>
       <div className="flex-1 h-px bg-gray-100" />
     </div>
   )
@@ -234,7 +234,7 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Ładowanie…</div>
+      <div className="flex items-center justify-center h-64 text-gray-500 text-sm">Ładowanie…</div>
     )
   }
 
@@ -242,14 +242,14 @@ export default function SettingsPage() {
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
         <h1 className="text-xl font-bold text-gray-900">Ustawienia</h1>
-        <p className="text-sm text-gray-400 mt-0.5">Zarządzaj teatrami, salami i zespołami</p>
+        <p className="text-sm text-gray-500 mt-0.5">Zarządzaj teatrami, salami i zespołami</p>
       </div>
 
       {/* ── Teatry ─────────────────────────────────────────────────────────── */}
       <Section title="Teatry" description="Placówki teatralne widoczne w całej aplikacji">
         <div className="py-2">
           {theatres.length === 0 && (
-            <p className="text-xs text-gray-400 px-4 py-3 italic">Brak teatrów</p>
+            <p className="text-xs text-gray-500 px-4 py-3 italic">Brak teatrów</p>
           )}
           {theatres.map(th => (
             <EditableRow
@@ -281,7 +281,7 @@ export default function SettingsPage() {
       <Section title="Sale i sceny" description="Sale prób i spektakli przypisane do teatrów">
         <div className="py-2">
           {theatres.length === 0 && (
-            <p className="text-xs text-gray-400 px-4 py-3 italic">Najpierw dodaj teatr</p>
+            <p className="text-xs text-gray-500 px-4 py-3 italic">Najpierw dodaj teatr</p>
           )}
           {theatres.map(th => {
             const thRooms = rooms.filter(r => r.theatre_id === th.id)
@@ -289,7 +289,7 @@ export default function SettingsPage() {
               <div key={th.id}>
                 <Divider label={th.name} />
                 {thRooms.length === 0 && (
-                  <p className="text-xs text-gray-400 px-4 py-2 italic">Brak sal</p>
+                  <p className="text-xs text-gray-500 px-4 py-2 italic">Brak sal</p>
                 )}
                 {thRooms.map(rm => (
                   <EditableRow
@@ -330,7 +330,7 @@ export default function SettingsPage() {
       <Section title="Zespoły" description="Grupy pracowników — używane do filtrowania i przypisywania">
         <div className="py-2">
           {teams.length === 0 && (
-            <p className="text-xs text-gray-400 px-4 py-3 italic">Brak zespołów</p>
+            <p className="text-xs text-gray-500 px-4 py-3 italic">Brak zespołów</p>
           )}
           {teams.map(tm => (
             <EditableRow

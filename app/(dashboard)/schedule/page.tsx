@@ -201,16 +201,16 @@ export default function SchedulePage() {
       )}
 
       {loading ? (
-        <p className="text-gray-400 text-sm">{t.schedule.loading}</p>
+        <p className="text-gray-500 text-sm">{t.schedule.loading}</p>
       ) : productions.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
+        <div className="text-center py-16 text-gray-500">
           <p className="text-lg">{t.schedule.noProductions}</p>
           <p className="text-sm mt-1">{t.schedule.noProductionsHint}</p>
         </div>
       ) : (
         <div className="flex gap-6">
           <div className="w-48 shrink-0 space-y-1">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{t.schedule.productions}</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{t.schedule.productions}</p>
             {productions.map((p) => (
               <button
                 key={p.id}
@@ -317,7 +317,7 @@ export default function SchedulePage() {
             )}
 
             {events.length === 0 ? (
-              <div className="text-center py-12 text-gray-400 bg-white border border-gray-200 rounded-xl">
+              <div className="text-center py-12 text-gray-500 bg-white border border-gray-200 rounded-xl">
                 <p>{t.schedule.noEvents}</p>
                 <p className="text-sm mt-1">{t.schedule.noEventsHint}</p>
               </div>
@@ -359,7 +359,7 @@ export default function SchedulePage() {
                         </div>
                         <button
                           onClick={() => handleDeleteEvent(event.id)}
-                          className="text-gray-400 hover:text-red-500 text-xs ml-4 transition-colors"
+                          className="text-gray-500 hover:text-red-500 text-xs ml-4 transition-colors"
                         >
                           {t.schedule.deleteEvent}
                         </button>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
 import EventModal from '@/components/EventModal'
@@ -143,7 +143,12 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function EventPill({ event, isConflicting, onClick }: { event: EventRecord; isConflicting: boolean; onClick: () => void }) {
+function EventPill({ event, isConflicting, confBadge, onClick }: {
+  event: EventRecord
+  isConflicting: boolean
+  confBadge?: string | null
+  onClick: () => void
+}) {
   const style = eventStyle(event)
   const location = event.rooms?.name ?? event.location
   const artistNames = event.event_artists
@@ -163,7 +168,14 @@ function EventPill({ event, isConflicting, onClick }: { event: EventRecord; isCo
       )}
       <div className="flex items-start justify-between gap-1">
         <span className="text-sm font-semibold leading-tight truncate text-gray-900">{event.type ?? event.title}</span>
-        {isConflicting && <span className="shrink-0 leading-tight"><IconWarning size={12} className="text-red-500" /></span>}
+        <div className="flex items-center gap-1 shrink-0">
+          {confBadge && (
+            <span className="text-[9px] font-semibold bg-white/70 text-gray-600 rounded-full px-1 py-0.5 leading-none">
+              {confBadge} ✓
+            </span>
+          )}
+          {isConflicting && <span className="leading-tight"><IconWarning size={12} className="text-red-500" /></span>}
+        </div>
       </div>
       <div className="text-[10px] opacity-60 mt-0.5 leading-tight truncate">
         {fmtTime(event.start_time)} – {fmtTime(event.end_time)}
@@ -183,13 +195,14 @@ function EventPill({ event, isConflicting, onClick }: { event: EventRecord; isCo
   )
 }
 
-function DayCell({ date, isCurrentMonth, isToday, isSelected, dayData, conflictingIds, onClick, onEventClick }: {
+function DayCell({ date, isCurrentMonth, isToday, isSelected, dayData, conflictingIds, confCounts, onClick, onEventClick }: {
   date: Date
   isCurrentMonth: boolean
   isToday: boolean
   isSelected: boolean
   dayData: { events: EventRecord[]; vacations: AvailRecord[]; busy: AvailRecord[]; hasConflict: boolean } | undefined
   conflictingIds: Set<string>
+  confCounts: Record<string, string>
   onClick: () => void
   onEventClick: (ev: EventRecord) => void
 }) {
@@ -212,7 +225,7 @@ function DayCell({ date, isCurrentMonth, isToday, isSelected, dayData, conflicti
       <div className="flex items-center justify-between mb-0.5">
         <span className={[
           'text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full',
-          isToday ? 'bg-gray-900 text-white' : isCurrentMonth ? 'text-gray-800' : 'text-gray-300',
+          isToday ? 'bg-gray-900 text-white' : isCurrentMonth ? 'text-gray-800' : 'text-gray-500',
         ].join(' ')}>
           {date.getDate()}
         </span>
@@ -229,10 +242,11 @@ function DayCell({ date, isCurrentMonth, isToday, isSelected, dayData, conflicti
             key={ev.id}
             event={ev}
             isConflicting={conflictingIds.has(ev.id)}
+            confBadge={confCounts[ev.id] ?? null}
             onClick={() => onEventClick(ev)}
           />
         ))}
-        {extra > 0 && <span className="text-xs text-gray-400 pl-1">+{extra} więcej</span>}
+        {extra > 0 && <span className="text-xs text-gray-500 pl-1">+{extra} więcej</span>}
       </div>
     </div>
   )
@@ -266,8 +280,20 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
   onEventClick: (ev: EventRecord) => void
   onCellClick: (dateStr: string) => void
 }) {
+  const { t } = useLanguage()
+  const tc = t.calendar
   const hours = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i)
   const totalH = (HOUR_END - HOUR_START) * SLOT_H
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!scrollRef.current) return
+    const now = new Date()
+    const currentHour = now.getHours() + now.getMinutes() / 60
+    // Place current time ~80px from the top of the viewport (a little breathing room)
+    const targetPx = Math.max(0, (currentHour - HOUR_START) * SLOT_H - 80)
+    scrollRef.current.scrollTop = targetPx
+  }, [])
 
   function isMultiDay(ev: EventRecord) {
     return toDateStr(new Date(ev.start_time)) !== toDateStr(new Date(ev.end_time))
@@ -321,7 +347,7 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
               className="flex-1 text-center py-2 border-r border-gray-100 last:border-r-0 cursor-pointer hover:bg-gray-50 transition-colors"
               onClick={() => onCellClick(dateStr)}
             >
-              <div className="text-xs text-gray-400 font-medium uppercase tracking-wide">
+              <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">
                 {day.toLocaleDateString(localeStr, { weekday: 'short' })}
               </div>
               <div className={`text-xl font-semibold mx-auto w-9 h-9 flex items-center justify-center rounded-full mt-0.5 ${
@@ -338,7 +364,7 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
       {hasAllDay && (
         <div className="flex border-b border-gray-200 bg-gray-50 shrink-0">
           <div className="w-14 shrink-0 border-r border-gray-100 flex items-center justify-end pr-2">
-            <span className="text-[9px] text-gray-400 uppercase">całodz.</span>
+            <span className="text-[9px] text-gray-500 uppercase">{tc.allDay}</span>
           </div>
           {weekDays.map((day, i) => {
             const d = toDateStr(day)
@@ -365,7 +391,7 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
       )}
 
       {/* Scrollable time grid */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="flex relative" style={{ height: totalH + 'px' }}>
           {/* Time gutter */}
           <div className="w-14 shrink-0 border-r border-gray-100 relative bg-white">
@@ -375,7 +401,7 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
                 className="absolute w-full flex items-start"
                 style={{ top: (h - HOUR_START) * SLOT_H + 'px' }}
               >
-                <span className="text-[10px] text-gray-300 pr-2 w-full text-right leading-none pt-0.5">
+                <span className="text-[10px] text-gray-500 pr-2 w-full text-right leading-none pt-0.5">
                   {h}:00
                 </span>
               </div>
@@ -494,6 +520,8 @@ export default function CalendarPage() {
   const [loading,      setLoading]      = useState(true)
   const [selectedDay,  setSelectedDay]  = useState<string | null>(toDateStr(now))
   const [filterTeam,   setFilterTeam]   = useState('all')
+  // eventId -> "confirmed/total" badge string (only when confirmations were sent)
+  const [confCounts,   setConfCounts]   = useState<Record<string, string>>({})
 
   const [modalEvent,   setModalEvent]   = useState<EventRecord | null | undefined>(undefined)
   const [modalDate,    setModalDate]    = useState<string | undefined>(undefined)
@@ -519,12 +547,27 @@ export default function CalendarPage() {
   useEffect(() => { fetchData(fetchRange.start, fetchRange.end) }, [fetchRange, selectedTheatreId])
 
   // Auto-open EventModal when navigated here with ?editEvent=<id>
+  // Also support ?date=YYYY-MM-DD to jump to a specific day
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
+
+    // Jump to a specific date
+    const dateParam = params.get('date')
+    if (dateParam) {
+      const target = new Date(dateParam + 'T12:00:00')
+      if (!isNaN(target.getTime())) {
+        setYear(target.getFullYear())
+        setMonth(target.getMonth())
+        setWeekStart(getWeekStart(target))
+        setSelectedDay(dateParam)
+      }
+    }
+
     const id = params.get('editEvent')
-    if (!id) return
+    if (!id && !dateParam) return
     window.history.replaceState({}, '', window.location.pathname)
+    if (!id) return
     supabase.from('events')
       .select('*, productions(title), theatres(name), rooms(name), event_artists(artist_id, artists(id, name, teams(id, name)))')
       .eq('id', id)
@@ -552,12 +595,41 @@ export default function CalendarPage() {
       supabase.from('rooms').select('*').order('name'),
     ])
 
-    setEvents((evData ?? []) as unknown as EventRecord[])
+    const fetchedEvents = (evData ?? []) as unknown as EventRecord[]
+    setEvents(fetchedEvents)
     setAvailability((avData ?? []) as unknown as AvailRecord[])
     setArtists((artData ?? []) as unknown as ArtistRecord[])
     setProductions(prodData ?? [])
     setTheatres(thData ?? [])
     setRooms(rmData ?? [])
+
+    // Fetch confirmation counts for visible events
+    if (fetchedEvents.length > 0) {
+      const eventIds = fetchedEvents.map(e => e.id)
+      const { data: confData } = await supabase
+        .from('event_confirmations')
+        .select('event_id, status')
+        .in('event_id', eventIds)
+
+      if (confData && confData.length > 0) {
+        const counts: Record<string, { confirmed: number; total: number }> = {}
+        for (const row of confData) {
+          if (!counts[row.event_id]) counts[row.event_id] = { confirmed: 0, total: 0 }
+          counts[row.event_id].total++
+          if (row.status === 'confirmed') counts[row.event_id].confirmed++
+        }
+        const badges: Record<string, string> = {}
+        for (const [eid, c] of Object.entries(counts)) {
+          if (c.total > 0) badges[eid] = `${c.confirmed}/${c.total}`
+        }
+        setConfCounts(badges)
+      } else {
+        setConfCounts({})
+      }
+    } else {
+      setConfCounts({})
+    }
+
     setLoading(false)
   }
 
@@ -619,6 +691,22 @@ export default function CalendarPage() {
   }, [filteredEvents, filteredAvail, conflictingEventIds])
 
   const grid = useMemo(() => getMonthGrid(year, month), [year, month])
+
+  // Scroll month grid so today's row is at the top.
+  // Must run AFTER loading=false so cells have their final heights.
+  const monthScrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (view !== 'month' || loading) return
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const container = monthScrollRef.current
+      if (!container) return
+      const todayCell = container.querySelector<HTMLElement>('[data-today="true"]')
+      if (!todayCell) return
+      const containerRect = container.getBoundingClientRect()
+      const cellRect = todayCell.getBoundingClientRect()
+      container.scrollTop = container.scrollTop + cellRect.top - containerRect.top
+    }))
+  }, [view, grid, loading])
 
   // ── Navigation ─────────────────────────────────────────────────────────────
 
@@ -731,13 +819,13 @@ export default function CalendarPage() {
                 onClick={() => setView('month')}
                 className={`px-3 py-1.5 text-xs font-medium transition-colors ${view === 'month' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-50'}`}
               >
-                Miesiąc
+                {tc.month}
               </button>
               <button
                 onClick={() => setView('week')}
                 className={`px-3 py-1.5 text-xs font-medium border-l border-gray-200 transition-colors ${view === 'week' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-50'}`}
               >
-                Tydzień
+                {tc.week}
               </button>
             </div>
 
@@ -817,33 +905,36 @@ export default function CalendarPage() {
           )}
 
           {loading ? (
-            <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">Ładowanie...</div>
+            <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">{tc.saving}</div>
           ) : view === 'month' ? (
             <>
               {/* Weekday headers */}
               <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50 shrink-0">
                 {tc.weekdays.map(d => (
-                  <div key={d} className="text-center text-xs font-semibold text-gray-400 py-2 border-r border-gray-100 last:border-r-0">{d}</div>
+                  <div key={d} className="text-center text-xs font-semibold text-gray-500 py-2 border-r border-gray-100 last:border-r-0">{d}</div>
                 ))}
               </div>
 
               {/* Month grid */}
-              <div className="flex-1 overflow-y-auto">
+              <div ref={monthScrollRef} className="flex-1 overflow-y-auto">
                 <div className="grid grid-cols-7 border-l border-gray-100">
                   {grid.map((date, i) => {
                     const dateStr = toDateStr(date)
+                    const isToday = dateStr === todayStr
                     return (
-                      <DayCell
-                        key={i}
-                        date={date}
-                        isCurrentMonth={date.getMonth() === month}
-                        isToday={dateStr === todayStr}
-                        isSelected={dateStr === selectedDay}
-                        dayData={calendarData[dateStr]}
-                        conflictingIds={conflictingEventIds}
-                        onClick={() => setSelectedDay(selectedDay === dateStr ? null : dateStr)}
-                        onEventClick={ev => setModalEvent(ev)}
-                      />
+                      <div key={i} data-today={isToday ? 'true' : undefined}>
+                        <DayCell
+                          date={date}
+                          isCurrentMonth={date.getMonth() === month}
+                          isToday={isToday}
+                          isSelected={dateStr === selectedDay}
+                          dayData={calendarData[dateStr]}
+                          conflictingIds={conflictingEventIds}
+                          confCounts={confCounts}
+                          onClick={() => setSelectedDay(selectedDay === dateStr ? null : dateStr)}
+                          onEventClick={ev => setModalEvent(ev)}
+                        />
+                      </div>
                     )
                   })}
                 </div>
@@ -864,7 +955,7 @@ export default function CalendarPage() {
 
           {/* Legend (month view only) */}
           {view === 'month' && (
-            <div className="flex items-center gap-4 px-6 py-2 border-t border-gray-100 bg-white shrink-0 text-[10px] text-gray-400 flex-wrap">
+            <div className="flex items-center gap-4 px-6 py-2 border-t border-gray-100 bg-white shrink-0 text-[10px] text-gray-500 flex-wrap">
               {Object.entries(THEATRE_STYLE).map(([name, s]) => (
                 <span key={name} className="flex items-center gap-1"><span className={`w-2 h-2 rounded-full ${s.dot}`} />{name}</span>
               ))}
@@ -906,16 +997,16 @@ export default function CalendarPage() {
                   >
                     + {tc.addEvent.replace('+ ', '')}
                   </button>
-                  <button onClick={() => setSelectedDay(null)} className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg text-lg leading-none">×</button>
+                  <button onClick={() => setSelectedDay(null)} className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-gray-600 hover:bg-gray-100 rounded-lg text-lg leading-none">×</button>
                 </div>
               </div>
 
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-5">
                 {/* Events */}
                 <div>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">{tc.events}</p>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">{tc.events}</p>
                   {!selectedData?.events.length ? (
-                    <p className="text-xs text-gray-400">{tc.noEvents}</p>
+                    <p className="text-xs text-gray-500">{tc.noEvents}</p>
                   ) : (
                     <div className="space-y-2">
                       {selectedData.events.map(ev => {
@@ -972,7 +1063,7 @@ export default function CalendarPage() {
                               </div>
                             )}
                             <p className="text-[9px] opacity-40 mt-1.5">
-                              {isConflicting ? '↑ Kliknij aby edytować i usunąć konflikt' : 'Kliknij, aby edytować'}
+                              {isConflicting ? tc.clickToEditConflict : tc.clickToEdit}
                             </p>
                           </button>
                         )
@@ -983,9 +1074,9 @@ export default function CalendarPage() {
 
                 {/* Availability */}
                 <div>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">{tc.availability}</p>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">{tc.availability}</p>
                   {!selectedData?.vacations.length && !selectedData?.busy.length ? (
-                    <p className="text-xs text-gray-400">{tc.noAvailability}</p>
+                    <p className="text-xs text-gray-500">{tc.noAvailability}</p>
                   ) : (
                     <div className="space-y-1.5">
                       {[...(selectedData?.vacations ?? []), ...(selectedData?.busy ?? [])].map(av => {
