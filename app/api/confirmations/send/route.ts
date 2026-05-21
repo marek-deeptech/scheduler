@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { sendEmail, emailWrapper } from '@/lib/email'
+import { sendSms } from '@/lib/sms'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,7 +19,7 @@ function fmtTime(iso: string) {
 }
 
 export async function POST(request: Request) {
-  const { eventId, artistIds, eventDetails } = await request.json() as {
+  const { eventId, artistIds, eventDetails, channel = 'email' } = await request.json() as {
     eventId: string
     artistIds: string[]
     eventDetails: {
@@ -29,6 +30,7 @@ export async function POST(request: Request) {
       production_title: string | null
       room: string | null
     }
+    channel?: 'email' | 'sms' | 'both'
   }
 
   if (!eventId || !artistIds || artistIds.length === 0) {
@@ -53,15 +55,15 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: upsertError.message }, { status: 500 })
   }
 
-  // Fetch artist name + email
+  // Fetch artist name, email, and phone
   const { data: artists } = await supabase
     .from('artists')
-    .select('id, name, email')
+    .select('id, name, email, phone')
     .in('id', artistIds)
 
-  const artistMap: Record<string, { name: string; email: string | null }> = {}
+  const artistMap: Record<string, { name: string; email: string | null; phone: string | null }> = {}
   for (const a of artists ?? []) {
-    artistMap[a.id] = { name: a.name, email: a.email }
+    artistMap[a.id] = { name: a.name, email: a.email, phone: a.phone }
   }
 
   const tokenMap: Record<string, string> = {}
@@ -93,10 +95,14 @@ export async function POST(request: Request) {
   const btnBase = 'display:inline-block;padding:14px 28px;border-radius:12px;font-size:15px;font-weight:700;text-decoration:none;margin:8px 6px 8px 0;min-width:80px;text-align:center'
 
   let sent = 0
+  let sentEmail = 0
+  let sentSms = 0
+
+  const notifiedArtistIds = new Set<string>()
 
   for (const artistId of artistIds) {
     const artist = artistMap[artistId]
-    if (!artist?.email) continue
+    if (!artist) continue
     const token = tokenMap[artistId]
     if (!token) continue
 
@@ -105,32 +111,56 @@ export async function POST(request: Request) {
     const maybeLink    = `${APP_URL}/confirm/${token}?answer=maybe`
     const pageLink     = `${APP_URL}/confirm/${token}`
 
-    const bodyHtml = emailWrapper(`
-      <h2 style="font-size:18px;font-weight:700;margin:0 0 4px">Prośba o potwierdzenie udziału</h2>
-      <p style="color:#6b7280;margin:0 0 20px;font-size:14px">Cześć ${artist.name}, prosimy o potwierdzenie swojej dostępności na poniższe wydarzenie.</p>
+    let artistNotified = false
 
-      <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
-        ${tableRows}
-      </table>
+    // Email
+    if ((channel === 'email' || channel === 'both') && artist.email) {
+      const bodyHtml = emailWrapper(`
+        <h2 style="font-size:18px;font-weight:700;margin:0 0 4px">Prośba o potwierdzenie udziału</h2>
+        <p style="color:#6b7280;margin:0 0 20px;font-size:14px">Cześć ${artist.name}, prosimy o potwierdzenie swojej dostępności na poniższe wydarzenie.</p>
 
-      <p style="font-size:13px;font-weight:600;margin:0 0 12px;color:#374151">Czy możesz wziąć udział?</p>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
+          ${tableRows}
+        </table>
 
-      <div style="margin-bottom:24px">
-        <a href="${confirmLink}" style="${btnBase};background:#16a34a;color:#ffffff">✓ TAK</a>
-        <a href="${declineLink}" style="${btnBase};background:#dc2626;color:#ffffff">✗ NIE</a>
-        <a href="${maybeLink}"   style="${btnBase};background:#d97706;color:#ffffff">~ MOŻE</a>
-      </div>
+        <p style="font-size:13px;font-weight:600;margin:0 0 12px;color:#374151">Czy możesz wziąć udział?</p>
 
-      <p style="font-size:12px;color:#9ca3af;margin:0">
-        Możesz też otworzyć stronę potwierdzenia, aby dodać komentarz:<br/>
-        <a href="${pageLink}" style="color:#4b5563">${pageLink}</a>
-      </p>
-    `)
+        <div style="margin-bottom:24px">
+          <a href="${confirmLink}" style="${btnBase};background:#16a34a;color:#ffffff">✓ TAK</a>
+          <a href="${declineLink}" style="${btnBase};background:#dc2626;color:#ffffff">✗ NIE</a>
+          <a href="${maybeLink}"   style="${btnBase};background:#d97706;color:#ffffff">~ MOŻE</a>
+        </div>
 
-    const subject = `[Potwierdzenie] ${eventTitle} — ${dateLabel}`
-    const ok = await sendEmail(artist.email, subject, bodyHtml)
-    if (ok) sent++
+        <p style="font-size:12px;color:#9ca3af;margin:0">
+          Możesz też otworzyć stronę potwierdzenia, aby dodać komentarz:<br/>
+          <a href="${pageLink}" style="color:#4b5563">${pageLink}</a>
+        </p>
+      `)
+
+      const subject = `[Potwierdzenie] ${eventTitle} — ${dateLabel}`
+      const ok = await sendEmail(artist.email, subject, bodyHtml)
+      if (ok) {
+        sentEmail++
+        artistNotified = true
+      }
+    }
+
+    // SMS
+    if ((channel === 'sms' || channel === 'both') && artist.phone) {
+      const smsText = `Cześć ${artist.name}! Prośba o potwierdzenie: ${eventTitle}, ${dateLabel}, ${startTime}–${endTime}.\nTAK: ${confirmLink}\nNIE: ${declineLink}\nMOŻE: ${maybeLink}`
+      const ok = await sendSms(artist.phone, smsText)
+      if (ok) {
+        sentSms++
+        artistNotified = true
+      }
+    }
+
+    if (artistNotified) {
+      notifiedArtistIds.add(artistId)
+    }
   }
 
-  return Response.json({ ok: true, sent })
+  sent = notifiedArtistIds.size
+
+  return Response.json({ ok: true, sent, sentEmail, sentSms })
 }

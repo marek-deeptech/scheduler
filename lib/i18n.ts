@@ -385,6 +385,10 @@ export const translations = {
       statusConfirmed: 'Confirmed',
       statusDeclined: 'Declined',
       statusMaybe: 'Maybe',
+      confirmChannelEmail: 'Email',
+      confirmChannelSms: 'SMS',
+      confirmChannelBoth: 'Both',
+      confirmNoPhone: (n: number) => `${n} artist(s) have no phone number`,
     },
     artistModal: {
       createTitle: 'New person',
@@ -859,6 +863,10 @@ export const translations = {
       statusConfirmed: 'Potwierdzone',
       statusDeclined: 'Odmowa',
       statusMaybe: 'Może',
+      confirmChannelEmail: 'Email',
+      confirmChannelSms: 'SMS',
+      confirmChannelBoth: 'Oba',
+      confirmNoPhone: (n: number) => `${n} artysta(-ów) nie ma numeru telefonu`,
     },
     artistModal: {
       createTitle: 'Nowa osoba',

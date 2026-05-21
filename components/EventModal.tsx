@@ -87,19 +87,20 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
     comment: string | null
     sent_at: string
     responded_at: string | null
-    artists: { name: string; email: string | null } | null
+    artists: { name: string; email: string | null; phone: string | null } | null
   }
   const [confirmations, setConfirmations] = useState<ConfirmationRow[]>([])
   const [confLoading,   setConfLoading]   = useState(false)
   const [confSending,   setConfSending]   = useState(false)
   const [confSent,      setConfSent]      = useState(false)
+  const [confChannel,   setConfChannel]   = useState<'email' | 'sms' | 'both'>('email')
 
   const fetchConfirmations = useCallback(async () => {
     if (!isEdit || !event) return
     setConfLoading(true)
     const { data } = await supabase
       .from('event_confirmations')
-      .select('id, artist_id, token, status, comment, sent_at, responded_at, artists(name, email)')
+      .select('id, artist_id, token, status, comment, sent_at, responded_at, artists(name, email, phone)')
       .eq('event_id', event.id)
       .order('sent_at', { ascending: true })
     setConfirmations((data ?? []) as unknown as ConfirmationRow[])
@@ -132,6 +133,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
       body: JSON.stringify({
         eventId: event.id,
         artistIds: pendingIds,
+        channel: confChannel,
         eventDetails: {
           title:            form.title || form.type || 'Wydarzenie',
           type:             form.type || null,
@@ -509,7 +511,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
                 </div>
               )}
 
-              {/* Send button */}
+              {/* Channel selector + send button */}
               {form.artist_ids.length > 0 && (() => {
                 const pendingCount = form.artist_ids.filter(id => {
                   const conf = confirmations.find(c => c.artist_id === id)
@@ -518,23 +520,69 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
 
                 const hasAnySent = confirmations.length > 0
 
+                // Count artists who have a confirmation record but no phone
+                const missingPhoneCount = confirmations.filter(c =>
+                  form.artist_ids.includes(c.artist_id) && !c.artists?.phone
+                ).length
+
+                const segBtnCls = (active: boolean) =>
+                  `flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    active
+                      ? 'bg-gray-900 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                  }`
+
                 return (
-                  <button
-                    type="button"
-                    onClick={handleSendConfirmations}
-                    disabled={confSending || pendingCount === 0}
-                    className="w-full py-2.5 text-sm font-medium rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
-                  >
-                    {confSending ? (
-                      <>{em.confirmSending}</>
-                    ) : confSent ? (
-                      <>{em.confirmSent}</>
-                    ) : hasAnySent ? (
-                      <>{em.confirmResend} ({pendingCount})</>
-                    ) : (
-                      <>{em.confirmSend} ({pendingCount})</>
+                  <>
+                    {/* Segmented channel selector */}
+                    <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-2">
+                      <button
+                        type="button"
+                        onClick={() => setConfChannel('email')}
+                        className={segBtnCls(confChannel === 'email')}
+                      >
+                        ✉ {em.confirmChannelEmail}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfChannel('sms')}
+                        className={segBtnCls(confChannel === 'sms')}
+                      >
+                        📱 {em.confirmChannelSms}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfChannel('both')}
+                        className={segBtnCls(confChannel === 'both')}
+                      >
+                        {em.confirmChannelBoth}
+                      </button>
+                    </div>
+
+                    {/* Missing phone warning */}
+                    {confChannel !== 'email' && missingPhoneCount > 0 && (
+                      <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 mb-2">
+                        ⚠ {em.confirmNoPhone(missingPhoneCount)}
+                      </p>
                     )}
-                  </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSendConfirmations}
+                      disabled={confSending || pendingCount === 0}
+                      className="w-full py-2.5 text-sm font-medium rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
+                    >
+                      {confSending ? (
+                        <>{em.confirmSending}</>
+                      ) : confSent ? (
+                        <>{em.confirmSent}</>
+                      ) : hasAnySent ? (
+                        <>{em.confirmResend} ({pendingCount})</>
+                      ) : (
+                        <>{em.confirmSend} ({pendingCount})</>
+                      )}
+                    </button>
+                  </>
                 )
               })()}
             </div>
