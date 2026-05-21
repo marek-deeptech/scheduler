@@ -18,6 +18,10 @@ function fmtTime(iso: string) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+function fillTemplate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`)
+}
+
 export async function POST(request: Request) {
   const { eventId, artistIds, eventDetails, channel = 'email' } = await request.json() as {
     eventId: string
@@ -35,6 +39,16 @@ export async function POST(request: Request) {
 
   if (!eventId || !artistIds || artistIds.length === 0) {
     return Response.json({ ok: false, error: 'Missing eventId or artistIds' }, { status: 400 })
+  }
+
+  // Fetch notification templates from app_settings
+  const { data: settingsRows } = await supabase
+    .from('app_settings')
+    .select('key, value')
+    .in('key', ['notification_email_subject', 'notification_email_intro', 'notification_sms'])
+  const settings: Record<string, string> = {}
+  for (const row of settingsRows ?? []) {
+    settings[row.key] = row.value ?? ''
   }
 
   // Upsert confirmations — reset status to 'pending' if already exists
@@ -113,11 +127,28 @@ export async function POST(request: Request) {
 
     let artistNotified = false
 
+    const templateVars = {
+      name: artist.name,
+      eventTitle,
+      date: dateLabel,
+      startTime,
+      endTime,
+      confirmLink,
+      declineLink,
+      maybeLink,
+      pageLink,
+    }
+
     // Email
     if ((channel === 'email' || channel === 'both') && artist.email) {
+      const intro = fillTemplate(
+        settings['notification_email_intro'] ?? 'Cześć {name}, prosimy o potwierdzenie swojej dostępności na poniższe wydarzenie.',
+        templateVars,
+      )
+
       const bodyHtml = emailWrapper(`
         <h2 style="font-size:18px;font-weight:700;margin:0 0 4px">Prośba o potwierdzenie udziału</h2>
-        <p style="color:#6b7280;margin:0 0 20px;font-size:14px">Cześć ${artist.name}, prosimy o potwierdzenie swojej dostępności na poniższe wydarzenie.</p>
+        <p style="color:#6b7280;margin:0 0 20px;font-size:14px">${intro}</p>
 
         <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
           ${tableRows}
@@ -137,7 +168,10 @@ export async function POST(request: Request) {
         </p>
       `)
 
-      const subject = `[Potwierdzenie] ${eventTitle} — ${dateLabel}`
+      const subject = fillTemplate(
+        settings['notification_email_subject'] ?? '[Potwierdzenie] {eventTitle} — {date}',
+        templateVars,
+      )
       const ok = await sendEmail(artist.email, subject, bodyHtml)
       if (ok) {
         sentEmail++
@@ -147,7 +181,10 @@ export async function POST(request: Request) {
 
     // SMS
     if ((channel === 'sms' || channel === 'both') && artist.phone) {
-      const smsText = `Cześć ${artist.name}! Prośba o potwierdzenie: ${eventTitle}, ${dateLabel}, ${startTime}–${endTime}.\nTAK: ${confirmLink}\nNIE: ${declineLink}\nMOŻE: ${maybeLink}`
+      const smsText = fillTemplate(
+        settings['notification_sms'] ?? 'Cześć {name}! Prośba o potwierdzenie: {eventTitle}, {date}, {startTime}–{endTime}. TAK: {confirmLink} NIE: {declineLink} MOŻE: {maybeLink}',
+        templateVars,
+      )
       const ok = await sendSms(artist.phone, smsText)
       if (ok) {
         sentSms++

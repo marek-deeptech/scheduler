@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 interface Theatre { id: string; name: string }
@@ -118,6 +118,177 @@ function Divider({ label }: { label: string }) {
   )
 }
 
+// ─── Template variable pills ──────────────────────────────────────────────────
+
+const TEMPLATE_VARS = [
+  '{name}', '{eventTitle}', '{date}', '{startTime}', '{endTime}',
+  '{confirmLink}', '{declineLink}', '{maybeLink}',
+]
+
+// ─── Notifications Tab ────────────────────────────────────────────────────────
+
+type FieldKey = 'notification_email_subject' | 'notification_email_intro' | 'notification_sms'
+
+interface SettingField {
+  key: FieldKey
+  label: string
+  type: 'input' | 'textarea'
+  rows?: number
+  smsLimit?: boolean
+}
+
+const FIELDS: SettingField[] = [
+  { key: 'notification_email_subject', label: 'Temat emaila',  type: 'input' },
+  { key: 'notification_email_intro',   label: 'Wstęp emaila',  type: 'textarea', rows: 3 },
+  { key: 'notification_sms',           label: 'Treść SMS',     type: 'textarea', rows: 4, smsLimit: true },
+]
+
+function TemplateField({
+  field,
+  value,
+  onChange,
+}: {
+  field: SettingField
+  value: string
+  onChange: (val: string) => void
+}) {
+  const ref = useRef<HTMLInputElement & HTMLTextAreaElement>(null)
+  const [saved, setSaved] = useState(false)
+  const [busy, setBusy]   = useState(false)
+
+  function insertVar(v: string) {
+    const el = ref.current
+    if (!el) return
+    const start = el.selectionStart ?? value.length
+    const end   = el.selectionEnd   ?? value.length
+    const next  = value.slice(0, start) + v + value.slice(end)
+    onChange(next)
+    // restore cursor after React re-render
+    setTimeout(() => {
+      el.focus()
+      el.setSelectionRange(start + v.length, start + v.length)
+    }, 0)
+  }
+
+  async function save() {
+    setBusy(true)
+    await supabase
+      .from('app_settings')
+      .update({ value, updated_at: new Date().toISOString() })
+      .eq('key', field.key)
+    setBusy(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  const over160 = field.smsLimit && value.length > 160
+
+  return (
+    <div className="px-5 py-4 border-b border-gray-100 last:border-b-0">
+      <label className="block text-xs font-semibold text-gray-700 mb-1.5">{field.label}</label>
+
+      {field.type === 'input' ? (
+        <input
+          ref={ref as React.RefObject<HTMLInputElement>}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+        />
+      ) : (
+        <div className="relative">
+          <textarea
+            ref={ref as React.RefObject<HTMLTextAreaElement>}
+            value={value}
+            rows={field.rows ?? 3}
+            onChange={e => onChange(e.target.value)}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black resize-none"
+          />
+          {field.smsLimit && (
+            <span className={`absolute bottom-2 right-2.5 text-[11px] font-mono ${over160 ? 'text-red-500 font-bold' : 'text-gray-400'}`}>
+              {value.length}/160
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Variable pills */}
+      <div className="flex flex-wrap gap-1.5 mt-2">
+        {TEMPLATE_VARS.map(v => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => insertVar(v)}
+            className="text-[11px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full hover:bg-gray-200 hover:text-gray-700 transition-colors font-mono"
+          >
+            {v}
+          </button>
+        ))}
+      </div>
+
+      {/* Save row */}
+      <div className="flex items-center gap-3 mt-3">
+        <button
+          type="button"
+          onClick={save}
+          disabled={busy}
+          className="text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors"
+        >
+          {busy ? '…' : 'Zapisz'}
+        </button>
+        {saved && <span className="text-xs text-green-600 font-medium">✓ Zapisano</span>}
+      </div>
+    </div>
+  )
+}
+
+function NotificationsTab() {
+  const [values, setValues] = useState<Record<FieldKey, string>>({
+    notification_email_subject: '',
+    notification_email_intro:   '',
+    notification_sms:           '',
+  })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('key, value')
+        .in('key', ['notification_email_subject', 'notification_email_intro', 'notification_sms'])
+      if (data) {
+        const map: Partial<Record<FieldKey, string>> = {}
+        for (const row of data) {
+          map[row.key as FieldKey] = row.value ?? ''
+        }
+        setValues(prev => ({ ...prev, ...map }))
+      }
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  if (loading) {
+    return (
+      <Section title="Powiadomienia" description="Szablony wiadomości email i SMS">
+        <div className="px-5 py-6 text-sm text-gray-400">Ładowanie…</div>
+      </Section>
+    )
+  }
+
+  return (
+    <Section title="Powiadomienia" description="Szablony wiadomości email i SMS wysyłanych do artystów">
+      {FIELDS.map(field => (
+        <TemplateField
+          key={field.key}
+          field={field}
+          value={values[field.key]}
+          onChange={val => setValues(prev => ({ ...prev, [field.key]: val }))}
+        />
+      ))}
+    </Section>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -125,6 +296,7 @@ export default function SettingsPage() {
   const [rooms,    setRooms]    = useState<Room[]>([])
   const [teams,    setTeams]    = useState<Team[]>([])
   const [loading,  setLoading]  = useState(true)
+  const [activeTab, setActiveTab] = useState<'general' | 'notifications'>('general')
 
   // Add-form state
   const [newTheatre, setNewTheatre] = useState('')
@@ -245,117 +417,147 @@ export default function SettingsPage() {
         <p className="text-sm text-gray-500 mt-0.5">Zarządzaj teatrami, salami i zespołami</p>
       </div>
 
-      {/* ── Teatry ─────────────────────────────────────────────────────────── */}
-      <Section title="Teatry" description="Placówki teatralne widoczne w całej aplikacji">
-        <div className="py-2">
-          {theatres.length === 0 && (
-            <p className="text-xs text-gray-500 px-4 py-3 italic">Brak teatrów</p>
-          )}
-          {theatres.map(th => (
-            <EditableRow
-              key={th.id}
-              name={th.name}
-              sub={`${rooms.filter(r => r.theatre_id === th.id).length} sal`}
-              onSave={name => renameTheatre(th.id, name)}
-              onDelete={() => deleteTheatre(th.id, th.name)}
-            />
-          ))}
-        </div>
-        <div className="border-t border-gray-100 px-4 py-3">
-          <form onSubmit={addTheatre} className="flex gap-2">
-            <input
-              value={newTheatre}
-              onChange={e => setNewTheatre(e.target.value)}
-              placeholder="Nazwa nowego teatru…"
-              className={inputCls}
-            />
-            <button type="submit" disabled={!newTheatre.trim() || saving === 'theatre'}
-              className={addBtnCls('theatre')}>
-              + Dodaj
-            </button>
-          </form>
-        </div>
-      </Section>
+      {/* ── Tab navigation ─────────────────────────────────────────────────── */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setActiveTab('general')}
+          className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'general'
+              ? 'bg-gray-900 text-white'
+              : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+          }`}
+        >
+          Ogólne
+        </button>
+        <button
+          onClick={() => setActiveTab('notifications')}
+          className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'notifications'
+              ? 'bg-gray-900 text-white'
+              : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+          }`}
+        >
+          Powiadomienia
+        </button>
+      </div>
 
-      {/* ── Sale ───────────────────────────────────────────────────────────── */}
-      <Section title="Sale i sceny" description="Sale prób i spektakli przypisane do teatrów">
-        <div className="py-2">
-          {theatres.length === 0 && (
-            <p className="text-xs text-gray-500 px-4 py-3 italic">Najpierw dodaj teatr</p>
-          )}
-          {theatres.map(th => {
-            const thRooms = rooms.filter(r => r.theatre_id === th.id)
-            return (
-              <div key={th.id}>
-                <Divider label={th.name} />
-                {thRooms.length === 0 && (
-                  <p className="text-xs text-gray-500 px-4 py-2 italic">Brak sal</p>
-                )}
-                {thRooms.map(rm => (
-                  <EditableRow
-                    key={rm.id}
-                    name={rm.name}
-                    onSave={name => renameRoom(rm.id, name)}
-                    onDelete={() => deleteRoom(rm.id, rm.name)}
-                  />
-                ))}
-              </div>
-            )
-          })}
-        </div>
-        <div className="border-t border-gray-100 px-4 py-3">
-          <form onSubmit={addRoom} className="flex gap-2">
-            <select
-              value={newRoomTh}
-              onChange={e => setNewRoomTh(e.target.value)}
-              className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-black bg-white text-gray-700"
-            >
-              {theatres.map(th => <option key={th.id} value={th.id}>{th.name}</option>)}
-            </select>
-            <input
-              value={newRoom}
-              onChange={e => setNewRoom(e.target.value)}
-              placeholder="Nazwa sali…"
-              className={inputCls}
-            />
-            <button type="submit" disabled={!newRoom.trim() || !newRoomTh || saving === 'room'}
-              className={addBtnCls('room')}>
-              + Dodaj
-            </button>
-          </form>
-        </div>
-      </Section>
+      {activeTab === 'general' && (
+        <>
+          {/* ── Teatry ───────────────────────────────────────────────────────── */}
+          <Section title="Teatry" description="Placówki teatralne widoczne w całej aplikacji">
+            <div className="py-2">
+              {theatres.length === 0 && (
+                <p className="text-xs text-gray-500 px-4 py-3 italic">Brak teatrów</p>
+              )}
+              {theatres.map(th => (
+                <EditableRow
+                  key={th.id}
+                  name={th.name}
+                  sub={`${rooms.filter(r => r.theatre_id === th.id).length} sal`}
+                  onSave={name => renameTheatre(th.id, name)}
+                  onDelete={() => deleteTheatre(th.id, th.name)}
+                />
+              ))}
+            </div>
+            <div className="border-t border-gray-100 px-4 py-3">
+              <form onSubmit={addTheatre} className="flex gap-2">
+                <input
+                  value={newTheatre}
+                  onChange={e => setNewTheatre(e.target.value)}
+                  placeholder="Nazwa nowego teatru…"
+                  className={inputCls}
+                />
+                <button type="submit" disabled={!newTheatre.trim() || saving === 'theatre'}
+                  className={addBtnCls('theatre')}>
+                  + Dodaj
+                </button>
+              </form>
+            </div>
+          </Section>
 
-      {/* ── Zespoły ────────────────────────────────────────────────────────── */}
-      <Section title="Zespoły" description="Grupy pracowników — używane do filtrowania i przypisywania">
-        <div className="py-2">
-          {teams.length === 0 && (
-            <p className="text-xs text-gray-500 px-4 py-3 italic">Brak zespołów</p>
-          )}
-          {teams.map(tm => (
-            <EditableRow
-              key={tm.id}
-              name={tm.name}
-              onSave={name => renameTeam(tm.id, name)}
-              onDelete={() => deleteTeam(tm.id, tm.name)}
-            />
-          ))}
-        </div>
-        <div className="border-t border-gray-100 px-4 py-3">
-          <form onSubmit={addTeam} className="flex gap-2">
-            <input
-              value={newTeam}
-              onChange={e => setNewTeam(e.target.value)}
-              placeholder="Nazwa nowego zespołu…"
-              className={inputCls}
-            />
-            <button type="submit" disabled={!newTeam.trim() || saving === 'team'}
-              className={addBtnCls('team')}>
-              + Dodaj
-            </button>
-          </form>
-        </div>
-      </Section>
+          {/* ── Sale ─────────────────────────────────────────────────────────── */}
+          <Section title="Sale i sceny" description="Sale prób i spektakli przypisane do teatrów">
+            <div className="py-2">
+              {theatres.length === 0 && (
+                <p className="text-xs text-gray-500 px-4 py-3 italic">Najpierw dodaj teatr</p>
+              )}
+              {theatres.map(th => {
+                const thRooms = rooms.filter(r => r.theatre_id === th.id)
+                return (
+                  <div key={th.id}>
+                    <Divider label={th.name} />
+                    {thRooms.length === 0 && (
+                      <p className="text-xs text-gray-500 px-4 py-2 italic">Brak sal</p>
+                    )}
+                    {thRooms.map(rm => (
+                      <EditableRow
+                        key={rm.id}
+                        name={rm.name}
+                        onSave={name => renameRoom(rm.id, name)}
+                        onDelete={() => deleteRoom(rm.id, rm.name)}
+                      />
+                    ))}
+                  </div>
+                )
+              })}
+            </div>
+            <div className="border-t border-gray-100 px-4 py-3">
+              <form onSubmit={addRoom} className="flex gap-2">
+                <select
+                  value={newRoomTh}
+                  onChange={e => setNewRoomTh(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-black bg-white text-gray-700"
+                >
+                  {theatres.map(th => <option key={th.id} value={th.id}>{th.name}</option>)}
+                </select>
+                <input
+                  value={newRoom}
+                  onChange={e => setNewRoom(e.target.value)}
+                  placeholder="Nazwa sali…"
+                  className={inputCls}
+                />
+                <button type="submit" disabled={!newRoom.trim() || !newRoomTh || saving === 'room'}
+                  className={addBtnCls('room')}>
+                  + Dodaj
+                </button>
+              </form>
+            </div>
+          </Section>
+
+          {/* ── Zespoły ──────────────────────────────────────────────────────── */}
+          <Section title="Zespoły" description="Grupy pracowników — używane do filtrowania i przypisywania">
+            <div className="py-2">
+              {teams.length === 0 && (
+                <p className="text-xs text-gray-500 px-4 py-3 italic">Brak zespołów</p>
+              )}
+              {teams.map(tm => (
+                <EditableRow
+                  key={tm.id}
+                  name={tm.name}
+                  onSave={name => renameTeam(tm.id, name)}
+                  onDelete={() => deleteTeam(tm.id, tm.name)}
+                />
+              ))}
+            </div>
+            <div className="border-t border-gray-100 px-4 py-3">
+              <form onSubmit={addTeam} className="flex gap-2">
+                <input
+                  value={newTeam}
+                  onChange={e => setNewTeam(e.target.value)}
+                  placeholder="Nazwa nowego zespołu…"
+                  className={inputCls}
+                />
+                <button type="submit" disabled={!newTeam.trim() || saving === 'team'}
+                  className={addBtnCls('team')}>
+                  + Dodaj
+                </button>
+              </form>
+            </div>
+          </Section>
+        </>
+      )}
+
+      {activeTab === 'notifications' && <NotificationsTab />}
     </div>
   )
 }
