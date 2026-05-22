@@ -282,45 +282,44 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
 }) {
   const { t } = useLanguage()
   const tc = t.calendar
-  const hours = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i)
-  const totalH = (HOUR_END - HOUR_START) * SLOT_H
+  const TOTAL_HOURS = HOUR_END - HOUR_START   // 19 h (07:00 – 02:00)
+  const LANE_H  = 30   // px per overlapping event lane
+  const DAY_PAD = 6    // vertical padding inside each day row
+  const MIN_ROW = 48   // minimum row height
 
-  const scrollRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!scrollRef.current) return
-    const now = new Date()
-    const currentHour = now.getHours() + now.getMinutes() / 60
-    // Place current time ~80px from the top of the viewport (a little breathing room)
-    const targetPx = Math.max(0, (currentHour - HOUR_START) * SLOT_H - 80)
-    scrollRef.current.scrollTop = targetPx
-  }, [])
+  // Show every 2nd hour in header to avoid crowding
+  const headerHours = Array.from({ length: TOTAL_HOURS }, (_, i) => HOUR_START + i).filter((_, i) => i % 2 === 0)
+  const allHours    = Array.from({ length: TOTAL_HOURS }, (_, i) => HOUR_START + i)
 
   function isMultiDay(ev: EventRecord) {
-    // Use UTC date strings (first 10 chars) so events crossing local midnight
-    // (e.g. 23:00–01:00) are NOT treated as multi-day
     return ev.start_time.slice(0, 10) !== ev.end_time.slice(0, 10)
   }
 
-  function evTop(ev: EventRecord) {
+  // Horizontal position as percentage of total time range
+  function evLeft(ev: EventRecord): string {
     const start = new Date(ev.start_time)
     const h = start.getHours() + start.getMinutes() / 60
-    return Math.max(0, (h - HOUR_START) * SLOT_H)
+    return `${Math.max(0, (h - HOUR_START) / TOTAL_HOURS * 100)}%`
   }
-
-  function evHeight(ev: EventRecord) {
+  function evWidth(ev: EventRecord): string {
     const start = new Date(ev.start_time)
     const end   = new Date(ev.end_time)
-    const sh = start.getHours() + start.getMinutes() / 60
-    let   eh = end.getHours()   + end.getMinutes()   / 60
-    if (eh <= sh) eh += 24   // event crosses midnight — add 24 to end hour
-    const clampedSh = Math.max(HOUR_START, sh)
-    const clampedEh = Math.min(HOUR_END,   eh)
-    return Math.max(22, (clampedEh - clampedSh) * SLOT_H)
+    let sh = start.getHours() + start.getMinutes() / 60
+    let eh = end.getHours()   + end.getMinutes()   / 60
+    if (eh <= sh) eh += 24
+    const w = (Math.min(HOUR_END, eh) - Math.max(HOUR_START, sh)) / TOTAL_HOURS * 100
+    return `${Math.max(0.5, w)}%`
+  }
+  function nowPct(): string {
+    const now = new Date()
+    const h = now.getHours() + now.getMinutes() / 60
+    if (h < HOUR_START || h > HOUR_END) return '-1%'
+    return `${(h - HOUR_START) / TOTAL_HOURS * 100}%`
   }
 
+  // Bucket events by day
   const multiDayByDay: Record<string, EventRecord[]> = {}
-  const singleByDay: Record<string, EventRecord[]> = {}
-
+  const singleByDay:   Record<string, EventRecord[]> = {}
   for (const day of weekDays) {
     const d = toDateStr(day)
     multiDayByDay[d] = []
@@ -329,172 +328,165 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
   for (const ev of events) {
     for (const day of weekDays) {
       const d = toDateStr(day)
-      const evDays = expandToDays(ev.start_time, ev.end_time)
-      if (!evDays.includes(d)) continue
+      if (!expandToDays(ev.start_time, ev.end_time).includes(d)) continue
       if (isMultiDay(ev)) multiDayByDay[d].push(ev)
       else if (toDateStr(new Date(ev.start_time)) === d) singleByDay[d].push(ev)
     }
   }
-
   const hasAllDay = weekDays.some(day => (multiDayByDay[toDateStr(day)] ?? []).length > 0)
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      {/* Day header row */}
+
+      {/* ── Time header ───────────────────────────────────────────── */}
       <div className="flex border-b border-gray-200 bg-white shrink-0">
-        <div className="w-14 shrink-0 border-r border-gray-100" />
-        {weekDays.map((day, i) => {
-          const dateStr = toDateStr(day)
-          const isToday = dateStr === todayStr
-          return (
-            <div
-              key={i}
-              className="flex-1 text-center py-2 border-r border-gray-100 last:border-r-0 cursor-pointer hover:bg-gray-50 transition-colors"
-              onClick={() => onCellClick(dateStr)}
+        <div className="w-20 shrink-0 border-r border-gray-100" />
+        <div className="flex-1 relative h-7">
+          {headerHours.map(h => (
+            <span
+              key={h}
+              className="absolute text-[10px] text-gray-400 -translate-x-1/2 top-1"
+              style={{ left: `${(h - HOUR_START) / TOTAL_HOURS * 100}%` }}
             >
-              <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">
-                {day.toLocaleDateString(localeStr, { weekday: 'short' })}
-              </div>
-              <div className={`text-xl font-semibold mx-auto w-9 h-9 flex items-center justify-center rounded-full mt-0.5 ${
-                isToday ? 'bg-gray-900 text-white' : 'text-gray-800'
-              }`}>
-                {day.getDate()}
-              </div>
-            </div>
-          )
-        })}
+              {String(h % 24).padStart(2, '0')}:00
+            </span>
+          ))}
+          {/* right edge label */}
+          <span className="absolute text-[10px] text-gray-400 right-0 top-1">
+            {String(HOUR_END % 24).padStart(2, '0')}:00
+          </span>
+        </div>
       </div>
 
-      {/* All-day / multi-day strip */}
+      {/* ── Multi-day strip ───────────────────────────────────────── */}
       {hasAllDay && (
         <div className="flex border-b border-gray-200 bg-gray-50 shrink-0">
-          <div className="w-14 shrink-0 border-r border-gray-100 flex items-center justify-end pr-2">
+          <div className="w-20 shrink-0 border-r border-gray-100 flex items-center justify-end pr-2">
             <span className="text-[9px] text-gray-500 uppercase">{tc.allDay}</span>
           </div>
-          {weekDays.map((day, i) => {
-            const d = toDateStr(day)
-            const mdEvs = multiDayByDay[d] ?? []
-            return (
-              <div key={i} className="flex-1 border-r border-gray-100 last:border-r-0 px-0.5 py-0.5 space-y-0.5">
-                {mdEvs.map(ev => {
-                  const style = eventStyle(ev)
-                  return (
-                    <button
-                      key={ev.id}
-                      type="button"
-                      onClick={e => { e.stopPropagation(); onEventClick(ev) }}
-                      className={`w-full text-left rounded px-1.5 py-0.5 text-xs font-semibold truncate hover:opacity-80 ${style.pill}`}
-                    >
-                      {ev.type ?? ev.title}
-                    </button>
-                  )
-                })}
-              </div>
-            )
-          })}
+          <div className="flex-1 flex flex-wrap gap-1 px-1 py-1">
+            {weekDays.flatMap(day => {
+              const d = toDateStr(day)
+              return (multiDayByDay[d] ?? []).map(ev => {
+                const style = eventStyle(ev)
+                return (
+                  <button
+                    key={ev.id + d}
+                    type="button"
+                    onClick={e => { e.stopPropagation(); onEventClick(ev) }}
+                    className={`text-left rounded px-1.5 py-0.5 text-xs font-semibold truncate hover:opacity-80 ${style.pill}`}
+                  >
+                    {day.toLocaleDateString(localeStr, { weekday: 'short', day: 'numeric' })} · {ev.type ?? ev.title}
+                  </button>
+                )
+              })
+            })}
+          </div>
         </div>
       )}
 
-      {/* Scrollable time grid */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        <div className="flex relative" style={{ height: totalH + 'px' }}>
-          {/* Time gutter */}
-          <div className="w-14 shrink-0 border-r border-gray-100 relative bg-white">
-            {hours.map(h => (
-              <div
-                key={h}
-                className="absolute w-full flex items-start"
-                style={{ top: (h - HOUR_START) * SLOT_H + 'px' }}
-              >
-                <span className="text-[10px] text-gray-500 pr-2 w-full text-right leading-none pt-0.5">
-                  {String(h % 24).padStart(2, '0')}:00
-                </span>
-              </div>
-            ))}
-          </div>
+      {/* ── Day rows ──────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto">
+        {weekDays.map((day, i) => {
+          const dateStr  = toDateStr(day)
+          const isToday  = dateStr === todayStr
+          const dayLayout = layoutDayEvents(singleByDay[dateStr] ?? [])
+          const maxLanes  = dayLayout.reduce((m, { numCols }) => Math.max(m, numCols), 1)
+          const rowH      = Math.max(MIN_ROW, maxLanes * LANE_H + DAY_PAD * 2)
+          const dayAvail  = availability.filter(av => expandToDays(av.start_time, av.end_time).includes(dateStr))
 
-          {/* Day columns */}
-          {weekDays.map((day, i) => {
-            const dateStr = toDateStr(day)
-            const isToday = dateStr === todayStr
-            const dayLayout = layoutDayEvents(singleByDay[dateStr] ?? [])
-            const dayAvail  = availability.filter(av => expandToDays(av.start_time, av.end_time).includes(dateStr))
-
-            return (
+          return (
+            <div
+              key={i}
+              className={`flex border-b border-gray-100 ${isToday ? 'bg-blue-50/30' : ''}`}
+              style={{ height: rowH + 'px' }}
+            >
+              {/* Day label */}
               <div
-                key={i}
-                className={`flex-1 relative border-r border-gray-100 last:border-r-0 cursor-pointer ${isToday ? 'bg-blue-50/20' : ''}`}
+                className="w-20 shrink-0 border-r border-gray-100 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors"
                 onClick={() => onCellClick(dateStr)}
               >
-                {/* Hour grid lines */}
-                {hours.map(h => (
+                <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">
+                  {day.toLocaleDateString(localeStr, { weekday: 'short' })}
+                </span>
+                <span className={`text-lg font-bold leading-tight ${isToday ? 'text-blue-600' : 'text-gray-800'}`}>
+                  {day.getDate()}
+                </span>
+              </div>
+
+              {/* Events area */}
+              <div
+                className="flex-1 relative cursor-pointer overflow-hidden"
+                onClick={() => onCellClick(dateStr)}
+              >
+                {/* Vertical hour grid lines */}
+                {allHours.map(h => (
                   <div
                     key={h}
-                    className="absolute w-full border-t border-gray-100"
-                    style={{ top: (h - HOUR_START) * SLOT_H + 'px' }}
+                    className="absolute top-0 bottom-0 border-l border-gray-100"
+                    style={{ left: `${(h - HOUR_START) / TOTAL_HOURS * 100}%` }}
                   />
                 ))}
 
-                {/* Availability background stripes */}
+                {/* Availability stripes */}
                 {dayAvail.map(av => {
                   const s = AVAIL_STYLE[av.type] ?? AVAIL_STYLE.busy
                   return (
                     <div
                       key={av.id}
                       title={`${av.artists?.name} – ${av.type}`}
-                      className={`absolute inset-x-0 top-0 bottom-0 opacity-15 pointer-events-none ${s.bg}`}
+                      className={`absolute inset-0 opacity-10 pointer-events-none ${s.bg}`}
                     />
                   )
                 })}
 
-                {/* Events */}
-                {dayLayout.map(({ ev, col, numCols }) => {
-                  const top    = evTop(ev)
-                  const height = evHeight(ev)
-                  const style  = eventStyle(ev)
-                  const location = ev.rooms?.name ?? ev.location
+                {/* Current-time vertical line */}
+                {isToday && (
+                  <div
+                    className="absolute top-1 bottom-1 w-0.5 bg-red-400 rounded-full z-20 pointer-events-none"
+                    style={{ left: nowPct() }}
+                  />
+                )}
 
+                {/* Events */}
+                {dayLayout.map(({ ev, col }) => {
+                  const style    = eventStyle(ev)
+                  const location = ev.rooms?.name ?? ev.location
+                  const isConflict = conflictingIds.has(ev.id)
                   return (
                     <button
                       key={ev.id}
                       type="button"
                       onClick={e => { e.stopPropagation(); onEventClick(ev) }}
-                      className={`absolute rounded border-l-2 px-1.5 py-1 text-left hover:opacity-80 transition-opacity overflow-hidden ${style.pill} ${style.border}`}
+                      className={`absolute rounded border-l-2 px-1.5 text-left hover:opacity-80 transition-opacity overflow-hidden flex items-center gap-1 ${style.pill} ${style.border} ${isConflict ? 'ring-1 ring-red-400' : ''}`}
                       style={{
-                        top:    top    + 'px',
-                        height: height + 'px',
-                        left:   `calc(${(col * 100) / numCols}% + 1px)`,
-                        width:  `calc(${100 / numCols}% - 2px)`,
+                        left:   evLeft(ev),
+                        width:  evWidth(ev),
+                        top:    DAY_PAD + col * LANE_H + 'px',
+                        height: LANE_H - 4 + 'px',
                         zIndex: 10 + col,
                       }}
                     >
-                      {ev.theatres?.name && (
-                        <div className="text-[10px] font-medium text-gray-500 leading-tight truncate mb-0.5">{ev.theatres.name}</div>
-                      )}
-                      <div className="flex items-start gap-1">
-                        {conflictingIds.has(ev.id) && <span className="shrink-0"><IconWarning size={12} className="text-red-500" /></span>}
-                        <span className="text-xs font-semibold leading-tight truncate text-gray-900">{ev.type ?? ev.title}</span>
-                      </div>
-                      <div className="text-[10px] opacity-60 leading-tight truncate">
-                        {fmtTime(ev.start_time)} – {fmtTime(ev.end_time)}{location && ` · ${location}`}
-                      </div>
+                      {isConflict && <IconWarning size={10} className="text-red-500 shrink-0" />}
+                      <span className="text-xs font-semibold truncate text-gray-900 shrink-0 max-w-[40%]">
+                        {ev.type ?? ev.title}
+                      </span>
                       {ev.productions && (
-                        <div className="flex items-center gap-1 text-[10px] opacity-50 leading-tight truncate">
-                          <IconTheatre size={10} /><span>{ev.productions.title}</span>
-                        </div>
+                        <span className="text-[10px] text-gray-600 truncate shrink min-w-0">
+                          · {ev.productions.title}
+                        </span>
                       )}
-                      {ev.event_artists.length > 0 && (
-                        <div className="flex items-center gap-1 text-[10px] opacity-50 leading-tight truncate">
-                          <IconUsers size={10} /><span>{ev.event_artists.slice(0, 2).map(ea => ea.artists?.name?.split(' ')[0]).join(', ')}{ev.event_artists.length > 2 ? ` +${ev.event_artists.length - 2}` : ''}</span>
-                        </div>
-                      )}
+                      <span className="text-[10px] text-gray-500 shrink-0 ml-auto pl-1">
+                        {fmtTime(ev.start_time)}–{fmtTime(ev.end_time)}
+                        {location ? ` · ${location}` : ''}
+                      </span>
                     </button>
                   )
                 })}
               </div>
-            )
-          })}
-        </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
