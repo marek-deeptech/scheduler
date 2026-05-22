@@ -522,28 +522,37 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Next premiere banner ─────────────────────────────────── */}
-      {nextPremiere && daysToPremi !== null && (
-        <div className="bg-gray-900 rounded-2xl px-6 py-4 flex items-center justify-between text-white">
-          <div className="flex items-center gap-4">
-            <div><IconStar size={28} className="text-gray-500" /></div>
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{td.nextPremiere}</p>
-              <Link href="/productions"
-                className="text-lg font-bold mt-0.5 hover:underline decoration-white/60 underline-offset-2 block">
-                {nextPremiere.production_title ?? nextPremiere.title}
-              </Link>
-              <p className="text-sm text-gray-500 mt-0.5">
-                {new Date(nextPremiere.start_time).toLocaleDateString(localeStr, { weekday: 'long', day: 'numeric', month: 'long' })}
-                {nextPremiere.location ? ` · ${nextPremiere.location}` : ''}
-              </p>
+      {nextPremiere && daysToPremi !== null && (() => {
+        const theatreName = allTheatres.find(t => t.id === nextPremiere.theatre_id)?.name ?? ''
+        const isPolonia  = theatreName === 'Teatr Polonia'
+        const isOch      = theatreName === 'Och-Teatr'
+        const bg  = isPolonia ? 'bg-red-600'    : isOch ? 'bg-yellow-400'  : 'bg-gray-900'
+        const txt = isPolonia ? 'text-white'     : isOch ? 'text-gray-900'  : 'text-white'
+        const sub = isPolonia ? 'text-red-200'   : isOch ? 'text-yellow-800' : 'text-gray-400'
+        const cnt = isPolonia ? 'text-red-100'   : isOch ? 'text-yellow-900' : 'text-gray-300'
+        return (
+          <div className={`${bg} rounded-2xl px-5 py-3 flex items-center justify-between`}>
+            <div className="flex items-center gap-3">
+              <IconStar size={20} className={sub} />
+              <div>
+                <p className={`text-[10px] font-bold uppercase tracking-wider ${sub}`}>{td.nextPremiere}</p>
+                <Link href="/productions"
+                  className={`text-base font-bold leading-tight hover:underline decoration-current/60 underline-offset-2 block ${txt}`}>
+                  {nextPremiere.production_title ?? nextPremiere.title}
+                </Link>
+                <p className={`text-xs mt-0.5 ${sub}`}>
+                  {new Date(nextPremiere.start_time).toLocaleDateString(localeStr, { weekday: 'long', day: 'numeric', month: 'long' })}
+                  {nextPremiere.location ? ` · ${nextPremiere.location}` : ''}
+                </p>
+              </div>
+            </div>
+            <div className="text-right shrink-0 pl-4">
+              <p className={`text-4xl font-black leading-none ${txt}`}>{daysToPremi}</p>
+              <p className={`text-xs mt-0.5 ${sub}`}>{td.days(daysToPremi!)}</p>
             </div>
           </div>
-          <div className="text-right shrink-0 pl-4">
-            <p className="text-5xl font-black leading-none">{daysToPremi}</p>
-            <p className="text-sm text-gray-500 mt-1">{td.days(daysToPremi!)}</p>
-          </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ── 3-column body ──────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_280px] gap-5 items-start">
