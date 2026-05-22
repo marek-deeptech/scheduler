@@ -167,7 +167,9 @@ function EventPill({ event, isConflicting, confBadge, onClick }: {
         <div className="text-[10px] font-medium text-gray-500 leading-tight truncate mb-0.5">{event.theatres.name}</div>
       )}
       <div className="flex items-start justify-between gap-1">
-        <span className="text-sm font-semibold leading-tight truncate text-gray-900">{event.type ?? event.title}</span>
+        <span className="text-sm font-semibold leading-tight truncate text-gray-900">
+          {event.productions?.title ?? event.title}
+        </span>
         <div className="flex items-center gap-1 shrink-0">
           {confBadge && (
             <span className="text-[9px] font-semibold bg-white/70 text-gray-600 rounded-full px-1 py-0.5 leading-none">
@@ -178,14 +180,10 @@ function EventPill({ event, isConflicting, confBadge, onClick }: {
         </div>
       </div>
       <div className="text-[10px] opacity-60 mt-0.5 leading-tight truncate">
+
         {fmtTime(event.start_time)} – {fmtTime(event.end_time)}
         {location && <> · {location}</>}
       </div>
-      {event.productions && (
-        <div className="flex items-center gap-1 text-[10px] opacity-50 mt-0.5 leading-tight truncate">
-          <IconTheatre size={10} /><span>{event.productions.title}</span>
-        </div>
-      )}
       {event.event_artists.length > 0 && (
         <div className="flex items-center gap-1 text-[10px] opacity-50 mt-0.5 leading-tight truncate">
           <IconUsers size={10} /><span>{artistNames.join(', ')}{extraArtists > 0 ? ` +${extraArtists}` : ''}</span>
@@ -376,7 +374,7 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
                     onClick={e => { e.stopPropagation(); onEventClick(ev) }}
                     className={`text-left rounded px-1.5 py-0.5 text-xs font-semibold truncate hover:opacity-80 ${style.pill}`}
                   >
-                    {day.toLocaleDateString(localeStr, { weekday: 'short', day: 'numeric' })} · {ev.type ?? ev.title}
+                    {day.toLocaleDateString(localeStr, { weekday: 'short', day: 'numeric' })} · {ev.productions?.title ?? ev.title}
                   </button>
                 )
               })
@@ -469,13 +467,8 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
                     >
                       {isConflict && <IconWarning size={10} className="text-red-500 shrink-0" />}
                       <span className="text-xs font-semibold truncate text-gray-900 shrink-0 max-w-[40%]">
-                        {ev.type ?? ev.title}
+                        {ev.productions?.title ?? ev.title}
                       </span>
-                      {ev.productions && (
-                        <span className="text-[10px] text-gray-600 truncate shrink min-w-0">
-                          · {ev.productions.title}
-                        </span>
-                      )}
                       <span className="text-[10px] text-gray-500 shrink-0 ml-auto pl-1">
                         {fmtTime(ev.start_time)}–{fmtTime(ev.end_time)}
                         {location ? ` · ${location}` : ''}
@@ -1015,17 +1008,15 @@ export default function CalendarPage() {
                             className={`w-full text-left rounded-xl p-3 transition-opacity hover:opacity-80 ${isConflicting ? 'bg-red-50 border border-red-200' : style.pill}`}
                           >
                             <div className="flex items-start justify-between gap-1">
-                              <p className="text-xs font-semibold">{ev.type ?? ev.title}</p>
+                              <p className="text-xs font-semibold">{ev.productions?.title ?? ev.title}</p>
                               {isConflicting && <span className="shrink-0"><IconWarning size={12} className="text-red-500" /></span>}
                             </div>
-                            {ev.type && ev.title !== ev.type && <p className="text-[10px] opacity-60 mt-0.5">{ev.title}</p>}
                             <p className="text-[10px] opacity-70 mt-0.5">
                               {new Date(ev.start_time).toLocaleTimeString(localeStr, { hour: '2-digit', minute: '2-digit' })}
                               {' – '}
                               {new Date(ev.end_time).toLocaleTimeString(localeStr, { hour: '2-digit', minute: '2-digit' })}
                               {ev.rooms && ` · ${ev.rooms.name}`}
                             </p>
-                            {ev.productions && <div className="flex items-center gap-1 text-[10px] opacity-60 mt-0.5"><IconTheatre size={10} /><span>{ev.productions.title}</span></div>}
                             {ev.event_artists.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-1.5">
                                 {ev.event_artists.map(ea => (

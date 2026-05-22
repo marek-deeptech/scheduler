@@ -87,14 +87,20 @@ export default function ActorCalendarPage() {
   const today = new Date()
   const [viewYear,  setViewYear]  = useState(today.getFullYear())
   const [viewMonth, setViewMonth] = useState(today.getMonth())
-  const [events,       setEvents]       = useState<DayEvent[]>([])
-  const [statuses,     setStatuses]     = useState<DayStatus[]>([])
-  const [prods,        setProds]        = useState<Production[]>([])
-  const [globalStatus, setGlobalStatus] = useState<string | null>(null)
-  const [selected,     setSelected]     = useState<string | null>(null)
-  const [saving,       setSaving]       = useState(false)
-  const [noteInput,    setNoteInput]    = useState('')
-  const [loading,      setLoading]      = useState(true)
+  const [events,        setEvents]        = useState<DayEvent[]>([])
+  const [statuses,      setStatuses]      = useState<DayStatus[]>([])
+  const [prods,         setProds]         = useState<Production[]>([])
+  const [globalStatus,  setGlobalStatus]  = useState<string | null>(null)
+  const [selected,      setSelected]      = useState<string | null>(null)
+  const [saving,        setSaving]        = useState(false)
+  const [saveError,     setSaveError]     = useState<string | null>(null)
+  const [noteInput,     setNoteInput]     = useState('')
+  const [loading,       setLoading]       = useState(true)
+  // Pending (unsaved) changes: dateStr → status
+  const [pending,       setPending]       = useState<Record<string, string>>({})
+  // Multi-select
+  const [multiMode,     setMultiMode]     = useState(false)
+  const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set())
 
   // Redirect if no actor selected
   useEffect(() => {
@@ -196,52 +202,129 @@ export default function ActorCalendarPage() {
     return statuses.find(s => s.date === dateStr)
   }
 
+  function toggleMultiDate(dateStr: string) {
+    setMultiSelected(prev => {
+      const next = new Set(prev)
+      next.has(dateStr) ? next.delete(dateStr) : next.add(dateStr)
+      return next
+    })
+  }
+
+  function exitMultiMode() {
+    setMultiMode(false)
+    setMultiSelected(new Set())
+  }
+
+  // Multi-select: save immediately with delete → insert
+  async function applyStatusToSelected(status: string) {
+    if (!actorId || multiSelected.size === 0) return
+    setSaving(true)
+    setSaveError(null)
+    const dates = Array.from(multiSelected)
+
+    const { error: delErr } = await supabase
+      .from('actor_day_status')
+      .delete()
+      .eq('artist_id', actorId)
+      .in('date', dates)
+
+    if (delErr) { setSaveError('Błąd zapisu: ' + delErr.message); setSaving(false); return }
+
+    const { error: insErr } = await supabase
+      .from('actor_day_status')
+      .insert(dates.map(date => ({ artist_id: actorId, date, status, note: null })))
+
+    if (!insErr) {
+      setStatuses(prev => {
+        const dateSet = new Set(dates)
+        const filtered = prev.filter(s => !dateSet.has(s.date))
+        return [...filtered, ...dates.map(date => ({ date, status, note: null }))]
+      })
+      setPending(prev => {
+        const next = { ...prev }
+        dates.forEach(d => delete next[d])
+        return next
+      })
+    } else {
+      setSaveError('Błąd zapisu: ' + insErr.message)
+    }
+    setSaving(false)
+    exitMultiMode()
+  }
+
   function getEventsForDate(dateStr: string): DayEvent[] {
     return events.filter(e => e.start_time.slice(0, 10) === dateStr)
   }
 
-  async function setDayStatus(dateStr: string, status: string) {
-    if (!actorId) return
-    setSaving(true)
-    const existing = getStatusForDate(dateStr)
-    if (existing) {
-      await supabase
-        .from('actor_day_status')
-        .update({ status, note: existing.note })
-        .eq('artist_id', actorId)
-        .eq('date', dateStr)
-    } else {
-      await supabase
-        .from('actor_day_status')
-        .insert({ artist_id: actorId, date: dateStr, status, note: null })
-    }
-    setStatuses(prev => {
-      const filtered = prev.filter(s => s.date !== dateStr)
-      return [...filtered, { date: dateStr, status, note: existing?.note ?? null }]
-    })
-    setSaving(false)
+  // Mark a day's status locally (not saved yet)
+  function markDayStatus(dateStr: string, status: string) {
+    setPending(prev => ({ ...prev, [dateStr]: status }))
   }
 
-  async function saveNote(dateStr: string, note: string) {
+  // Effective status for a date: pending overrides saved
+  function effectiveStatus(dateStr: string): DayStatus | undefined {
+    if (pending[dateStr] !== undefined) {
+      const saved = getStatusForDate(dateStr)
+      return { date: dateStr, status: pending[dateStr], note: saved?.note ?? null }
+    }
+    return getStatusForDate(dateStr)
+  }
+
+  // Save all pending changes + note to Supabase (delete → insert to avoid upsert issues)
+  async function saveAll() {
     if (!actorId) return
     setSaving(true)
-    const existing = getStatusForDate(dateStr)
-    const status = existing?.status ?? 'Dostępny'
-    if (existing) {
-      await supabase
-        .from('actor_day_status')
-        .update({ note: note || null })
-        .eq('artist_id', actorId)
-        .eq('date', dateStr)
-    } else {
-      await supabase
-        .from('actor_day_status')
-        .insert({ artist_id: actorId, date: dateStr, status, note: note || null })
+    setSaveError(null)
+
+    // Build full set of changes: pending statuses + note for selected day
+    const toSave: { date: string; status: string; note: string | null }[] = []
+
+    const pendingEntries = Object.entries(pending)
+    for (const [date, status] of pendingEntries) {
+      const isSelected = date === selected
+      toSave.push({
+        date,
+        status,
+        note: isSelected ? (noteInput || null) : (getStatusForDate(date)?.note ?? null),
+      })
     }
-    setStatuses(prev => {
-      const filtered = prev.filter(s => s.date !== dateStr)
-      return [...filtered, { date: dateStr, status, note: note || null }]
-    })
+
+    // If selected day has no pending status change but has a note change, add it too
+    if (selected && !pending[selected]) {
+      const existingSt = getStatusForDate(selected)
+      if (existingSt) {
+        toSave.push({ date: selected, status: existingSt.status, note: noteInput || null })
+      }
+    }
+
+    if (toSave.length > 0) {
+      const dates = toSave.map(r => r.date)
+
+      // Delete existing rows for these dates first
+      const { error: delErr } = await supabase
+        .from('actor_day_status')
+        .delete()
+        .eq('artist_id', actorId)
+        .in('date', dates)
+
+      if (delErr) { setSaveError('Błąd zapisu: ' + delErr.message); setSaving(false); return }
+
+      // Insert fresh rows
+      const { error: insErr } = await supabase
+        .from('actor_day_status')
+        .insert(toSave.map(r => ({ artist_id: actorId, date: r.date, status: r.status, note: r.note })))
+
+      if (insErr) { setSaveError('Błąd zapisu: ' + insErr.message); setSaving(false); return }
+
+      // Update local state
+      setStatuses(prev => {
+        const dateSet = new Set(dates)
+        const filtered = prev.filter(s => !dateSet.has(s.date))
+        return [...filtered, ...toSave]
+      })
+      setPending({})
+    }
+
     setSaving(false)
   }
 
@@ -275,7 +358,17 @@ export default function ActorCalendarPage() {
               <h1 className="text-xl font-bold text-gray-900">Mój Kalendarz</h1>
               <p className="text-xs text-gray-500 mt-0.5">{actorName}</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setMultiMode(v => !v); setMultiSelected(new Set()) }}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                  multiMode
+                    ? 'bg-gray-900 text-white border-gray-900'
+                    : 'text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                {multiMode ? `Zaznaczono ${multiSelected.size}` : 'Zaznacz wiele'}
+              </button>
               <button onClick={prevMonth} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">‹</button>
               <span className="text-sm font-semibold text-gray-800 min-w-[130px] text-center">
                 {MONTHS_PL[viewMonth]} {viewYear}
@@ -301,6 +394,30 @@ export default function ActorCalendarPage() {
           </div>
         </div>
 
+        {/* Unsaved changes banner */}
+        {(Object.keys(pending).length > 0 && !selected) && (
+          <div className="px-8 py-2 bg-amber-50 border-b border-amber-200 flex items-center justify-between shrink-0">
+            <span className="text-xs font-medium text-amber-700">
+              Niezapisane zmiany: {Object.keys(pending).length} {Object.keys(pending).length === 1 ? 'dzień' : 'dni'}
+            </span>
+            <button
+              onClick={saveAll}
+              disabled={saving}
+              className="px-4 py-1.5 text-xs font-semibold bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors"
+            >
+              {saving ? 'Zapisywanie…' : 'Zapisz'}
+            </button>
+          </div>
+        )}
+
+        {/* Save error */}
+        {saveError && (
+          <div className="px-8 py-2 bg-red-50 border-b border-red-200 flex items-center justify-between shrink-0">
+            <span className="text-xs text-red-600 font-medium">{saveError}</span>
+            <button onClick={() => setSaveError(null)} className="text-xs text-red-400 hover:text-red-600 ml-3">✕</button>
+          </div>
+        )}
+
         {/* Calendar grid */}
         <div className="flex-1 overflow-y-auto px-8 py-4">
           {loading ? (
@@ -320,24 +437,43 @@ export default function ActorCalendarPage() {
                   if (!day) return <div key={`pad-${i}`} />
                   const dateStr  = toDateStr(day)
                   const isToday  = dateStr === todayStr
-                  const isSel    = dateStr === selected
-                  const dayEvs   = getEventsForDate(dateStr)
-                  const daySt    = getStatusForDate(dateStr)
-                  const stDef    = DAY_STATUSES.find(s => s.value === daySt?.status)
+                  const isSel      = !multiMode && dateStr === selected
+                  const isMultiSel = multiMode && multiSelected.has(dateStr)
+                  const dayEvs     = getEventsForDate(dateStr)
+                  const daySt      = effectiveStatus(dateStr)
+                  const isPending  = pending[dateStr] !== undefined
+                  const stDef      = DAY_STATUSES.find(s => s.value === daySt?.status)
 
                   return (
                     <button
                       key={dateStr}
                       onClick={() => {
-                        setSelected(isSel ? null : dateStr)
-                        setNoteInput(getStatusForDate(dateStr)?.note ?? '')
+                        if (multiMode) {
+                          toggleMultiDate(dateStr)
+                        } else {
+                          setSelected(isSel ? null : dateStr)
+                          setNoteInput(getStatusForDate(dateStr)?.note ?? '')
+                        }
                       }}
                       className={`relative p-1.5 rounded-xl border text-left transition-all min-h-[72px] flex flex-col ${
-                        isSel
+                        isMultiSel
+                          ? 'border-gray-900 ring-2 ring-gray-900 bg-gray-50'
+                          : isSel
                           ? 'border-gray-900 ring-1 ring-gray-900 bg-white'
                           : 'border-gray-100 hover:border-gray-300 bg-white hover:bg-gray-50'
                       }`}
                     >
+                      {/* Multi-select checkmark */}
+                      {multiMode && (
+                        <span className={`absolute top-1 right-1 w-4 h-4 rounded-full border-2 flex items-center justify-center text-[9px] font-bold transition-colors ${
+                          isMultiSel
+                            ? 'bg-gray-900 border-gray-900 text-white'
+                            : 'border-gray-300 bg-white'
+                        }`}>
+                          {isMultiSel ? '✓' : ''}
+                        </span>
+                      )}
+
                       {/* Date number */}
                       <span className={`text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full mb-1 ${
                         isToday ? 'bg-gray-900 text-white' : 'text-gray-700'
@@ -347,8 +483,8 @@ export default function ActorCalendarPage() {
 
                       {/* Status dot */}
                       {daySt && (
-                        <span className={`w-full text-[9px] font-bold px-1 py-0.5 rounded-md text-center mb-0.5 ${stDef?.cls ?? 'bg-gray-100 text-gray-600'}`}>
-                          {DAY_STATUSES.find(s => s.value === daySt.status)?.icon ?? '?'}
+                        <span className={`w-full text-[9px] font-bold px-1 py-0.5 rounded-md text-center mb-0.5 ${stDef?.cls ?? 'bg-gray-100 text-gray-600'} ${isPending ? 'opacity-60' : ''}`}>
+                          {isPending && '● '}{DAY_STATUSES.find(s => s.value === daySt.status)?.icon ?? '?'}
                         </span>
                       )}
 
@@ -373,11 +509,48 @@ export default function ActorCalendarPage() {
       </div>
 
       {/* ── Right: day detail panel ───────────────────────────────────────── */}
-      <div className={`shrink-0 w-72 border-l border-gray-200 bg-white transition-all duration-200 overflow-hidden flex flex-col ${selected ? '' : 'hidden'}`}>
-        {selected && (() => {
+      <div className={`shrink-0 w-72 border-l border-gray-200 bg-white transition-all duration-200 overflow-hidden flex flex-col ${selected || multiMode ? '' : 'hidden'}`}>
+
+        {/* ── Multi-select panel ── */}
+        {multiMode && (
+          <>
+            <div className="px-5 py-4 border-b border-gray-100 shrink-0">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-gray-900">
+                  {multiSelected.size > 0 ? `${multiSelected.size} ${multiSelected.size === 1 ? 'dzień' : 'dni'}` : 'Zaznacz dni'}
+                </h3>
+                <button onClick={exitMultiMode} className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500">×</button>
+              </div>
+              {multiSelected.size === 0 && (
+                <p className="text-xs text-gray-400 mt-1">Kliknij dni w kalendarzu, żeby je zaznaczyć</p>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Ustaw status dla zaznaczonych</p>
+              <div className="flex flex-col gap-1">
+                {DAY_STATUSES.map(opt => (
+                  <button
+                    key={opt.value}
+                    disabled={saving || multiSelected.size === 0}
+                    onClick={() => applyStatusToSelected(opt.value)}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 transition-all text-xs font-semibold disabled:opacity-40 ${opt.cls} border-transparent`}
+                  >
+                    <span className="w-2 h-2 rounded-full shrink-0 bg-white/70" />
+                    {opt.value}
+                  </button>
+                ))}
+              </div>
+              {saveError && <p className="mt-3 text-xs text-red-600 font-medium">{saveError}</p>}
+            </div>
+          </>
+        )}
+
+        {/* ── Single-day panel ── */}
+        {!multiMode && selected && (() => {
           const d = new Date(selected + 'T12:00:00')
           const dayLabel = `${DAYS_PL[(d.getDay() + 6) % 7]}, ${d.getDate()} ${MONTHS_PL[d.getMonth()]}`
-          const daySt    = getStatusForDate(selected)
+          const daySt    = effectiveStatus(selected)
+          const hasPendingChanges = Object.keys(pending).length > 0
 
           return (
             <>
@@ -399,7 +572,7 @@ export default function ActorCalendarPage() {
                       <button
                         key={opt.value}
                         disabled={saving}
-                        onClick={() => setDayStatus(selected, opt.value)}
+                        onClick={() => markDayStatus(selected, opt.value)}
                         className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 transition-all text-xs font-semibold ${
                           daySt?.status === opt.value
                             ? `${opt.cls} border-transparent`
@@ -410,12 +583,13 @@ export default function ActorCalendarPage() {
                         {opt.value}
                       </button>
                     ))}
-                    {daySt && (
+                    {(daySt || pending[selected]) && (
                       <button
                         onClick={async () => {
                           if (!actorId) return
                           await supabase.from('actor_day_status').delete().eq('artist_id', actorId).eq('date', selected)
                           setStatuses(prev => prev.filter(s => s.date !== selected))
+                          setPending(prev => { const n = { ...prev }; delete n[selected]; return n })
                         }}
                         className="text-xs text-gray-400 hover:text-red-500 text-center transition-colors mt-1"
                       >
@@ -436,12 +610,15 @@ export default function ActorCalendarPage() {
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-900"
                   />
                   <button
-                    onClick={() => saveNote(selected, noteInput)}
+                    onClick={saveAll}
                     disabled={saving}
-                    className="mt-2 w-full py-2 text-xs font-semibold bg-gray-900 text-white rounded-xl hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                    className="mt-2 w-full py-2.5 text-sm font-semibold bg-gray-900 text-white rounded-xl hover:bg-gray-700 disabled:opacity-50 transition-colors"
                   >
-                    {saving ? 'Zapisywanie…' : 'Zapisz notatkę'}
+                    {saving ? 'Zapisywanie…' : `Zapisz${hasPendingChanges ? ` (${Object.keys(pending).length + 1})` : ''}`}
                   </button>
+                  {saveError && (
+                    <p className="mt-2 text-xs text-red-600 font-medium">{saveError}</p>
+                  )}
                 </div>
 
                 {/* Events */}

@@ -154,6 +154,15 @@ export default function DashboardPage() {
   const [niedostList,   setNiedostList]   = useState<ArtistRow[]>([])
   const [techToday,     setTechToday]     = useState<TechRow[]>([])
   const [nextPremiere,  setNextPremiere]  = useState<EventRow | null>(null)
+  // New stat tiles
+  const [notConfirmedCount, setNotConfirmedCount] = useState(0)
+  const [notConfirmedNames, setNotConfirmedNames] = useState<string[]>([])
+  const [showsNMCount,      setShowsNMCount]      = useState(0)
+  const [showsNMList,       setShowsNMList]       = useState<EventRow[]>([])
+  const [showsM2Count,      setShowsM2Count]      = useState(0)
+  const [showsM2List,       setShowsM2List]       = useState<EventRow[]>([])
+  const [vacNextCount,      setVacNextCount]      = useState(0)
+  const [vacNextNames,      setVacNextNames]      = useState<string[]>([])
 
   useEffect(() => { fetchAll() }, [selectedTheatreId])
 
@@ -165,6 +174,16 @@ export default function DashboardPage() {
     const nowTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
 
     const evSel = 'id, title, start_time, end_time, location, type, room_id, theatre_id, productions(title), event_artists(artist_id)'
+
+    // Next-month and month+2 date ranges
+    const nmStart = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    const nmEnd   = new Date(now.getFullYear(), now.getMonth() + 2, 0)
+    const m2Start = new Date(now.getFullYear(), now.getMonth() + 2, 1)
+    const m2End   = new Date(now.getFullYear(), now.getMonth() + 3, 0)
+    const nmStartStr = localDate(nmStart)
+    const nmEndStr   = localDate(nmEnd)
+    const m2StartStr = localDate(m2Start)
+    const m2EndStr   = localDate(m2End)
 
     // All event queries filtered by theatre when selected
     let todayQ = supabase.from('events').select(evSel)
@@ -181,6 +200,18 @@ export default function DashboardPage() {
     let conflictQ = supabase.from('events').select(evSel)
       .gte('start_time', `${today}T00:00:00`)
       .lt('start_time', `${localDate(addDays(now, 30))}T00:00:00`)
+    // Shows next month
+    let showsNMQ = supabase.from('events').select(evSel)
+      .in('type', Array.from(SHOW_TYPES))
+      .gte('start_time', `${nmStartStr}T00:00:00`)
+      .lte('start_time', `${nmEndStr}T23:59:59`)
+      .order('start_time')
+    // Shows month+2
+    let showsM2Q = supabase.from('events').select(evSel)
+      .in('type', Array.from(SHOW_TYPES))
+      .gte('start_time', `${m2StartStr}T00:00:00`)
+      .lte('start_time', `${m2EndStr}T23:59:59`)
+      .order('start_time')
 
     if (selectedTheatreId) {
       todayQ    = todayQ.eq('theatre_id', selectedTheatreId)
@@ -188,6 +219,8 @@ export default function DashboardPage() {
       upcomQ    = upcomQ.eq('theatre_id', selectedTheatreId)
       premiereQ = premiereQ.eq('theatre_id', selectedTheatreId)
       conflictQ = conflictQ.eq('theatre_id', selectedTheatreId)
+      showsNMQ  = showsNMQ.eq('theatre_id', selectedTheatreId)
+      showsM2Q  = showsM2Q.eq('theatre_id', selectedTheatreId)
     }
 
     let prodQ = supabase.from('productions').select('id, title, status')
@@ -212,6 +245,10 @@ export default function DashboardPage() {
       { data: roomsData },
       { data: theatresData },
       { data: avData },
+      { data: showsNMData },
+      { data: showsM2Data },
+      { data: unconfData },
+      { data: vacNMData },
     ] = await Promise.all([
       // artist_productions included so we can scope artists to the selected theatre
       supabase.from('artists').select('id, name, status, role, teams(name), artist_productions(productions(theatre_id))'),
@@ -221,6 +258,19 @@ export default function DashboardPage() {
       supabase.from('rooms').select('id, name').order('name'),
       supabase.from('theatres').select('id, name').order('name'),
       availQ,
+      showsNMQ,
+      showsM2Q,
+      // Pending event confirmations for upcoming events
+      supabase.from('event_confirmations')
+        .select('artist_id, events!inner(start_time)')
+        .eq('status', 'pending')
+        .gte('events.start_time', `${today}T00:00:00`),
+      // Actor vacation days in next month
+      supabase.from('actor_day_status')
+        .select('artist_id')
+        .eq('status', 'Urlop')
+        .gte('date', nmStartStr)
+        .lte('date', nmEndStr),
     ])
 
     const allArtistsRaw = (artistData ?? []) as any[]
@@ -276,6 +326,25 @@ export default function DashboardPage() {
     setUrlopList(urlop)
     setNiedostList(niedostepni)
     setArtistAvails(avData ?? [])
+
+    // Shows next month / month+2
+    const nmShows = (showsNMData ?? []).map(mapEvent)
+    const m2Shows = (showsM2Data ?? []).map(mapEvent)
+    setShowsNMCount(nmShows.length)
+    setShowsNMList(nmShows)
+    setShowsM2Count(m2Shows.length)
+    setShowsM2List(m2Shows)
+
+    // Not confirmed: unique artists with pending confirmations for upcoming events
+    const unconfArtistIds = [...new Set((unconfData ?? []).map((r: any) => r.artist_id))]
+    const allArtistsMap = new Map(allArtistsRaw.map((a: any) => [a.id, a.name as string]))
+    setNotConfirmedCount(unconfArtistIds.length)
+    setNotConfirmedNames(unconfArtistIds.map(id => allArtistsMap.get(id) ?? id).filter(Boolean))
+
+    // Vacations next month: unique artists
+    const vacArtistIds = [...new Set((vacNMData ?? []).map((r: any) => r.artist_id))]
+    setVacNextCount(vacArtistIds.length)
+    setVacNextNames(vacArtistIds.map(id => allArtistsMap.get(id) ?? id).filter(Boolean))
 
     if (techTeam?.id) {
       const { data: techArtists } = await supabase
@@ -446,29 +515,83 @@ export default function DashboardPage() {
     )
   }
 
+  /* ── Month labels for new tiles ── */
+  const nmMonthLabel = MONTHS_PL[new Date(now.getFullYear(), now.getMonth() + 1, 1).getMonth()]
+  const m2MonthLabel = MONTHS_PL[new Date(now.getFullYear(), now.getMonth() + 2, 1).getMonth()]
+
+  /* ── Tooltip content for new tiles ── */
+  const notConfirmedTip = (
+    <>
+      <TipHeader>Nie potwierdzili</TipHeader>
+      {notConfirmedNames.length === 0
+        ? <TipEmpty text="Wszyscy potwierdzili" />
+        : notConfirmedNames.map(name => <TipRow key={name} label={name} dot="bg-orange-400" />)
+      }
+      <span className="block pb-1" />
+    </>
+  )
+
+  function showsMonthTip(list: EventRow[], label: string) {
+    return (
+      <>
+        <TipHeader>Spektakle – {label}</TipHeader>
+        {list.length === 0
+          ? <TipEmpty text="Brak spektakli" />
+          : list.map(e => (
+              <TipRow key={e.id}
+                label={e.production_title ?? e.title}
+                sub={new Date(e.start_time).toLocaleDateString(localeStr, { day: 'numeric', month: 'short' }) + ' · ' + fmtTime(e.start_time, localeStr)}
+                dot="bg-indigo-400" />
+            ))
+        }
+        <span className="block pb-1" />
+      </>
+    )
+  }
+
+  const vacNextTip = (
+    <>
+      <TipHeader>Urlopy – {nmMonthLabel}</TipHeader>
+      {vacNextNames.length === 0
+        ? <TipEmpty text="Brak urlopów" />
+        : vacNextNames.map(name => <TipRow key={name} label={name} dot="bg-amber-400" />)
+      }
+      <span className="block pb-1" />
+    </>
+  )
+
   /* ── Stat cards config ── */
   const statCards = [
-    {
-      label: td.statArtists, value: artistCount,
-      sub: td.unavailableSub(unavailList.length), warn: unavailList.length > 0,
-      tip: unavailTip, tipAlign: 'left' as const,
-    },
-    {
-      label: td.statRehearsals, value: weekEvCount,
-      sub: td.showsSub(weekShows.length), warn: false,
-      tip: showsTip, tipAlign: 'left' as const,
-    },
-    {
-      label: td.statProductions, value: activeProd,
-      sub: td.inPrepSub(inPrepList.length), warn: false,
-      tip: inPrepTip, tipAlign: 'left' as const,
-    },
     {
       label: td.statConflicts, value: conflictPairs.length,
       sub: conflictPairs.length > 0 ? td.statConflictsClickHint : td.statConflictsNone,
       warn: conflictPairs.length > 0,
-      tip: conflictTip, tipAlign: 'right' as const,
+      tip: conflictTip, tipAlign: 'left' as const,
       onClick: conflictPairs.length > 0 ? () => setShowConflictPanel(true) : undefined,
+    },
+    {
+      label: 'Nie potwierdzili', value: notConfirmedCount,
+      sub: notConfirmedCount > 0 ? 'oczekuje na odpowiedź' : 'wszyscy potwierdzili',
+      warn: notConfirmedCount > 0,
+      tip: notConfirmedTip, tipAlign: 'left' as const,
+    },
+    {
+      label: `Spektakle – ${nmMonthLabel}`, value: showsNMCount,
+      sub: showsNMCount > 0 ? `${showsNMCount} spektakli` : 'brak',
+      warn: false,
+      tip: showsMonthTip(showsNMList, nmMonthLabel), tipAlign: 'left' as const,
+    },
+    {
+      label: `Spektakle – ${m2MonthLabel}`, value: showsM2Count,
+      sub: showsM2Count > 0 ? `${showsM2Count} spektakli` : 'brak',
+      warn: false,
+      tip: showsMonthTip(showsM2List, m2MonthLabel), tipAlign: 'right' as const,
+    },
+    {
+      label: `Urlopy – ${nmMonthLabel}`, value: vacNextCount,
+      sub: vacNextCount > 0 ? `${vacNextCount} aktorów` : 'brak urlopów',
+      warn: false,
+      tip: vacNextTip, tipAlign: 'right' as const,
     },
   ]
 
@@ -502,7 +625,7 @@ export default function DashboardPage() {
     <div className="max-w-7xl mx-auto space-y-5">
 
       {/* ── Stat cards ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {statCards.map(s => (
           <div
             key={s.label}
