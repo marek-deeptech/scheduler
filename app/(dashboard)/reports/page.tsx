@@ -129,6 +129,9 @@ export default function ReportsPage() {
   const [avails,      setAvails]      = useState<AvailRow[]>([])
   const [productions, setProductions] = useState<ProdMeta[]>([])
   const [loading,     setLoading]     = useState(true)
+  const [eventsM1,    setEventsM1]    = useState<EventRow[]>([])
+  const [eventsM2,    setEventsM2]    = useState<EventRow[]>([])
+  const [workloadSort, setWorkloadSort] = useState<'hours' | 'absence'>('hours')
 
   const today = localDate(new Date())
 
@@ -151,11 +154,32 @@ export default function ReportsPage() {
       .select('id,title,status,theatre_id,theatres(name)')
     if (selectedTheatreId) prodQ = prodQ.eq('theatre_id', selectedTheatreId)
 
+    // Previous 2 months for hours columns
+    const now2 = new Date()
+    const m1Start = new Date(now2.getFullYear(), now2.getMonth() - 1, 1)
+    const m1End   = new Date(now2.getFullYear(), now2.getMonth(),     0)
+    const m2Start = new Date(now2.getFullYear(), now2.getMonth() - 2, 1)
+    const m2End   = new Date(now2.getFullYear(), now2.getMonth() - 1, 0)
+
+    const histSel = 'id,type,start_time,end_time,theatre_id,event_artists(artist_id)'
+    let histM1Q = supabase.from('events').select(histSel)
+      .gte('start_time', `${localDate(m1Start)}T00:00:00`)
+      .lte('start_time', `${localDate(m1End)}T23:59:59`)
+    let histM2Q = supabase.from('events').select(histSel)
+      .gte('start_time', `${localDate(m2Start)}T00:00:00`)
+      .lte('start_time', `${localDate(m2End)}T23:59:59`)
+    if (selectedTheatreId) {
+      histM1Q = histM1Q.eq('theatre_id', selectedTheatreId)
+      histM2Q = histM2Q.eq('theatre_id', selectedTheatreId)
+    }
+
     const [
       { data: evData },
       { data: artData },
       { data: avData },
       { data: prodData },
+      { data: histM1Data },
+      { data: histM2Data },
     ] = await Promise.all([
       evQ,
       supabase.from('artists').select('id,name,status').order('name'),
@@ -163,11 +187,15 @@ export default function ReportsPage() {
         .lte('start_time', `${end}T23:59:59`)
         .gte('end_time',   `${start}T00:00:00`),
       prodQ,
+      histM1Q,
+      histM2Q,
     ])
 
     setEvents((evData ?? []) as unknown as EventRow[])
     setArtists((artData ?? []) as ArtistRow[])
     setAvails(avData ?? [])
+    setEventsM1((histM1Data ?? []) as unknown as EventRow[])
+    setEventsM2((histM2Data ?? []) as unknown as EventRow[])
     setProductions(
       ((prodData ?? []) as unknown as { id: string; title: string; status: string | null; theatres: { name: string } | null }[])
         .map(p => ({
@@ -320,11 +348,36 @@ export default function ReportsPage() {
       map[av.artist_id].absenceDays += days
     }
 
-    return Object.values(map)
-      .map(a => ({ ...a, prodCount: a.prodIds.size }))
-      .filter(a => a.eventCount > 0 || a.absenceDays > 0)
-      .sort((a, b) => b.eventCount - a.eventCount)
-  }, [events, artists, avails, period])
+    // Hours per artist for months -1 and -2
+    const hoursM1: Record<string, number> = {}
+    const hoursM2: Record<string, number> = {}
+    for (const ev of eventsM1.filter(e => SHOW_TYPES.has(e.type ?? ''))) {
+      const h = hours(ev.start_time, ev.end_time)
+      for (const ea of ev.event_artists) {
+        hoursM1[ea.artist_id] = (hoursM1[ea.artist_id] ?? 0) + h
+      }
+    }
+    for (const ev of eventsM2.filter(e => SHOW_TYPES.has(e.type ?? ''))) {
+      const h = hours(ev.start_time, ev.end_time)
+      for (const ea of ev.event_artists) {
+        hoursM2[ea.artist_id] = (hoursM2[ea.artist_id] ?? 0) + h
+      }
+    }
+
+    const rows = Object.values(map).map(a => ({
+      ...a,
+      prodCount: a.prodIds.size,
+      hoursM1: hoursM1[a.id] ?? 0,
+      hoursM2: hoursM2[a.id] ?? 0,
+    }))
+
+    if (workloadSort === 'absence') {
+      rows.sort((a, b) => b.absenceDays - a.absenceDays || (b.hoursM1 + b.hoursM2) - (a.hoursM1 + a.hoursM2))
+    } else {
+      rows.sort((a, b) => (b.hoursM1 + b.hoursM2) - (a.hoursM1 + a.hoursM2) || b.absenceDays - a.absenceDays)
+    }
+    return rows
+  }, [events, artists, avails, period, eventsM1, eventsM2, workloadSort])
 
   const absenceList = useMemo(() => {
     return avails
@@ -559,7 +612,12 @@ export default function ReportsPage() {
       </div>
 
       {/* Artist workload table */}
-      {!loading && artistTable.length > 0 && (
+      {!loading && artistTable.length > 0 && (() => {
+        const MONTHS_PL = td.months
+        const nowR  = new Date()
+        const m1Lbl = MONTHS_PL[new Date(nowR.getFullYear(), nowR.getMonth() - 1, 1).getMonth()]
+        const m2Lbl = MONTHS_PL[new Date(nowR.getFullYear(), nowR.getMonth() - 2, 1).getMonth()]
+        return (
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <div>
@@ -573,37 +631,44 @@ export default function ReportsPage() {
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-8">{tr.colRank}</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colArtist}</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colEvents}</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colProductions}</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colAbsenceDays}</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider">
+                  <button
+                    onClick={() => setWorkloadSort(s => s === 'absence' ? 'hours' : 'absence')}
+                    className={`flex items-center gap-1 mx-auto transition-colors ${workloadSort === 'absence' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
+                  >
+                    {tr.colAbsenceDays}
+                    <span className="text-[10px]">{workloadSort === 'absence' ? '↓' : '↕'}</span>
+                  </button>
+                </th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <span className={`flex items-center gap-1 mx-auto ${workloadSort === 'hours' ? 'text-gray-900' : 'text-gray-500'}`}>
+                    Godz. {m1Lbl} {workloadSort === 'hours' && <span className="text-[10px]">↓</span>}
+                  </span>
+                </th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Godz. {m2Lbl}</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colStatus}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {artistTable.map((a, i) => {
                 const statusColors: Record<string, string> = {
-                  'Aktywny':    'bg-green-100 text-green-700',
-                  'Na urlopie': 'bg-amber-100 text-amber-700',
-                  'Choroba':    'bg-red-100 text-red-600',
-                  'Nieaktywny': 'bg-gray-100 text-gray-500',
+                  'Dostępny':                   'bg-green-600 text-white',
+                  'Dostępny tylko w Warszawie': 'bg-emerald-900 text-white',
+                  'Niepewny':                   'bg-orange-500 text-white',
+                  'Niedostępny':                'bg-red-600 text-white',
+                  'Urlop':                      'bg-amber-400 text-black',
+                  'Choroba':                    'bg-gray-900 text-white',
                 }
                 const sc = statusColors[a.status ?? ''] ?? 'bg-gray-100 text-gray-500'
-                // workload bar: width relative to max eventCount
                 const maxEvents = artistTable[0]?.eventCount ?? 1
                 const pct = Math.round((a.eventCount / maxEvents) * 100)
+                const fmtH = (h: number) => h === 0 ? '—' : Number.isInteger(h) ? `${h}h` : `${h.toFixed(1)}h`
                 return (
                   <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-6 py-3 text-xs text-gray-500 font-medium">{i + 1}</td>
                     <td className="px-4 py-3">
                       <p className="font-semibold text-gray-900 text-sm">{a.name}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2 justify-center">
-                        <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-400 rounded-full" style={{ width: `${pct}%` }} />
-                        </div>
-                        <span className="text-sm font-bold text-gray-800 w-6 text-right">{a.eventCount}</span>
-                      </div>
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className="text-sm font-bold text-gray-800">{a.prodCount}</span>
@@ -614,6 +679,16 @@ export default function ReportsPage() {
                         : <span className="text-sm text-gray-500">—</span>
                       }
                     </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`text-sm font-bold ${a.hoursM1 > 0 ? 'text-indigo-600' : 'text-gray-400'}`}>
+                        {fmtH(a.hoursM1)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`text-sm font-bold ${a.hoursM2 > 0 ? 'text-indigo-400' : 'text-gray-400'}`}>
+                        {fmtH(a.hoursM2)}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${sc}`}>{a.status ?? '—'}</span>
                     </td>
@@ -623,7 +698,8 @@ export default function ReportsPage() {
             </tbody>
           </table>
         </div>
-      )}
+        )
+      })()}
 
       {/* Absences */}
       {!loading && absenceList.length > 0 && (

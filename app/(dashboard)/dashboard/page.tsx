@@ -903,31 +903,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Technika dziś */}
-          {techToday.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-2xl px-4 py-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">{td.techTodaySection}</h3>
-              <div className="space-y-2.5">
-                {techToday.map(m => (
-                  <div key={m.id} className="flex items-center gap-2.5">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${
-                      !m.status || m.status === 'Aktywny' ? 'bg-green-400' :
-                      m.status === 'Na urlopie'           ? 'bg-amber-400' : 'bg-red-400'
-                    }`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-800 truncate">{m.name}</p>
-                      {m.role && <p className="text-[10px] text-gray-500 truncate">{m.role}</p>}
-                    </div>
-                    {m.eventCount > 0 && (
-                      <span className="text-[11px] font-semibold text-gray-600 bg-gray-100 rounded-full px-2 py-0.5 shrink-0">
-                        {m.eventCount} zm.
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
         </div>
       </div>
