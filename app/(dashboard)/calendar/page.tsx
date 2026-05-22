@@ -68,7 +68,7 @@ const AVAIL_STYLE: Record<string, { pill: string; bg: string; icon: () => React.
 }
 
 const HOUR_START = 7
-const HOUR_END   = 23
+const HOUR_END   = 26   // 26 = 02:00 next day — covers late-night shows starting at 23:00
 const SLOT_H     = 56 // px per hour in week view
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -296,7 +296,9 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
   }, [])
 
   function isMultiDay(ev: EventRecord) {
-    return toDateStr(new Date(ev.start_time)) !== toDateStr(new Date(ev.end_time))
+    // Use UTC date strings (first 10 chars) so events crossing local midnight
+    // (e.g. 23:00–01:00) are NOT treated as multi-day
+    return ev.start_time.slice(0, 10) !== ev.end_time.slice(0, 10)
   }
 
   function evTop(ev: EventRecord) {
@@ -308,9 +310,12 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
   function evHeight(ev: EventRecord) {
     const start = new Date(ev.start_time)
     const end   = new Date(ev.end_time)
-    const sh = Math.max(HOUR_START, start.getHours() + start.getMinutes() / 60)
-    const eh = Math.min(HOUR_END,   end.getHours()   + end.getMinutes()   / 60)
-    return Math.max(22, (eh - sh) * SLOT_H)
+    const sh = start.getHours() + start.getMinutes() / 60
+    let   eh = end.getHours()   + end.getMinutes()   / 60
+    if (eh <= sh) eh += 24   // event crosses midnight — add 24 to end hour
+    const clampedSh = Math.max(HOUR_START, sh)
+    const clampedEh = Math.min(HOUR_END,   eh)
+    return Math.max(22, (clampedEh - clampedSh) * SLOT_H)
   }
 
   const multiDayByDay: Record<string, EventRecord[]> = {}
@@ -402,7 +407,7 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
                 style={{ top: (h - HOUR_START) * SLOT_H + 'px' }}
               >
                 <span className="text-[10px] text-gray-500 pr-2 w-full text-right leading-none pt-0.5">
-                  {h}:00
+                  {String(h % 24).padStart(2, '0')}:00
                 </span>
               </div>
             ))}
