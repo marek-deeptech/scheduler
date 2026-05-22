@@ -177,12 +177,17 @@ export default function DashboardPage() {
       .order('start_time').limit(15)
     let premiereQ = supabase.from('events').select(evSel)
       .eq('type', 'Premiera').gte('start_time', `${today}T00:00:00`).order('start_time').limit(1)
+    // Wider window for conflict detection — 30 days
+    let conflictQ = supabase.from('events').select(evSel)
+      .gte('start_time', `${today}T00:00:00`)
+      .lt('start_time', `${localDate(addDays(now, 30))}T00:00:00`)
 
     if (selectedTheatreId) {
       todayQ    = todayQ.eq('theatre_id', selectedTheatreId)
       weekQ     = weekQ.eq('theatre_id', selectedTheatreId)
       upcomQ    = upcomQ.eq('theatre_id', selectedTheatreId)
       premiereQ = premiereQ.eq('theatre_id', selectedTheatreId)
+      conflictQ = conflictQ.eq('theatre_id', selectedTheatreId)
     }
 
     let prodQ = supabase.from('productions').select('id, title, status')
@@ -202,6 +207,7 @@ export default function DashboardPage() {
       { data: weekEvData },
       { data: upcomData },
       { data: premiereData },
+      { data: conflictEvData },
       { data: techTeam },
       { data: roomsData },
       { data: theatresData },
@@ -210,7 +216,7 @@ export default function DashboardPage() {
       // artist_productions included so we can scope artists to the selected theatre
       supabase.from('artists').select('id, name, status, role, teams(name), artist_productions(productions(theatre_id))'),
       prodQ,
-      todayQ, weekQ, upcomQ, premiereQ,
+      todayQ, weekQ, upcomQ, premiereQ, conflictQ,
       supabase.from('teams').select('id').eq('name', 'Technique').single(),
       supabase.from('rooms').select('id, name').order('name'),
       supabase.from('theatres').select('id, name').order('name'),
@@ -251,7 +257,7 @@ export default function DashboardPage() {
     setAllArtistList(allArtistsRaw.map((a: any) => ({ id: a.id, name: a.name })))
 
     const weekEvs = (weekEvData ?? []).map(mapEvent)
-    const pairs   = buildConflicts(weekEvs, techArtistIds)
+    const pairs   = buildConflicts((conflictEvData ?? []).map(mapEvent), techArtistIds)
     setWeekEvCount(weekEvs.filter(e => !SHOW_TYPES.has(e.type ?? '')).length)
     setWeekShows(weekEvs.filter(e => SHOW_TYPES.has(e.type ?? '')))
     setConflictPairs(pairs)
