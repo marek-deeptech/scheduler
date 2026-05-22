@@ -98,6 +98,7 @@ export const EVENT_TYPE_CATEGORIES: Record<string, string[]> = {
     'Zebranie zespołu',
     'Spotkanie z widzami',
     'Warsztaty',
+    'Wyjazd',
   ],
 }
 
