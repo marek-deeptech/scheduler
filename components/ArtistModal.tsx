@@ -12,6 +12,8 @@ interface ArtistRecord {
   role: string | null
   status: string | null
   birth_date?: string | null
+  actor_type?: string | null
+  status_note?: string | null
   avatar_url?: string | null
 }
 
@@ -37,11 +39,12 @@ interface Props {
 }
 
 const STATUS_OPTIONS = [
-  'Aktywny',
-  'Na urlopie',
+  'Dostępny',
+  'Dostępny tylko w Warszawie',
+  'Niepewny',
+  'Niedostępny',
+  'Urlop',
   'Choroba',
-  'Nieaktywny',
-  'Kontrakt zakończony',
 ]
 
 const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white'
@@ -62,12 +65,14 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
   const isEdit = !!artist
 
   const [form, setForm] = useState({
-    name:       artist?.name       ?? '',
-    email:      artist?.email      ?? '',
-    phone:      artist?.phone      ?? '',
-    role:       artist?.role       ?? '',
-    status:     artist?.status     ?? 'Aktywny',
-    birth_date: artist?.birth_date ?? '',
+    name:        artist?.name        ?? '',
+    email:       artist?.email       ?? '',
+    phone:       artist?.phone       ?? '',
+    role:        artist?.role        ?? '',
+    status:      artist?.status      ?? 'Dostępny',
+    birth_date:  artist?.birth_date  ?? '',
+    actor_type:  artist?.actor_type  ?? '',
+    status_note: artist?.status_note ?? '',
   })
   const [assignedIds,  setAssignedIds]  = useState<string[]>([])
   const [vacations,    setVacations]    = useState<VacationRecord[]>([])
@@ -117,8 +122,8 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
 
     let newStatus: string | null = null
     if (activeToday?.type === 'Choroba')  newStatus = 'Choroba'
-    else if (activeToday?.type === 'Urlop') newStatus = 'Na urlopie'
-    else if (form.status === 'Choroba' || form.status === 'Na urlopie') newStatus = 'Aktywny'
+    else if (activeToday?.type === 'Urlop') newStatus = 'Urlop'
+    else if (form.status === 'Choroba' || form.status === 'Urlop') newStatus = 'Dostępny'
 
     if (newStatus && newStatus !== form.status) {
       await supabase.from('artists').update({ status: newStatus }).eq('id', artistId)
@@ -160,7 +165,7 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
     if (err) { setError(err.message); return false }
 
     // Auto-set status to match the availability type being added
-    const newStatus = type === 'Urlop' ? 'Na urlopie' : 'Choroba'
+    const newStatus = type === 'Urlop' ? 'Urlop' : 'Choroba'
     if (form.status !== newStatus) {
       await supabase.from('artists').update({ status: newStatus }).eq('id', artist.id)
       setForm(f => ({ ...f, status: newStatus }))
@@ -195,8 +200,8 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
       const end   = r.end_time.slice(0, 10)
       return today >= start && today <= end
     })
-    if (newStatus === 'Aktywny' && activeToday) {
-      setError('Uwaga: istnieje aktywny wpis (urlop lub choroba) na dziś. Usuń go, aby ustawić status Aktywny.')
+    if (newStatus === 'Dostępny' && activeToday) {
+      setError('Uwaga: istnieje aktywny wpis (urlop lub choroba) na dziś. Usuń go, aby ustawić status Dostępny.')
       return
     }
     setError(null)
@@ -241,13 +246,15 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
     setError(null)
 
     const payload: Record<string, unknown> = {
-      name:       form.name,
-      email:      form.email      || '',
-      phone:      form.phone      || null,
-      role:       form.role       || null,
-      status:     form.status     || null,
-      birth_date: form.birth_date || null,
-      avatar_url: avatarUrl       || null,
+      name:        form.name,
+      email:       form.email       || '',
+      phone:       form.phone       || null,
+      role:        form.role        || null,
+      status:      form.status      || null,
+      status_note: form.status === 'Niedostępny' ? (form.status_note || null) : null,
+      birth_date:  form.birth_date  || null,
+      actor_type:  form.actor_type  || null,
+      avatar_url:  avatarUrl        || null,
     }
     if (presetTeamId) payload.team_id = presetTeamId
 
@@ -374,7 +381,7 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
                 placeholder="+48 123 456 789"
               />
             </div>
-            <div>
+            <div className={form.status === 'Niedostępny' ? 'col-span-2' : ''}>
               <label className={labelCls}>{am.statusLabel}</label>
               <select
                 value={form.status}
@@ -383,6 +390,15 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
               >
                 {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
+              {form.status === 'Niedostępny' && (
+                <textarea
+                  rows={2}
+                  value={form.status_note}
+                  onChange={e => setForm(f => ({ ...f, status_note: e.target.value }))}
+                  placeholder="Powód niedostępności…"
+                  className="mt-2 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white resize-none"
+                />
+              )}
             </div>
             <div>
               <label className={labelCls}>{am.roleLabel}</label>
@@ -401,6 +417,19 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
                 onChange={e => setForm(f => ({ ...f, birth_date: e.target.value }))}
                 className={inputCls}
               />
+            </div>
+            <div>
+              <label className={labelCls}>Typ aktora</label>
+              <select
+                value={form.actor_type}
+                onChange={e => setForm(f => ({ ...f, actor_type: e.target.value }))}
+                className={inputCls}
+              >
+                <option value="">— brak —</option>
+                <option value="etatowy">Etatowy</option>
+                <option value="zewnętrzny">Zewnętrzny</option>
+                <option value="performer">Performer</option>
+              </select>
             </div>
           </div>
 

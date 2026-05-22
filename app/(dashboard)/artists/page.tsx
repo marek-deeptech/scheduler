@@ -16,6 +16,8 @@ interface ArtistRow {
   phone: string | null
   role: string | null
   status: string | null
+  status_note: string | null
+  actor_type: string | null
   avatar_url: string | null
   productionCount: number
 }
@@ -58,11 +60,28 @@ interface ProductionForModal { id: string; title: string; theatres?: { name: str
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUS_STYLE: Record<string, { badge: string; dot: string }> = {
-  'Aktywny':             { badge: 'bg-green-100 text-green-700',  dot: 'bg-green-400'  },
-  'Na urlopie':          { badge: 'bg-amber-100 text-amber-700',  dot: 'bg-amber-400'  },
-  'Choroba':             { badge: 'bg-red-100 text-red-600',      dot: 'bg-red-400'    },
-  'Nieaktywny':          { badge: 'bg-gray-100 text-gray-500',    dot: 'bg-gray-300'   },
-  'Kontrakt zakończony': { badge: 'bg-gray-100 text-gray-500',    dot: 'bg-gray-200'   },
+  'Dostępny':                   { badge: 'bg-green-600 text-white',        dot: 'bg-green-500'   },
+  'Dostępny tylko w Warszawie': { badge: 'bg-emerald-900 text-white',      dot: 'bg-emerald-700' },
+  'Niepewny':                   { badge: 'bg-orange-500 text-white',       dot: 'bg-orange-400'  },
+  'Niedostępny':                { badge: 'bg-red-600 text-white',          dot: 'bg-red-500'     },
+  'Urlop':                      { badge: 'bg-amber-400 text-black',        dot: 'bg-amber-400'   },
+  'Choroba':                    { badge: 'bg-gray-900 text-white',         dot: 'bg-gray-700'    },
+}
+
+// ─── Status badge ─────────────────────────────────────────────────────────────
+
+function StatusBadge({ status, size = 'sm' }: { status: string | null; size?: 'sm' | 'md' }) {
+  const s = status ?? 'Dostępny'
+  const style = STATUS_STYLE[s] ?? STATUS_STYLE['Dostępny']
+  const cls = size === 'md'
+    ? `text-[11px] font-semibold px-2.5 py-1 rounded-full ${style.badge}`
+    : `text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.badge}`
+  return (
+    <span className={`inline-flex items-center gap-1 ${cls}`}>
+      {s === 'Urlop' && <IconSun size={size === 'md' ? 11 : 10} />}
+      {s}
+    </span>
+  )
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -104,7 +123,6 @@ function ArtistCard({ artist, isSelected, onClick }: {
   isSelected: boolean
   onClick: () => void
 }) {
-  const style = STATUS_STYLE[artist.status ?? 'Aktywny'] ?? STATUS_STYLE['Aktywny']
   return (
     <div
       onClick={onClick}
@@ -120,9 +138,12 @@ function ArtistCard({ artist, isSelected, onClick }: {
         <p className="text-xs text-gray-500 truncate">{artist.role ?? '—'}</p>
       </div>
       <div className="flex flex-col items-end gap-1 shrink-0">
-        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${style.badge}`}>
-          {artist.status ?? 'Aktywny'}
-        </span>
+        <StatusBadge status={artist.status} size="sm" />
+        {artist.actor_type && (
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 capitalize">
+            {artist.actor_type}
+          </span>
+        )}
         {artist.productionCount > 0 && (
           <span className="text-[10px] text-gray-500">{artist.productionCount} prod.</span>
         )}
@@ -358,7 +379,6 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose }: {
   const { t, locale } = useLanguage()
   const ta = t.artists
   const localeStr = locale === 'pl' ? 'pl-PL' : 'en-US'
-  const style = STATUS_STYLE[artist.status ?? 'Aktywny'] ?? STATUS_STYLE['Aktywny']
   const now = new Date()
 
   const [activeTab,    setActiveTab]    = useState<'profile' | 'plan'>('profile')
@@ -403,11 +423,17 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose }: {
         <h2 className="text-base font-bold text-gray-900">{artist.name}</h2>
         {artist.role && <p className="text-xs text-gray-500 mt-0.5">{artist.role}</p>}
 
-        <div className="flex items-center gap-2 mt-2">
-          <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${style.badge}`}>
-            {artist.status ?? 'Aktywny'}
-          </span>
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          <StatusBadge status={artist.status} size="md" />
+          {artist.actor_type && (
+            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 capitalize">
+              {artist.actor_type}
+            </span>
+          )}
         </div>
+        {artist.status === 'Niedostępny' && artist.status_note && (
+          <p className="mt-1 text-xs text-orange-600 italic">{artist.status_note}</p>
+        )}
 
         {/* Contact info */}
         <div className="mt-3 space-y-1">
@@ -687,7 +713,7 @@ export default function ArtistsPage() {
     setLoading(true)
     const [{ data: aData }, { data: pData }] = await Promise.all([
       supabase.from('artists')
-        .select('id, name, email, phone, role, status, birth_date, avatar_url, teams!inner(name), artist_productions(production_id)')
+        .select('id, name, email, phone, role, status, status_note, birth_date, actor_type, avatar_url, teams!inner(name), artist_productions(production_id)')
         .eq('teams.name', 'Cast')
         .order('name'),
       supabase.from('productions').select('id, title, theatres(name)').order('title'),
@@ -699,7 +725,9 @@ export default function ArtistsPage() {
       email:           a.email ?? '',
       phone:           a.phone ?? null,
       role:            a.role ?? null,
-      status:          a.status ?? 'Aktywny',
+      status:          a.status ?? 'Dostępny',
+      status_note:     a.status_note ?? null,
+      actor_type:      a.actor_type ?? null,
       avatar_url:      a.avatar_url ?? null,
       productionCount: (a.artist_productions ?? []).length,
     })))
@@ -803,7 +831,7 @@ export default function ArtistsPage() {
     return c
   }, [artists])
 
-  const statusOptions = ['Aktywny', 'Na urlopie', 'Choroba', 'Nieaktywny', 'Kontrakt zakończony']
+  const statusOptions = ['Dostępny', 'Dostępny tylko w Warszawie', 'Niepewny', 'Niedostępny', 'Urlop', 'Choroba']
 
   return (
     <>
