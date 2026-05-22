@@ -468,20 +468,17 @@ function WeekView({ weekDays, events, availability, conflictingIds, todayStr, lo
                       )}
                       <div className="flex items-start gap-1">
                         {conflictingIds.has(ev.id) && <span className="shrink-0"><IconWarning size={12} className="text-red-500" /></span>}
-                        <span className="text-sm font-semibold leading-tight truncate text-gray-900">{ev.type ?? ev.title}</span>
+                        <span className="text-xs font-semibold leading-tight truncate text-gray-900">{ev.type ?? ev.title}</span>
                       </div>
-                      <div className="text-[10px] opacity-60 leading-tight">
-                        {fmtTime(ev.start_time)} – {fmtTime(ev.end_time)}
+                      <div className="text-[10px] opacity-60 leading-tight truncate">
+                        {fmtTime(ev.start_time)} – {fmtTime(ev.end_time)}{location && ` · ${location}`}
                       </div>
-                      {height > 48 && location && (
-                        <div className="text-[10px] opacity-50 leading-tight truncate">{location}</div>
-                      )}
-                      {height > 68 && ev.productions && (
+                      {ev.productions && (
                         <div className="flex items-center gap-1 text-[10px] opacity-50 leading-tight truncate">
                           <IconTheatre size={10} /><span>{ev.productions.title}</span>
                         </div>
                       )}
-                      {height > 90 && ev.event_artists.length > 0 && (
+                      {ev.event_artists.length > 0 && (
                         <div className="flex items-center gap-1 text-[10px] opacity-50 leading-tight truncate">
                           <IconUsers size={10} /><span>{ev.event_artists.slice(0, 2).map(ea => ea.artists?.name?.split(' ')[0]).join(', ')}{ev.event_artists.length > 2 ? ` +${ev.event_artists.length - 2}` : ''}</span>
                         </div>
