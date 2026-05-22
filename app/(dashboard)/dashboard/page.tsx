@@ -155,6 +155,8 @@ export default function DashboardPage() {
   const [techToday,     setTechToday]     = useState<TechRow[]>([])
   const [nextPremiere,  setNextPremiere]  = useState<EventRow | null>(null)
   // New stat tiles
+  const [showsNMConflicts,  setShowsNMConflicts]  = useState(0)
+  const [showsM2Conflicts,  setShowsM2Conflicts]  = useState(0)
   const [notConfirmedCount, setNotConfirmedCount] = useState(0)
   const [notConfirmedNames, setNotConfirmedNames] = useState<string[]>([])
   const [showsNMCount,      setShowsNMCount]      = useState(0)
@@ -196,10 +198,10 @@ export default function DashboardPage() {
       .order('start_time').limit(15)
     let premiereQ = supabase.from('events').select(evSel)
       .eq('type', 'Premiera').gte('start_time', `${today}T00:00:00`).order('start_time').limit(1)
-    // Wider window for conflict detection — 30 days
+    // Conflict detection through end of month+2
     let conflictQ = supabase.from('events').select(evSel)
       .gte('start_time', `${today}T00:00:00`)
-      .lt('start_time', `${localDate(addDays(now, 30))}T00:00:00`)
+      .lte('start_time', `${m2EndStr}T23:59:59`)
     // Shows next month
     let showsNMQ = supabase.from('events').select(evSel)
       .in('type', Array.from(SHOW_TYPES))
@@ -311,6 +313,18 @@ export default function DashboardPage() {
     setWeekEvCount(weekEvs.filter(e => !SHOW_TYPES.has(e.type ?? '')).length)
     setWeekShows(weekEvs.filter(e => SHOW_TYPES.has(e.type ?? '')))
     setConflictPairs(pairs)
+
+    // Count conflicts falling within each month (nm / m2)
+    const inMonth = (evStartTime: string, startStr: string, endStr: string) =>
+      evStartTime >= `${startStr}T00:00:00` && evStartTime <= `${endStr}T23:59:59`
+    const conflictsNM = pairs.filter(p =>
+      inMonth(p.a.start_time, nmStartStr, nmEndStr) || inMonth(p.b.start_time, nmStartStr, nmEndStr)
+    ).length
+    const conflictsM2 = pairs.filter(p =>
+      inMonth(p.a.start_time, m2StartStr, m2EndStr) || inMonth(p.b.start_time, m2StartStr, m2EndStr)
+    ).length
+    setShowsNMConflicts(conflictsNM)
+    setShowsM2Conflicts(conflictsM2)
 
     const todayMapped = (todayEvData ?? []).map(mapEvent)
     setTodayEvents(todayMapped)
@@ -515,6 +529,14 @@ export default function DashboardPage() {
     )
   }
 
+  /* ── Polish pluralization ── */
+  function plKonflikt(n: number) {
+    if (n === 1) return 'konflikt'
+    const mod10 = n % 10, mod100 = n % 100
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'konflikty'
+    return 'konfliktów'
+  }
+
   /* ── Month labels for new tiles ── */
   const nmMonthLabel = MONTHS_PL[new Date(now.getFullYear(), now.getMonth() + 1, 1).getMonth()]
   const m2MonthLabel = MONTHS_PL[new Date(now.getFullYear(), now.getMonth() + 2, 1).getMonth()]
@@ -577,15 +599,17 @@ export default function DashboardPage() {
     },
     {
       label: `Spektakle – ${nmMonthLabel}`, value: showsNMCount,
-      sub: showsNMCount > 0 ? `${showsNMCount} spektakli` : 'brak',
-      warn: false,
+      sub: showsNMConflicts > 0 ? `${showsNMConflicts} ${plKonflikt(showsNMConflicts)}` : showsNMCount > 0 ? `${showsNMCount} spektakli` : 'brak',
+      warn: showsNMConflicts > 0,
       tip: showsMonthTip(showsNMList, nmMonthLabel), tipAlign: 'left' as const,
+      onClick: showsNMConflicts > 0 ? () => setShowConflictPanel(true) : undefined,
     },
     {
       label: `Spektakle – ${m2MonthLabel}`, value: showsM2Count,
-      sub: showsM2Count > 0 ? `${showsM2Count} spektakli` : 'brak',
-      warn: false,
+      sub: showsM2Conflicts > 0 ? `${showsM2Conflicts} ${plKonflikt(showsM2Conflicts)}` : showsM2Count > 0 ? `${showsM2Count} spektakli` : 'brak',
+      warn: showsM2Conflicts > 0,
       tip: showsMonthTip(showsM2List, m2MonthLabel), tipAlign: 'right' as const,
+      onClick: showsM2Conflicts > 0 ? () => setShowConflictPanel(true) : undefined,
     },
     {
       label: `Urlopy – ${nmMonthLabel}`, value: vacNextCount,
