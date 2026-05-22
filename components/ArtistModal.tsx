@@ -11,6 +11,7 @@ interface ArtistRecord {
   phone: string | null
   role: string | null
   status: string | null
+  birth_date?: string | null
   avatar_url?: string | null
 }
 
@@ -61,11 +62,12 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
   const isEdit = !!artist
 
   const [form, setForm] = useState({
-    name:   artist?.name   ?? '',
-    email:  artist?.email  ?? '',
-    phone:  artist?.phone  ?? '',
-    role:   artist?.role   ?? '',
-    status: artist?.status ?? 'Aktywny',
+    name:       artist?.name       ?? '',
+    email:      artist?.email      ?? '',
+    phone:      artist?.phone      ?? '',
+    role:       artist?.role       ?? '',
+    status:     artist?.status     ?? 'Aktywny',
+    birth_date: artist?.birth_date ?? '',
   })
   const [assignedIds,  setAssignedIds]  = useState<string[]>([])
   const [vacations,    setVacations]    = useState<VacationRecord[]>([])
@@ -240,11 +242,12 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
 
     const payload: Record<string, unknown> = {
       name:       form.name,
-      email:      form.email || '',
-      phone:      form.phone  || null,
-      role:       form.role   || null,
-      status:     form.status || null,
-      avatar_url: avatarUrl   || null,
+      email:      form.email      || '',
+      phone:      form.phone      || null,
+      role:       form.role       || null,
+      status:     form.status     || null,
+      birth_date: form.birth_date || null,
+      avatar_url: avatarUrl       || null,
     }
     if (presetTeamId) payload.team_id = presetTeamId
 
@@ -388,6 +391,15 @@ export default function ArtistModal({ artist, productions, presetTeamId, onClose
                 onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
                 className={inputCls}
                 placeholder={am.rolePlaceholder}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Data urodzenia</label>
+              <input
+                type="date"
+                value={form.birth_date}
+                onChange={e => setForm(f => ({ ...f, birth_date: e.target.value }))}
+                className={inputCls}
               />
             </div>
           </div>

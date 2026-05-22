@@ -687,7 +687,7 @@ export default function ArtistsPage() {
     setLoading(true)
     const [{ data: aData }, { data: pData }] = await Promise.all([
       supabase.from('artists')
-        .select('id, name, email, phone, role, status, avatar_url, teams!inner(name), artist_productions(production_id)')
+        .select('id, name, email, phone, role, status, birth_date, avatar_url, teams!inner(name), artist_productions(production_id)')
         .eq('teams.name', 'Cast')
         .order('name'),
       supabase.from('productions').select('id, title, theatres(name)').order('title'),

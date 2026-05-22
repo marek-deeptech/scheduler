@@ -316,7 +316,7 @@ export default function MessagesPage() {
     Promise.all([
       supabase
         .from('artists')
-        .select('id, name, email, phone, role, status, avatar_url, teams(name), artist_productions(productions(theatre_id))')
+        .select('id, name, email, phone, role, status, birth_date, avatar_url, teams(name), artist_productions(productions(theatre_id))')
         .order('name'),
       supabase.from('theatres').select('id, name').order('name'),
     ]).then(([{ data: artistData }, { data: theatreData }]) => {
