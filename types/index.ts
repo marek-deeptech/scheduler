@@ -87,6 +87,7 @@ export const EVENT_TYPE_CATEGORIES: Record<string, string[]> = {
     'Premiera',
     'Spektakl',
     'Spektakl gościnny',
+    'Spektakl dla dzieci',
   ],
   'Media / PR': [
     'Konferencja prasowa',
