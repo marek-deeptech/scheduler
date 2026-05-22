@@ -18,6 +18,7 @@ interface EventRecord {
   production_id: string | null
   theatre_id: string | null
   room_id: string | null
+  location: string | null
   start_time: string
   end_time: string
   event_artists?: { artist_id: string }[]
@@ -73,6 +74,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
     end_time:      initEnd.time,
     theatre_id:    event?.theatre_id ?? '',
     room_id:       event?.room_id ?? '',
+    location:      event?.location ?? '',
     artist_ids:    event?.event_artists?.map(ea => ea.artist_id) ?? [],
   })
   const [saving,   setSaving]   = useState(false)
@@ -184,6 +186,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
       production_id: form.production_id || null,
       theatre_id:    form.theatre_id || null,
       room_id:       form.room_id || null,
+      location:      form.location || null,
       start_time:    buildISO(form.date, form.start_time),
       end_time:      buildISO(form.date, form.end_time),
     }
@@ -221,7 +224,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
             start_time: payload.start_time,
             end_time: payload.end_time,
             production_title: productions.find(p => p.id === form.production_id)?.title ?? null,
-            location: null,
+            location: form.location || null,
           },
           artistIds,
         }),
@@ -251,7 +254,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
             start_time: event.start_time,
             end_time: event.end_time,
             production_title: productions.find(p => p.id === event.production_id)?.title ?? null,
-            location: null,
+            location: form.location || null,
           },
           artistIds,
         }),
@@ -385,6 +388,19 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
               {filteredRooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </div>
+
+          {/* Miasto — tylko dla typu Wyjazd */}
+          {form.type === 'Wyjazd' && (
+            <div>
+              <label className={labelCls}>Miasto</label>
+              <input
+                value={form.location}
+                onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
+                className={inputCls}
+                placeholder="np. Kraków, Gdańsk…"
+              />
+            </div>
+          )}
 
           {/* Artyści */}
           <div>
