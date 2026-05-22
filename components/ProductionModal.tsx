@@ -202,9 +202,6 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
     onSaved()
   }
 
-  const assigned  = artists.filter(a => assignedIds.includes(a.id))
-  const available = artists.filter(a => !assignedIds.includes(a.id))
-
   // Artists with team info for EventModal
   const artistsForEvent = artists.map(a => ({
     id: a.id,
@@ -301,60 +298,62 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
             </div>
           </div>
 
-          {/* ── Actors ── */}
-          <div>
-            <label className={labelCls}>Aktorzy</label>
-
-            {assigned.length > 0 && (
-              <div className="mb-3">
-                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Przypisani</p>
-                <div className="flex flex-col gap-1">
-                  {assigned.map(a => (
-                    <div key={a.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100">
-                      <div>
-                        <span className="text-sm font-medium text-gray-800">{a.name}</span>
-                        {a.role && <span className="ml-2 text-xs text-gray-500">{a.role}</span>}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleActor(a.id)}
-                        className="w-5 h-5 flex items-center justify-center rounded-full bg-white/70 hover:bg-white text-gray-500 hover:text-red-500 transition-colors text-xs font-bold"
-                      >
-                        ✕
-                      </button>
+          {/* ── People ── */}
+          {artists.length === 0 ? (
+            <p className="text-xs text-gray-500 italic">Brak osób w bazie</p>
+          ) : (
+            <div className="space-y-5">
+              {([
+                { key: 'Cast',      label: 'Artyści'  },
+                { key: 'Technique', label: 'Technika' },
+                { key: 'Wardrobe',  label: 'Garderoba'},
+              ] as const).map(({ key, label }) => {
+                const group     = artists.filter(a => (Array.isArray(a.teams) ? a.teams[0] : a.teams)?.name === key)
+                const noTeam    = key === 'Cast' ? artists.filter(a => !(Array.isArray(a.teams) ? a.teams[0] : a.teams)?.name) : []
+                const inGroup   = [...group, ...noTeam]
+                const inAssigned  = inGroup.filter(a =>  assignedIds.includes(a.id))
+                const inAvailable = inGroup.filter(a => !assignedIds.includes(a.id))
+                if (inGroup.length === 0) return null
+                return (
+                  <div key={key}>
+                    <label className={labelCls}>{label}</label>
+                    <div className="flex flex-col gap-1">
+                      {inAssigned.map(a => (
+                        <div key={a.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100">
+                          <div>
+                            <span className="text-sm font-medium text-gray-800">{a.name}</span>
+                            {a.role && <span className="ml-2 text-xs text-gray-500">{a.role}</span>}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleActor(a.id)}
+                            className="w-5 h-5 flex items-center justify-center rounded-full bg-white/70 hover:bg-white text-gray-500 hover:text-red-500 transition-colors text-xs font-bold"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                      {inAvailable.map(a => (
+                        <div key={a.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 hover:bg-gray-100 transition-colors">
+                          <div>
+                            <span className="text-sm text-gray-500">{a.name}</span>
+                            {a.role && <span className="ml-2 text-xs text-gray-500">{a.role}</span>}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleActor(a.id)}
+                            className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 text-xs font-bold transition-colors"
+                          >
+                            +
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {available.length > 0 && (
-              <div>
-                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Dostępni</p>
-                <div className="flex flex-col gap-1">
-                  {available.map(a => (
-                    <div key={a.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 hover:bg-gray-100 transition-colors">
-                      <div>
-                        <span className="text-sm text-gray-700">{a.name}</span>
-                        {a.role && <span className="ml-2 text-xs text-gray-500">{a.role}</span>}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleActor(a.id)}
-                        className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 text-xs font-bold transition-colors"
-                      >
-                        +
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {artists.length === 0 && (
-              <p className="text-xs text-gray-500 italic">Brak artystów w bazie</p>
-            )}
-          </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
 
           {/* ── Events (edit mode only) ── */}
           {isEdit && (
