@@ -839,6 +839,7 @@ export default function ArtistsPage() {
         <ArtistModal
           artist={modal}
           productions={productions}
+          allActors={artists.map(a => ({ id: a.id, name: a.name, role: a.role }))}
           onClose={() => setModal(undefined)}
           onSaved={() => {
             setModal(undefined)

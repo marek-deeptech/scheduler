@@ -24,6 +24,7 @@ interface ProductionRecord {
   end_date: string | null
   theatre_id: string | null
   status: string | null
+  location_type?: string | null
   comment?: string | null
 }
 
@@ -96,6 +97,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
     director:      production?.director      ?? '',
     theatre_id:    production?.theatre_id    ?? '',
     status:        production?.status        ?? 'Koncepcja',
+    location_type: production?.location_type ?? 'Na miejscu',
     premiere_date: production?.premiere_date ?? '',
     start_date:    production?.start_date    ?? '',
     end_date:      production?.end_date      ?? '',
@@ -151,6 +153,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
       director:      form.director      || null,
       theatre_id:    form.theatre_id    || null,
       status:        form.status        || null,
+      location_type: form.location_type || 'Na miejscu',
       premiere_date: form.premiere_date || null,
       start_date:    form.start_date    || null,
       end_date:      form.end_date      || null,
@@ -268,6 +271,27 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
               >
                 {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
+            </div>
+            <div>
+              <label className={labelCls}>Typ produkcji</label>
+              <div className="flex p-0.5 bg-gray-100 rounded-xl">
+                {(['Na miejscu', 'Na wyjeździe'] as const).map(opt => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, location_type: opt }))}
+                    className={`flex-1 py-2 text-xs font-semibold rounded-[10px] transition-colors ${
+                      form.location_type === opt
+                        ? opt === 'Na wyjeździe'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {opt === 'Na wyjeździe' ? '✈ Na wyjeździe' : 'Na miejscu'}
+                  </button>
+                ))}
+              </div>
             </div>
             <div>
               <label className={labelCls}>Premiera</label>

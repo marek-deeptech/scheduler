@@ -2,12 +2,14 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { LanguageProvider, useLanguage } from '@/lib/language-context'
 import { TheatreProvider, useTheatre } from '@/lib/theatre-context'
+import { ProfileProvider, useProfile } from '@/lib/profile-context'
 import { supabase } from '@/lib/supabase'
 
 interface Theatre { id: string; name: string }
+interface Actor   { id: string; name: string }
 
 /* ── SVG Icon set — Heroicons outline, monochromatic ─────────── */
 const icons = {
@@ -31,11 +33,6 @@ const icons = {
       <path d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h1.5C5.496 19.5 6 18.996 6 18.375m-3.75.125v-5.625A1.125 1.125 0 013.375 12H4.5M3.375 19.5v-5.625M21 19.5h-1.5a1.125 1.125 0 01-1.125-1.125M21 19.5v-5.625A1.125 1.125 0 0019.875 12H18.75M3.375 12h17.25M3.375 12V7.875A1.125 1.125 0 014.5 6.75H6M21 12V7.875A1.125 1.125 0 0019.875 6.75H18.75M6 6.75h12M6 6.75A1.125 1.125 0 014.875 5.625V4.5M18.75 6.75A1.125 1.125 0 0019.875 5.625V4.5m-15.375 0h15.375" />
     </svg>
   ),
-  users: (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-    </svg>
-  ),
   wrench: (
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <path d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L3 3.75l1.5-1.5L8.25 3v1.5l2.099 2.099" />
@@ -45,16 +42,6 @@ const icons = {
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 3a2 2 0 100 4c1.1 0 2-.9 2-2s-.9-2-2-2z" />
       <path d="M12 7v2.5L2 17h20L12 9.5V7" />
-    </svg>
-  ),
-  cube: (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
-    </svg>
-  ),
-  gear: (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" /><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   ),
   chart: (
@@ -67,11 +54,115 @@ const icons = {
       <path d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
     </svg>
   ),
+  gear: (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" /><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  ),
 }
+
+// ── Profile switcher ────────────────────────────────────────────────────────
+
+function ProfileSwitcher() {
+  const { mode, actorId, actorName, setMode, setActor, clearActor } = useProfile()
+  const router = useRouter()
+  const [actors,  setActors]  = useState<Actor[]>([])
+  const [open,    setOpen]    = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  async function loadActors() {
+    if (actors.length > 0) return
+    setLoading(true)
+    const { data } = await supabase
+      .from('artists')
+      .select('id, name, teams!inner(name)')
+      .eq('teams.name', 'Cast')
+      .order('name')
+    setActors(((data ?? []) as any[]).map(a => ({ id: a.id, name: a.name })))
+    setLoading(false)
+  }
+
+  function switchToCoordinator() {
+    setMode('coordinator')
+    router.push('/dashboard')
+  }
+
+  function switchToActor() {
+    setMode('actor')
+    loadActors()
+    if (!actorId) setOpen(true)
+    else router.push('/actor/calendar')
+  }
+
+  function selectActor(a: Actor) {
+    setActor(a.id, a.name)
+    setOpen(false)
+    router.push('/actor/calendar')
+  }
+
+  return (
+    <div className="px-3 py-3 border-b border-gray-100">
+      {/* Toggle */}
+      <div className="flex p-0.5 bg-gray-100 rounded-xl mb-2">
+        <button
+          onClick={switchToCoordinator}
+          className={`flex-1 py-1.5 text-[11px] font-semibold rounded-[10px] transition-colors ${
+            mode === 'coordinator' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Koordynator
+        </button>
+        <button
+          onClick={switchToActor}
+          className={`flex-1 py-1.5 text-[11px] font-semibold rounded-[10px] transition-colors ${
+            mode === 'actor' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Aktor
+        </button>
+      </div>
+
+      {/* Actor selector */}
+      {mode === 'actor' && (
+        <div className="relative">
+          <button
+            onClick={() => { loadActors(); setOpen(v => !v) }}
+            className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-medium border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
+          >
+            <span className="truncate text-gray-700">{actorName ?? 'Wybierz aktora…'}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-gray-400 ml-1">
+              <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+
+          {open && (
+            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 max-h-52 overflow-y-auto">
+              {loading && <p className="px-3 py-2 text-xs text-gray-500">Ładowanie…</p>}
+              {actors.map(a => (
+                <button
+                  key={a.id}
+                  onClick={() => selectActor(a)}
+                  className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors ${
+                    a.id === actorId ? 'font-semibold text-gray-900' : 'text-gray-700'
+                  }`}
+                >
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Sidebar ─────────────────────────────────────────────────────────────────
 
 function Sidebar() {
   const { t, locale, toggle } = useLanguage()
   const { selectedTheatreId, setSelectedTheatreId } = useTheatre()
+  const { mode } = useProfile()
   const [theatres, setTheatres] = useState<Theatre[] | null>(null)
   const pathname = usePathname()
 
@@ -111,61 +202,70 @@ function Sidebar() {
         />
       </div>
 
-      {/* Theatre switcher */}
-      <div className="px-3 py-3 border-b border-gray-100">
-        <p className={sectionLabel}>{t.nav.theatreLabel}</p>
-        <div className="flex flex-col gap-0.5">
-          <button className={theatreBtnCls(null)} onClick={() => setSelectedTheatreId(null)}>
-            {t.nav.allTheatres}
-          </button>
-          {theatres === null && <p className="px-1 text-[10px] text-gray-500 italic">{t.nav.loading}</p>}
-          {theatres !== null && theatres.length === 0 && <p className="px-1 text-[10px] text-red-400 italic">{t.nav.noTheatres}</p>}
-          {(theatres ?? []).map(th => {
-            const dot = th.name === 'Teatr Polonia' ? 'bg-red-500'
-                      : th.name === 'Och-Teatr'     ? 'bg-yellow-400'
-                      : 'bg-gray-400'
-            return (
-              <button key={th.id} className={`${theatreBtnCls(th.id)} flex items-center gap-2`} onClick={() => setSelectedTheatreId(th.id)}>
-                <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
-                {th.name}
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      {/* Profile switcher */}
+      <ProfileSwitcher />
 
-      {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
-        <div>
-          <p className={sectionLabel}>{t.nav.sections.main}</p>
-          <div className="space-y-0.5">
-            <Link href="/dashboard"   className={linkCls('/dashboard')}  >{icons.home}    {t.nav.dashboard}</Link>
-            <Link href="/calendar"    className={linkCls('/calendar')}   >{icons.calendar}{t.nav.calendar}</Link>
-            <Link href="/artists"     className={linkCls('/artists')}    >{icons.user}    {t.nav.artists}</Link>
-            <Link href="/productions" className={linkCls('/productions')}>{icons.film}    {t.nav.productions}</Link>
+      {/* Navigation — conditional on mode */}
+      {mode === 'coordinator' ? (
+        <>
+          {/* Theatre switcher */}
+          <div className="px-3 py-3 border-b border-gray-100">
+            <p className={sectionLabel}>{t.nav.theatreLabel}</p>
+            <div className="flex flex-col gap-0.5">
+              <button className={theatreBtnCls(null)} onClick={() => setSelectedTheatreId(null)}>
+                {t.nav.allTheatres}
+              </button>
+              {theatres === null && <p className="px-1 text-[10px] text-gray-500 italic">{t.nav.loading}</p>}
+              {theatres !== null && theatres.length === 0 && <p className="px-1 text-[10px] text-red-400 italic">{t.nav.noTheatres}</p>}
+              {(theatres ?? []).map(th => {
+                const dot = th.name === 'Teatr Polonia' ? 'bg-red-500'
+                          : th.name === 'Och-Teatr'     ? 'bg-yellow-400'
+                          : 'bg-gray-400'
+                return (
+                  <button key={th.id} className={`${theatreBtnCls(th.id)} flex items-center gap-2`} onClick={() => setSelectedTheatreId(th.id)}>
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+                    {th.name}
+                  </button>
+                )
+              })}
+            </div>
           </div>
-        </div>
-        <div>
-          <p className={sectionLabel}>{t.nav.sections.support}</p>
+
+          <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
+            <div>
+              <p className={sectionLabel}>{t.nav.sections.main}</p>
+              <div className="space-y-0.5">
+                <Link href="/dashboard"   className={linkCls('/dashboard')}  >{icons.home}    {t.nav.dashboard}</Link>
+                <Link href="/calendar"    className={linkCls('/calendar')}   >{icons.calendar}{t.nav.calendar}</Link>
+                <Link href="/artists"     className={linkCls('/artists')}    >{icons.user}    {t.nav.artists}</Link>
+                <Link href="/productions" className={linkCls('/productions')}>{icons.film}    {t.nav.productions}</Link>
+              </div>
+            </div>
+            <div>
+              <p className={sectionLabel}>{t.nav.sections.communication}</p>
+              <div className="space-y-0.5">
+                <Link href="/messages" className={linkCls('/messages')}>{icons.mail}{t.nav.messages}</Link>
+              </div>
+            </div>
+            <div>
+              <p className={sectionLabel}>{t.nav.sections.extra}</p>
+              <div className="space-y-0.5">
+                <Link href="/reports"  className={linkCls('/reports')} >{icons.chart}{t.nav.reports}</Link>
+                <Link href="/settings" className={linkCls('/settings')}>{icons.gear}{t.nav.settings}</Link>
+              </div>
+            </div>
+          </nav>
+        </>
+      ) : (
+        /* Actor mode nav */
+        <nav className="flex-1 px-3 py-4">
+          <p className={sectionLabel}>Moje konto</p>
           <div className="space-y-0.5">
-            <Link href="/technique" className={linkCls('/technique')}>{icons.wrench}{t.nav.technique}</Link>
-            <Link href="/wardrobe"  className={linkCls('/wardrobe')} >{icons.hanger}{t.nav.wardrobe}</Link>
+            <Link href="/actor/calendar" className={linkCls('/actor/calendar')}>{icons.calendar}Kalendarz</Link>
+            <Link href="/actor/messages" className={linkCls('/actor/messages')}>{icons.mail}Wiadomości</Link>
           </div>
-        </div>
-        <div>
-          <p className={sectionLabel}>{t.nav.sections.communication}</p>
-          <div className="space-y-0.5">
-            <Link href="/messages" className={linkCls('/messages')}>{icons.mail}{t.nav.messages}</Link>
-          </div>
-        </div>
-        <div>
-          <p className={sectionLabel}>{t.nav.sections.extra}</p>
-          <div className="space-y-0.5">
-            <Link href="/reports"  className={linkCls('/reports')} >{icons.chart}{t.nav.reports}</Link>
-            <Link href="/settings" className={linkCls('/settings')}>{icons.gear}{t.nav.settings}</Link>
-          </div>
-        </div>
-      </nav>
+        </nav>
+      )}
 
       {/* Language toggle */}
       <div className="px-3 py-3 border-t border-gray-100">
@@ -185,12 +285,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <LanguageProvider>
       <TheatreProvider>
-        <div className="flex h-screen bg-gray-50">
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto p-8">
-            {children}
-          </main>
-        </div>
+        <ProfileProvider>
+          <div className="flex h-screen bg-gray-50">
+            <Sidebar />
+            <main className="flex-1 overflow-y-auto p-8">
+              {children}
+            </main>
+          </div>
+        </ProfileProvider>
       </TheatreProvider>
     </LanguageProvider>
   )
