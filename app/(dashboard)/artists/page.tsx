@@ -16,7 +16,6 @@ interface ArtistRow {
   phone: string | null
   role: string | null
   status: string | null
-  status_note: string | null
   actor_type: string | null
   avatar_url: string | null
   productionCount: number
@@ -47,12 +46,20 @@ interface AvailRef {
   note: string | null
 }
 
+interface SubstituteRef {
+  id: string
+  name: string
+  avatar_url: string | null
+  status: string | null
+}
+
 interface ArtistDetail {
   productions: ProductionRef[]
   upcomingEvents: EventRef[]
   pastEvents: EventRef[]
   vacations: AvailRef[]
   sicknesses: AvailRef[]
+  substitutes: SubstituteRef[]
 }
 
 interface ProductionForModal { id: string; title: string; theatres?: { name: string } | null }
@@ -431,10 +438,6 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose }: {
             </span>
           )}
         </div>
-        {artist.status === 'Niedostępny' && artist.status_note && (
-          <p className="mt-1 text-xs text-orange-600 italic">{artist.status_note}</p>
-        )}
-
         {/* Contact info */}
         <div className="mt-3 space-y-1">
           {artist.email && (
@@ -563,6 +566,26 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose }: {
         <div className="flex-1 flex items-center justify-center text-gray-500 text-xs">{ta.loading}</div>
       ) : activeTab === 'profile' && detail ? (
         <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+
+          {/* Substitutes */}
+          <div className="px-5 py-4">
+            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">
+              Zastępstwo
+            </p>
+            {detail.substitutes.length === 0 ? (
+              <p className="text-xs text-gray-500 italic">Brak przypisanego zastępstwa</p>
+            ) : (
+              <div className="space-y-1.5">
+                {detail.substitutes.map(s => (
+                  <div key={s.id} className="flex items-center gap-3 py-1.5 px-2.5 rounded-xl bg-gray-50">
+                    <Avatar url={s.avatar_url} name={s.name} size="sm" />
+                    <p className="text-xs font-semibold text-gray-800 flex-1 min-w-0 truncate">{s.name}</p>
+                    <StatusBadge status={s.status} size="sm" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Productions */}
           <div className="px-5 py-4">
@@ -711,13 +734,22 @@ export default function ArtistsPage() {
 
   async function fetchArtists() {
     setLoading(true)
-    const [{ data: aData }, { data: pData }] = await Promise.all([
+    const today = new Date().toISOString().slice(0, 10)
+
+    const [{ data: aData }, { data: pData }, { data: dsData }] = await Promise.all([
       supabase.from('artists')
-        .select('id, name, email, phone, role, status, status_note, birth_date, actor_type, avatar_url, teams!inner(name), artist_productions(production_id)')
+        .select('id, name, email, phone, role, birth_date, actor_type, avatar_url, teams!inner(name), artist_productions(production_id)')
         .eq('teams.name', 'Cast')
         .order('name'),
       supabase.from('productions').select('id, title, theatres(name)').order('title'),
+      supabase.from('actor_day_status').select('artist_id, status').eq('date', today),
     ])
+
+    // today's status per artist_id
+    const todayStatus: Record<string, string> = {}
+    for (const r of ((dsData ?? []) as any[])) {
+      todayStatus[r.artist_id] = r.status
+    }
 
     setArtists(((aData ?? []) as any[]).map(a => ({
       id:              a.id,
@@ -725,8 +757,7 @@ export default function ArtistsPage() {
       email:           a.email ?? '',
       phone:           a.phone ?? null,
       role:            a.role ?? null,
-      status:          a.status ?? 'Dostępny',
-      status_note:     a.status_note ?? null,
+      status:          todayStatus[a.id] ?? null,
       actor_type:      a.actor_type ?? null,
       avatar_url:      a.avatar_url ?? null,
       productionCount: (a.artist_productions ?? []).length,
@@ -742,7 +773,7 @@ export default function ArtistsPage() {
     setDetailLoading(true)
     const now = new Date().toISOString()
 
-    const [{ data: apData }, { data: avData }, { data: eaData }] = await Promise.all([
+    const [{ data: apData }, { data: avData }, { data: eaData }, { data: subData }] = await Promise.all([
       supabase.from('artist_productions')
         .select('productions(id, title, status, theatres(name))')
         .eq('artist_id', artistId),
@@ -754,6 +785,9 @@ export default function ArtistsPage() {
       supabase.from('event_artists')
         .select('event_id')
         .eq('artist_id', artistId),
+      supabase.from('actor_substitutes')
+        .select('substitute_id, artists!actor_substitutes_substitute_id_fkey(id, name, avatar_url, status)')
+        .eq('actor_id', artistId),
     ])
 
     const eventIds = (eaData ?? []).map((r: any) => r.event_id)
@@ -795,12 +829,19 @@ export default function ArtistsPage() {
     }).filter(Boolean) as ProductionRef[]
 
     const avRaw = ((avData ?? []) as any[])
+
+    const substitutes: SubstituteRef[] = ((subData ?? []) as any[]).map(r => {
+      const a = Array.isArray(r.artists) ? r.artists[0] : r.artists
+      return a ? { id: a.id, name: a.name, avatar_url: a.avatar_url ?? null, status: a.status ?? null } : null
+    }).filter(Boolean) as SubstituteRef[]
+
     setDetail({
       productions:    prods,
       upcomingEvents,
       pastEvents,
       vacations:  avRaw.filter(r => r.type === 'Urlop'),
       sicknesses: avRaw.filter(r => r.type === 'Choroba'),
+      substitutes,
     })
     setDetailLoading(false)
   }

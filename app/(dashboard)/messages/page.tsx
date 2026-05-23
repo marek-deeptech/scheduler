@@ -53,10 +53,13 @@ function PhoneIcon() {
 /* ── Status color helper ───────────────────────────────────────── */
 function statusClasses(status: string | null) {
   switch (status) {
-    case 'Aktywny':    return 'bg-green-100 text-green-700'
-    case 'Na urlopie': return 'bg-amber-100 text-amber-700'
-    case 'Choroba':    return 'bg-red-100 text-red-600'
-    default:           return 'bg-gray-100 text-gray-500'
+    case 'Dostępny':                    return 'bg-green-100 text-green-700'
+    case 'Dostępny tylko w Warszawie':  return 'bg-blue-100 text-blue-700'
+    case 'Niepewny':                    return 'bg-amber-100 text-amber-700'
+    case 'Niedostępny':                 return 'bg-red-100 text-red-600'
+    case 'Urlop':                       return 'bg-orange-100 text-orange-700'
+    case 'Choroba':                     return 'bg-red-100 text-red-600'
+    default:                            return 'bg-gray-100 text-gray-500'
   }
 }
 
@@ -451,10 +454,12 @@ export default function MessagesPage() {
           className={`border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 focus:outline-none ${theatres.length <= 1 ? 'ml-auto' : ''}`}
         >
           <option value="all">{tm.allStatuses}</option>
-          <option value="Aktywny">Aktywny</option>
-          <option value="Na urlopie">Na urlopie</option>
+          <option value="Dostępny">Dostępny</option>
+          <option value="Dostępny tylko w Warszawie">Dostępny tylko w Warszawie</option>
+          <option value="Niepewny">Niepewny</option>
+          <option value="Niedostępny">Niedostępny</option>
+          <option value="Urlop">Urlop</option>
           <option value="Choroba">Choroba</option>
-          <option value="Nieaktywny">Nieaktywny</option>
         </select>
 
         <select

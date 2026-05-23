@@ -143,10 +143,11 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function EventPill({ event, isConflicting, confBadge, onClick }: {
+function EventPill({ event, isConflicting, confBadge, hasWarn, onClick }: {
   event: EventRecord
   isConflicting: boolean
   confBadge?: string | null
+  hasWarn?: boolean
   onClick: () => void
 }) {
   const style = eventStyle(event)
@@ -176,11 +177,15 @@ function EventPill({ event, isConflicting, confBadge, onClick }: {
               {confBadge} ✓
             </span>
           )}
+          {hasWarn && (
+            <span title="Niepewna dostępność obsady" className="text-[9px] font-bold bg-orange-100 text-orange-600 rounded-full px-1 py-0.5 leading-none">
+              ⚠
+            </span>
+          )}
           {isConflicting && <span className="leading-tight"><IconWarning size={12} className="text-red-500" /></span>}
         </div>
       </div>
       <div className="text-[10px] opacity-60 mt-0.5 leading-tight truncate">
-
         {fmtTime(event.start_time)} – {fmtTime(event.end_time)}
         {location && <> · {location}</>}
       </div>
@@ -193,7 +198,7 @@ function EventPill({ event, isConflicting, confBadge, onClick }: {
   )
 }
 
-function DayCell({ date, isCurrentMonth, isToday, isSelected, dayData, conflictingIds, confCounts, onClick, onEventClick }: {
+function DayCell({ date, isCurrentMonth, isToday, isSelected, dayData, conflictingIds, confCounts, warnEventIds, onClick, onEventClick }: {
   date: Date
   isCurrentMonth: boolean
   isToday: boolean
@@ -201,6 +206,7 @@ function DayCell({ date, isCurrentMonth, isToday, isSelected, dayData, conflicti
   dayData: { events: EventRecord[]; vacations: AvailRecord[]; busy: AvailRecord[]; hasConflict: boolean } | undefined
   conflictingIds: Set<string>
   confCounts: Record<string, string>
+  warnEventIds: Set<string>
   onClick: () => void
   onEventClick: (ev: EventRecord) => void
 }) {
@@ -208,6 +214,7 @@ function DayCell({ date, isCurrentMonth, isToday, isSelected, dayData, conflicti
   const vacations = dayData?.vacations ?? []
   const busy      = dayData?.busy      ?? []
   const conflict  = dayData?.hasConflict ?? false
+  const hasWarnDay = events.some(ev => warnEventIds.has(ev.id))
   const extra     = Math.max(0, events.length - 3)
 
   return (
@@ -227,7 +234,10 @@ function DayCell({ date, isCurrentMonth, isToday, isSelected, dayData, conflicti
         ].join(' ')}>
           {date.getDate()}
         </span>
-        <div className="flex gap-0.5">
+        <div className="flex gap-0.5 items-center">
+          {hasWarnDay && isCurrentMonth && (
+            <span title="Niepewna dostępność obsady" className="text-[10px] font-bold text-orange-500 leading-none">⚠</span>
+          )}
           {conflict              && <span className="w-2 h-2 rounded-full bg-red-500" />}
           {vacations.length > 0  && <span className="w-2 h-2 rounded-full bg-amber-400" />}
           {busy.length > 0       && <span className="w-2 h-2 rounded-full bg-gray-400" />}
@@ -241,6 +251,7 @@ function DayCell({ date, isCurrentMonth, isToday, isSelected, dayData, conflicti
             event={ev}
             isConflicting={conflictingIds.has(ev.id)}
             confBadge={confCounts[ev.id] ?? null}
+            hasWarn={warnEventIds.has(ev.id)}
             onClick={() => onEventClick(ev)}
           />
         ))}
@@ -509,6 +520,8 @@ export default function CalendarPage() {
   const [filterTeam,   setFilterTeam]   = useState('all')
   // eventId -> "confirmed/total" badge string (only when confirmations were sent)
   const [confCounts,   setConfCounts]   = useState<Record<string, string>>({})
+  // eventIds where at least one production actor has "Niepewny" status that day
+  const [warnEventIds, setWarnEventIds] = useState<Set<string>>(new Set())
 
   const [modalEvent,   setModalEvent]   = useState<EventRecord | null | undefined>(undefined)
   const [modalDate,    setModalDate]    = useState<string | undefined>(undefined)
@@ -617,6 +630,55 @@ export default function CalendarPage() {
       setConfCounts({})
     }
 
+    // ── Niepewny warnings ─────────────────────────────────────────────────
+    const prodIds = [...new Set(fetchedEvents.map(e => e.production_id).filter(Boolean) as string[])]
+    const newWarnIds = new Set<string>()
+
+    if (prodIds.length > 0) {
+      const { data: apRows } = await supabase
+        .from('artist_productions')
+        .select('artist_id, production_id')
+        .in('production_id', prodIds)
+
+      const prodArtistMap: Record<string, string[]> = {}
+      for (const r of ((apRows ?? []) as any[])) {
+        if (!prodArtistMap[r.production_id]) prodArtistMap[r.production_id] = []
+        prodArtistMap[r.production_id].push(r.artist_id)
+      }
+
+      const allArtistIds = [...new Set(Object.values(prodArtistMap).flat())]
+
+      if (allArtistIds.length > 0) {
+        const rangeStartDate = rangeStart.slice(0, 10)
+        const rangeEndDate   = rangeEnd.slice(0, 10)
+
+        const { data: dsRows } = await supabase
+          .from('actor_day_status')
+          .select('artist_id, date')
+          .in('artist_id', allArtistIds)
+          .eq('status', 'Niepewny')
+          .gte('date', rangeStartDate)
+          .lte('date', rangeEndDate)
+
+        // date → Set<artistId> with Niepewny
+        const niepewnyByDate: Record<string, Set<string>> = {}
+        for (const r of ((dsRows ?? []) as any[])) {
+          if (!niepewnyByDate[r.date]) niepewnyByDate[r.date] = new Set()
+          niepewnyByDate[r.date].add(r.artist_id)
+        }
+
+        for (const ev of fetchedEvents) {
+          if (!ev.production_id) continue
+          const date = ev.start_time.slice(0, 10)
+          const niepewny = niepewnyByDate[date]
+          if (!niepewny) continue
+          const actors = prodArtistMap[ev.production_id] ?? []
+          if (actors.some(aid => niepewny.has(aid))) newWarnIds.add(ev.id)
+        }
+      }
+    }
+
+    setWarnEventIds(newWarnIds)
     setLoading(false)
   }
 
@@ -918,6 +980,7 @@ export default function CalendarPage() {
                           dayData={calendarData[dateStr]}
                           conflictingIds={conflictingEventIds}
                           confCounts={confCounts}
+                          warnEventIds={warnEventIds}
                           onClick={() => setSelectedDay(selectedDay === dateStr ? null : dateStr)}
                           onEventClick={ev => setModalEvent(ev)}
                         />
@@ -954,6 +1017,7 @@ export default function CalendarPage() {
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400" />{tc.vacation}</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /><IconWarning size={8} className="text-red-500 inline" /> {tc.conflict}</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-400" />{tc.busy}</span>
+              <span className="flex items-center gap-1"><span className="text-orange-500 font-bold text-[10px]">⚠</span> Niepewna obsada</span>
             </div>
           )}
         </div>

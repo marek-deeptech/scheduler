@@ -641,7 +641,7 @@ export const translations = {
       title: 'Raporty',
       comingSoon: 'Raporty już wkrótce',
       comingSoonHint: 'Ta sekcja umożliwi eksport harmonogramów, przeglądanie dostępności i generowanie raportów produkcji.',
-      pageTitle: 'Raport koordynatora pracy aktoracznej',
+      pageTitle: 'Raport koordynatora pracy aktorskiej',
       generated: 'Wygenerowano:',
       exportPdf: 'Eksportuj PDF',
       allTheatres: 'Wszystkie teatry',

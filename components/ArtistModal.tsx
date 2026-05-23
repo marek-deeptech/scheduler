@@ -45,15 +45,6 @@ interface Props {
   onSaved: () => void
 }
 
-const STATUS_OPTIONS = [
-  'Dostępny',
-  'Dostępny tylko w Warszawie',
-  'Niepewny',
-  'Niedostępny',
-  'Urlop',
-  'Choroba',
-]
-
 const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white'
 const labelCls = 'block text-sm font-medium text-gray-500 mb-1.5'
 
@@ -72,14 +63,12 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
   const isEdit = !!artist
 
   const [form, setForm] = useState({
-    name:        artist?.name        ?? '',
-    email:       artist?.email       ?? '',
-    phone:       artist?.phone       ?? '',
-    role:        artist?.role        ?? '',
-    status:      artist?.status      ?? 'Dostępny',
-    birth_date:  artist?.birth_date  ?? '',
-    actor_type:  artist?.actor_type  ?? '',
-    status_note: artist?.status_note ?? '',
+    name:       artist?.name       ?? '',
+    email:      artist?.email      ?? '',
+    phone:      artist?.phone      ?? '',
+    role:       artist?.role       ?? '',
+    birth_date: artist?.birth_date ?? '',
+    actor_type: artist?.actor_type ?? '',
   })
   const [assignedIds,    setAssignedIds]    = useState<string[]>([])
   const [substituteIds,  setSubstituteIds]  = useState<string[]>([])
@@ -120,28 +109,6 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
     return records
   }
 
-  // After any add/remove, recalculate status based on today
-  async function syncStatus(artistId: string, updatedRecords?: (VacationRecord & { type: string })[]) {
-    const records = updatedRecords ?? (await loadAvailability(artistId))
-    const today = new Date().toISOString().slice(0, 10)
-
-    const activeToday = records.find(r => {
-      const start = r.start_time.slice(0, 10)
-      const end   = r.end_time.slice(0, 10)
-      return today >= start && today <= end
-    })
-
-    let newStatus: string | null = null
-    if (activeToday?.type === 'Choroba')  newStatus = 'Choroba'
-    else if (activeToday?.type === 'Urlop') newStatus = 'Urlop'
-    else if (form.status === 'Choroba' || form.status === 'Urlop') newStatus = 'Dostępny'
-
-    if (newStatus && newStatus !== form.status) {
-      await supabase.from('artists').update({ status: newStatus }).eq('id', artistId)
-      setForm(f => ({ ...f, status: newStatus! }))
-    }
-  }
-
   // Check if new date range overlaps any existing availability
   async function hasOverlap(start: string, end: string): Promise<string | null> {
     const { data } = await supabase
@@ -175,12 +142,6 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
     })
     if (err) { setError(err.message); return false }
 
-    // Auto-set status to match the availability type being added
-    const newStatus = type === 'Urlop' ? 'Urlop' : 'Choroba'
-    if (form.status !== newStatus) {
-      await supabase.from('artists').update({ status: newStatus }).eq('id', artist.id)
-      setForm(f => ({ ...f, status: newStatus }))
-    }
     await loadAvailability(artist.id)
     return true
   }
@@ -201,22 +162,7 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
 
   async function removeEntry(id: string) {
     await supabase.from('availabilities').delete().eq('id', id)
-    if (artist) await syncStatus(artist.id)
-  }
-
-  function handleStatusChange(newStatus: string) {
-    const today = new Date().toISOString().slice(0, 10)
-    const activeToday = [...vacations, ...sicknesses].find(r => {
-      const start = r.start_time.slice(0, 10)
-      const end   = r.end_time.slice(0, 10)
-      return today >= start && today <= end
-    })
-    if (newStatus === 'Dostępny' && activeToday) {
-      setError('Uwaga: istnieje aktywny wpis (urlop lub choroba) na dziś. Usuń go, aby ustawić status Dostępny.')
-      return
-    }
-    setError(null)
-    setForm(f => ({ ...f, status: newStatus }))
+    if (artist) await loadAvailability(artist.id)
   }
 
   async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -257,15 +203,13 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
     setError(null)
 
     const payload: Record<string, unknown> = {
-      name:        form.name,
-      email:       form.email       || '',
-      phone:       form.phone       || null,
-      role:        form.role        || null,
-      status:      form.status      || null,
-      status_note: form.status === 'Niedostępny' ? (form.status_note || null) : null,
-      birth_date:  form.birth_date  || null,
-      actor_type:  form.actor_type  || null,
-      avatar_url:  avatarUrl        || null,
+      name:       form.name,
+      email:      form.email      || '',
+      phone:      form.phone      || null,
+      role:       form.role       || null,
+      birth_date: form.birth_date || null,
+      actor_type: form.actor_type || null,
+      avatar_url: avatarUrl       || null,
     }
     if (presetTeamId) payload.team_id = presetTeamId
 
@@ -398,25 +342,6 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
                 className={inputCls}
                 placeholder="+48 123 456 789"
               />
-            </div>
-            <div className={form.status === 'Niedostępny' ? 'col-span-2' : ''}>
-              <label className={labelCls}>{am.statusLabel}</label>
-              <select
-                value={form.status}
-                onChange={e => handleStatusChange(e.target.value)}
-                className={inputCls}
-              >
-                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              {form.status === 'Niedostępny' && (
-                <textarea
-                  rows={2}
-                  value={form.status_note}
-                  onChange={e => setForm(f => ({ ...f, status_note: e.target.value }))}
-                  placeholder="Powód niedostępności…"
-                  className="mt-2 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white resize-none"
-                />
-              )}
             </div>
             <div>
               <label className={labelCls}>{am.roleLabel}</label>
