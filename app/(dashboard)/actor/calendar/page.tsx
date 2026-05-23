@@ -24,6 +24,7 @@ interface DayEvent {
   production_id: string | null
   production: string | null
   room: string | null
+  isMine: boolean   // true = actor in event_artists; false = production event only
 }
 
 interface DayStatus {
@@ -52,6 +53,8 @@ const PROD_COLORS = [
   { bg: 'bg-white',  text: 'text-gray-800',  pill: 'bg-white text-gray-900 border border-gray-900' },
   { bg: 'bg-white',  text: 'text-gray-800',  pill: 'bg-white text-gray-900 border border-gray-900' },
 ]
+
+const BLOCKING_STATUSES = new Set(['Urlop', 'Niedostępny', 'Choroba'])
 
 const DAYS_PL = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd']
 const MONTHS_PL = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień']
@@ -139,20 +142,21 @@ export default function ActorCalendarPage() {
           .order('title')
       : { data: [] }
 
-    // Events this actor is assigned to this month
+    // Events this actor is assigned to this month (event_artists)
     const { data: eaData } = await supabase
       .from('event_artists')
       .select('event_id')
       .eq('artist_id', actorId)
 
-    const eventIds = ((eaData ?? []) as any[]).map(r => r.event_id)
+    const myEventIds = new Set(((eaData ?? []) as any[]).map(r => r.event_id))
 
+    // All events this month belonging to the actor's productions
     let evList: DayEvent[] = []
-    if (eventIds.length > 0) {
+    if (productionIds.length > 0) {
       const { data: evData } = await supabase
         .from('events')
         .select('id, title, type, start_time, end_time, rooms(name), productions(id, title)')
-        .in('id', eventIds)
+        .in('production_id', productionIds)
         .gte('start_time', `${rangeStart}T00:00:00`)
         .lt('start_time',  `${rangeEnd}T00:00:00`)
         .order('start_time')
@@ -166,6 +170,7 @@ export default function ActorCalendarPage() {
           production_id: prod?.id ?? null,
           production: prod?.title ?? null,
           room: rm?.name ?? null,
+          isMine: myEventIds.has(e.id),
         }
       })
     }
@@ -443,6 +448,8 @@ export default function ActorCalendarPage() {
                   const daySt      = effectiveStatus(dateStr)
                   const isPending  = pending[dateStr] !== undefined
                   const stDef      = DAY_STATUSES.find(s => s.value === daySt?.status)
+                  const isBlocking = daySt && BLOCKING_STATUSES.has(daySt.status)
+                  const hasConflict = isBlocking && dayEvs.length > 0
 
                   return (
                     <button
@@ -460,6 +467,8 @@ export default function ActorCalendarPage() {
                           ? 'border-gray-900 ring-2 ring-gray-900 bg-gray-50'
                           : isSel
                           ? 'border-gray-900 ring-1 ring-gray-900 bg-white'
+                          : hasConflict
+                          ? 'border-orange-300 bg-orange-50 hover:border-orange-400'
                           : 'border-gray-100 hover:border-gray-300 bg-white hover:bg-gray-50'
                       }`}
                     >
@@ -472,6 +481,11 @@ export default function ActorCalendarPage() {
                         }`}>
                           {isMultiSel ? '✓' : ''}
                         </span>
+                      )}
+
+                      {/* Conflict badge */}
+                      {hasConflict && !multiMode && (
+                        <span className="absolute top-1 right-1 text-[10px]">⚠️</span>
                       )}
 
                       {/* Date number */}
@@ -488,15 +502,19 @@ export default function ActorCalendarPage() {
                         </span>
                       )}
 
-                      {/* Events — coloured by production */}
+                      {/* Events */}
                       <div className="flex flex-col gap-0.5 mt-auto w-full">
                         {dayEvs.slice(0, 2).map(ev => (
-                          <span key={ev.id} className="text-[9px] rounded px-1 truncate font-medium bg-white text-gray-800 border border-gray-300">
+                          <span key={ev.id} className={`text-[9px] rounded px-1 truncate font-medium border ${
+                            ev.isMine
+                              ? 'bg-gray-900 text-white border-gray-900'
+                              : 'bg-white text-gray-600 border-gray-300'
+                          }`}>
                             {fmtTime(ev.start_time)} {ev.type ?? ev.title}
                           </span>
                         ))}
                         {dayEvs.length > 2 && (
-                          <span className="text-[9px] text-gray-500">+{dayEvs.length - 2}</span>
+                          <span className="text-[9px] text-gray-400">+{dayEvs.length - 2}</span>
                         )}
                       </div>
                     </button>
@@ -621,31 +639,69 @@ export default function ActorCalendarPage() {
                   )}
                 </div>
 
-                {/* Events */}
-                {selectedEvents.length > 0 && (
+                {/* Conflict warning */}
+                {(() => {
+                  const st = effectiveStatus(selected)
+                  const hasEvs = selectedEvents.length > 0
+                  if (st && BLOCKING_STATUSES.has(st.status) && hasEvs) {
+                    return (
+                      <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">
+                        <p className="text-xs font-bold text-orange-700">⚠ Kolizja z produkcją</p>
+                        <p className="text-[11px] text-orange-600 mt-0.5">
+                          Status <strong>{st.status}</strong> koliduje z {selectedEvents.length} {selectedEvents.length === 1 ? 'wydarzeniem' : 'wydarzeniami'} tego dnia.
+                        </p>
+                      </div>
+                    )
+                  }
+                  return null
+                })()}
+
+                {/* My events */}
+                {selectedEvents.filter(e => e.isMine).length > 0 && (
                   <div>
                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">
-                      Wydarzenia ({selectedEvents.length})
+                      Jestem obsadzona/y
                     </p>
                     <div className="flex flex-col gap-2">
-                      {selectedEvents.map(ev => {
-                        const prod  = prods.find(p => p.id === ev.production_id)
-                        const color = prod ? PROD_COLORS[Number(prod.color)] : PROD_COLORS[0]
-                        return (
-                          <div key={ev.id} className={`p-2.5 rounded-xl border ${color.bg} border-opacity-50`} style={{ borderColor: 'transparent' }}>
-                            <p className={`text-xs font-semibold ${color.text}`}>{ev.type ?? ev.title}</p>
-                            <p className={`text-[11px] mt-0.5 opacity-80 ${color.text}`}>
-                              {fmtTime(ev.start_time)}–{fmtTime(ev.end_time)}
-                              {ev.room ? ` · ${ev.room}` : ''}
-                            </p>
-                            {ev.production && (
-                              <span className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${color.pill}`}>
-                                {ev.production}
-                              </span>
-                            )}
-                          </div>
-                        )
-                      })}
+                      {selectedEvents.filter(e => e.isMine).map(ev => (
+                        <div key={ev.id} className="p-2.5 rounded-xl bg-gray-900">
+                          <p className="text-xs font-semibold text-white">{ev.type ?? ev.title}</p>
+                          <p className="text-[11px] mt-0.5 text-gray-300">
+                            {fmtTime(ev.start_time)}–{fmtTime(ev.end_time)}
+                            {ev.room ? ` · ${ev.room}` : ''}
+                          </p>
+                          {ev.production && (
+                            <span className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white text-gray-900">
+                              {ev.production}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Production events (not personally assigned) */}
+                {selectedEvents.filter(e => !e.isMine).length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">
+                      Pozostałe z moich produkcji
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {selectedEvents.filter(e => !e.isMine).map(ev => (
+                        <div key={ev.id} className="p-2.5 rounded-xl border border-gray-200 bg-gray-50">
+                          <p className="text-xs font-semibold text-gray-700">{ev.type ?? ev.title}</p>
+                          <p className="text-[11px] mt-0.5 text-gray-500">
+                            {fmtTime(ev.start_time)}–{fmtTime(ev.end_time)}
+                            {ev.room ? ` · ${ev.room}` : ''}
+                          </p>
+                          {ev.production && (
+                            <span className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 text-gray-600 bg-white">
+                              {ev.production}
+                            </span>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
