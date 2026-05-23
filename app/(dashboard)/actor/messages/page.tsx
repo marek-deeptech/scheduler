@@ -29,22 +29,13 @@ function fmtDateTime(iso: string | null) {
 }
 
 function StatusPill({ status }: { status: string | null }) {
-  const cfg: Record<string, string> = {
-    pending:   'bg-amber-100 text-amber-700',
-    confirmed: 'bg-green-600 text-white',
-    declined:  'bg-red-600 text-white',
-  }
-  const labels: Record<string, string> = {
-    pending:   'Oczekuje',
-    confirmed: 'Potwierdzone',
-    declined:  'Odmowa',
-  }
-  const s = status ?? 'pending'
-  return (
-    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cfg[s] ?? 'bg-gray-100 text-gray-600'}`}>
-      {labels[s] ?? s}
-    </span>
+  if (status === 'confirmed') return (
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-600 text-white">Potwierdzone</span>
   )
+  if (!status || status === 'pending') return (
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Oczekuje</span>
+  )
+  return null
 }
 
 function ChannelPill({ channel }: { channel: string | null }) {
