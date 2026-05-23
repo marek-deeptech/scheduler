@@ -178,20 +178,12 @@ export default function ActorMessagesPage() {
 
               {/* Actions — only for pending */}
               {msg.status === 'pending' && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => respond(msg.id, 'confirmed')}
-                    className="flex-1 py-2 text-xs font-semibold bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors"
-                  >
-                    ✓ Potwierdzam
-                  </button>
-                  <button
-                    onClick={() => respond(msg.id, 'declined')}
-                    className="flex-1 py-2 text-xs font-semibold bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors"
-                  >
-                    ✗ Odmawiam
-                  </button>
-                </div>
+                <button
+                  onClick={() => respond(msg.id, 'confirmed')}
+                  className="w-full py-2 text-xs font-semibold bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors"
+                >
+                  ✓ Potwierdzam odbiór
+                </button>
               )}
             </div>
           ))}
