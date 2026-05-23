@@ -416,8 +416,13 @@ function MessagesTab({ artist, detail, onDetailRefresh }: {
   const [sent,          setSent]          = useState(false)
   const [confirmingId,  setConfirmingId]  = useState<string | null>(null)
 
-  const pending  = detail.confirmations.filter(c => c.status === 'pending')
-  const history  = detail.confirmations.filter(c => c.status !== 'pending')
+  // Refresh once on mount so confirmations/messages are always up to date
+  useEffect(() => { onDetailRefresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const confirmations = detail.confirmations ?? []
+  const messages      = detail.messages      ?? []
+  const pending  = confirmations.filter(c => c.status === 'pending')
+  const history  = confirmations.filter(c => c.status !== 'pending')
 
   const CONF_STYLE: Record<string, string> = {
     confirmed: 'bg-green-100 text-green-700',
@@ -532,11 +537,11 @@ function MessagesTab({ artist, detail, onDetailRefresh }: {
       {/* ── Message history ─────────────────────────────────────────── */}
       <div>
         <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Historia wiadomości</p>
-        {detail.messages.length === 0 ? (
+        {messages.length === 0 ? (
           <p className="text-xs text-gray-400 italic">Brak wysłanych wiadomości</p>
         ) : (
           <div className="flex flex-col gap-1.5">
-            {detail.messages.map(m => (
+            {messages.map(m => (
               <div key={m.id} className="rounded-xl border border-gray-100 bg-white overflow-hidden">
                 <button
                   onClick={() => setExpandedMsgId(expandedMsgId === m.id ? null : m.id)}
@@ -803,7 +808,7 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
         <div className="flex gap-1 mt-3 p-0.5 bg-gray-100 rounded-xl">
           {(['profile', 'plan', 'messages'] as const).map(tab => {
             const pendingCount = tab === 'messages' && detail
-              ? detail.confirmations.filter(c => c.status === 'pending').length
+              ? (detail.confirmations ?? []).filter(c => c.status === 'pending').length
               : 0
             return (
               <button
