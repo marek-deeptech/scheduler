@@ -30,12 +30,17 @@ function fmtDateTime(iso: string | null) {
 
 function StatusPill({ status }: { status: string | null }) {
   if (status === 'confirmed') return (
-    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-600 text-white">Potwierdzone</span>
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-600 text-white">BĘDĘ</span>
   )
-  if (!status || status === 'pending') return (
-    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Oczekuje</span>
+  if (status === 'declined') return (
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-600 text-white">NIE BĘDĘ</span>
   )
-  return null
+  if (status === 'maybe') return (
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500 text-white">BYĆ MOŻE</span>
+  )
+  return (
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Oczekuje</span>
+  )
 }
 
 function ChannelPill({ channel }: { channel: string | null }) {
@@ -102,7 +107,7 @@ export default function ActorMessagesPage() {
     setLoading(false)
   }
 
-  async function respond(id: string, status: 'confirmed' | 'declined') {
+  async function respond(id: string, status: 'confirmed' | 'declined' | 'maybe') {
     await supabase
       .from('event_confirmations')
       .update({ status, responded_at: new Date().toISOString() })
@@ -169,12 +174,26 @@ export default function ActorMessagesPage() {
 
               {/* Actions — only for pending */}
               {msg.status === 'pending' && (
-                <button
-                  onClick={() => respond(msg.id, 'confirmed')}
-                  className="w-full py-2 text-xs font-semibold bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors"
-                >
-                  ✓ Potwierdzam odbiór
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => respond(msg.id, 'confirmed')}
+                    className="flex-1 py-2 text-xs font-bold bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors"
+                  >
+                    ✓ BĘDĘ
+                  </button>
+                  <button
+                    onClick={() => respond(msg.id, 'maybe')}
+                    className="flex-1 py-2 text-xs font-bold bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-colors"
+                  >
+                    ~ BYĆ MOŻE
+                  </button>
+                  <button
+                    onClick={() => respond(msg.id, 'declined')}
+                    className="flex-1 py-2 text-xs font-bold bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors"
+                  >
+                    ✗ NIE BĘDĘ
+                  </button>
+                </div>
               )}
             </div>
           ))}
