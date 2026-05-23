@@ -14,8 +14,9 @@ interface Message {
   event_type: string | null
   event_start: string | null
   status: string | null
-  channel: string | null
+  comment: string | null
   sent_at: string | null
+  responded_at: string | null
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -79,8 +80,9 @@ export default function ActorMessagesPage() {
         id,
         event_id,
         status,
-        channel,
         sent_at,
+        responded_at,
+        comment,
         events (
           title,
           type,
@@ -93,14 +95,15 @@ export default function ActorMessagesPage() {
     const rows = ((data ?? []) as any[]).map(r => {
       const ev = Array.isArray(r.events) ? r.events[0] : r.events
       return {
-        id:          r.id,
-        event_id:    r.event_id,
-        event_title: ev?.title  ?? null,
-        event_type:  ev?.type   ?? null,
-        event_start: ev?.start_time ?? null,
-        status:      r.status,
-        channel:     r.channel,
-        sent_at:     r.sent_at,
+        id:           r.id,
+        event_id:     r.event_id,
+        event_title:  ev?.title      ?? null,
+        event_type:   ev?.type       ?? null,
+        event_start:  ev?.start_time ?? null,
+        status:       r.status,
+        comment:      r.comment      ?? null,
+        sent_at:      r.sent_at,
+        responded_at: r.responded_at ?? null,
       }
     })
 
@@ -157,8 +160,7 @@ export default function ActorMessagesPage() {
                     <p className="text-xs text-gray-400 mt-0.5">{fmtDateTime(msg.event_start)}</p>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <ChannelPill channel={msg.channel} />
+                <div className="shrink-0">
                   <StatusPill status={msg.status} />
                 </div>
               </div>
@@ -166,7 +168,13 @@ export default function ActorMessagesPage() {
               {/* Meta */}
               <p className="text-[11px] text-gray-400 mb-3">
                 Wysłano: {fmtDateTime(msg.sent_at)}
+                {msg.responded_at && ` · Odpowiedź: ${fmtDateTime(msg.responded_at)}`}
               </p>
+
+              {/* Actor comment */}
+              {msg.comment && (
+                <p className="text-xs text-gray-500 italic mb-3 border-l-2 border-gray-200 pl-2">„{msg.comment}"</p>
+              )}
 
               {/* Actions — only for pending */}
               {msg.status === 'pending' && (
