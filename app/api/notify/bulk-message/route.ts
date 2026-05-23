@@ -11,7 +11,7 @@ export async function POST(request: Request) {
 
   const { data: artists } = await supabase
     .from('artists')
-    .select('name, email')
+    .select('id, name, email')
     .in('id', artistIds)
 
   const withEmail = (artists ?? []).filter((a: any) => a.email)
@@ -26,9 +26,20 @@ export async function POST(request: Request) {
   `)
 
   let sent = 0
+  const logRows: { artist_id: string; type: string; subject: string; body: string; sent_at: string }[] = []
+  const sentAt = new Date().toISOString()
+
   for (const artist of withEmail) {
-    const ok = await sendEmail((artist as any).email, subject, html)
-    if (ok) sent++
+    const a = artist as any
+    const ok = await sendEmail(a.email, subject, html)
+    if (ok) {
+      sent++
+      logRows.push({ artist_id: a.id, type: 'email', subject, body, sent_at: sentAt })
+    }
+  }
+
+  if (logRows.length > 0) {
+    await supabase.from('actor_messages').insert(logRows)
   }
 
   return Response.json({ ok: true, sent, total: withEmail.length })

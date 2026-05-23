@@ -29,5 +29,16 @@ export async function POST(request: Request) {
   `)
 
   const ok = await sendEmail(artist.email, subject, html)
+
+  if (ok) {
+    await supabase.from('actor_messages').insert({
+      artist_id: artistId,
+      type:      'email',
+      subject,
+      body,
+      sent_at:   new Date().toISOString(),
+    })
+  }
+
   return Response.json({ ok, sent: ok ? 1 : 0 })
 }

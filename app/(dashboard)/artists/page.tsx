@@ -53,6 +53,30 @@ interface SubstituteRef {
   status: string | null
 }
 
+interface ConfirmationRef {
+  id: string
+  status: string
+  sent_at: string
+  responded_at: string | null
+  comment: string | null
+  event: {
+    id: string
+    title: string
+    type: string | null
+    start_time: string
+    end_time: string
+    productionTitle: string | null
+  } | null
+}
+
+interface MessageRef {
+  id: string
+  type: 'email' | 'sms'
+  subject: string | null
+  body: string
+  sent_at: string
+}
+
 interface ArtistDetail {
   productions: ProductionRef[]
   upcomingEvents: EventRef[]
@@ -60,6 +84,8 @@ interface ArtistDetail {
   vacations: AvailRef[]
   sicknesses: AvailRef[]
   substitutes: SubstituteRef[]
+  confirmations: ConfirmationRef[]
+  messages: MessageRef[]
 }
 
 interface ProductionForModal { id: string; title: string; theatres?: { name: string } | null }
@@ -374,21 +400,258 @@ function ArtistWeekView({ artistId, localeStr, ta }: {
   )
 }
 
+// ─── Messages tab ─────────────────────────────────────────────────────────────
+
+function MessagesTab({ artist, detail, onDetailRefresh }: {
+  artist: ArtistRow
+  detail: ArtistDetail
+  onDetailRefresh: () => void
+}) {
+  const [expandedMsgId, setExpandedMsgId] = useState<string | null>(null)
+  const [composing,     setComposing]     = useState(false)
+  const [composeType,   setComposeType]   = useState<'email' | 'sms'>('email')
+  const [subject,       setSubject]       = useState('')
+  const [body,          setBody]          = useState('')
+  const [sending,       setSending]       = useState(false)
+  const [sent,          setSent]          = useState(false)
+  const [confirmingId,  setConfirmingId]  = useState<string | null>(null)
+
+  const pending  = detail.confirmations.filter(c => c.status === 'pending')
+  const history  = detail.confirmations.filter(c => c.status !== 'pending')
+
+  const CONF_STYLE: Record<string, string> = {
+    confirmed: 'bg-green-100 text-green-700',
+    declined:  'bg-red-100 text-red-600',
+    maybe:     'bg-amber-100 text-amber-700',
+    pending:   'bg-gray-100 text-gray-500',
+  }
+  const CONF_LABEL: Record<string, string> = {
+    confirmed: 'Potwierdzone',
+    declined:  'Odmówione',
+    maybe:     'Może',
+    pending:   'Oczekuje',
+  }
+
+  function fmtSent(iso: string) {
+    return new Date(iso).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  }
+  function fmtEvent(c: ConfirmationRef) {
+    if (!c.event) return '—'
+    const d = new Date(c.event.start_time)
+    const day = d.toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short' })
+    const time = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+    return `${c.event.productionTitle ?? c.event.type ?? c.event.title} · ${day}, ${time}`
+  }
+
+  async function updateConfirmation(confId: string, status: string) {
+    setConfirmingId(confId)
+    await supabase.from('event_confirmations').update({ status, responded_at: new Date().toISOString() }).eq('id', confId)
+    setConfirmingId(null)
+    onDetailRefresh()
+  }
+
+  async function handleSend() {
+    if (!body.trim()) return
+    setSending(true)
+    await fetch('/api/notify/individual-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artistId: artist.id, subject: subject || '(bez tematu)', body }),
+    })
+    setSending(false)
+    setSent(true)
+    setBody('')
+    setSubject('')
+    setTimeout(() => { setSent(false); setComposing(false); onDetailRefresh() }, 2000)
+  }
+
+  const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white'
+
+  return (
+    <div className="flex flex-col gap-5 px-5 py-4">
+
+      {/* ── Pending confirmations ───────────────────────────────────── */}
+      <div>
+        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">
+          Potwierdzenia oczekujące {pending.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded-full">{pending.length}</span>}
+        </p>
+        {pending.length === 0 ? (
+          <p className="text-xs text-gray-400 italic">Brak oczekujących potwierdzeń</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {pending.map(c => (
+              <div key={c.id} className="rounded-xl border border-orange-100 bg-orange-50 px-3 py-2.5">
+                <p className="text-xs font-semibold text-gray-800 truncate">{fmtEvent(c)}</p>
+                <p className="text-[10px] text-gray-500 mt-0.5">Wysłano: {fmtSent(c.sent_at)}</p>
+                <div className="flex gap-1.5 mt-2">
+                  <button
+                    disabled={confirmingId === c.id}
+                    onClick={() => updateConfirmation(c.id, 'confirmed')}
+                    className="flex-1 py-1 text-[11px] font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+                  >✓ Potwierdź</button>
+                  <button
+                    disabled={confirmingId === c.id}
+                    onClick={() => updateConfirmation(c.id, 'maybe')}
+                    className="flex-1 py-1 text-[11px] font-semibold rounded-lg bg-amber-400 text-black hover:bg-amber-500 disabled:opacity-50 transition-colors"
+                  >~ Może</button>
+                  <button
+                    disabled={confirmingId === c.id}
+                    onClick={() => updateConfirmation(c.id, 'declined')}
+                    className="flex-1 py-1 text-[11px] font-semibold rounded-lg bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-50 transition-colors"
+                  >✗ Odmów</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Confirmation history ────────────────────────────────────── */}
+      {history.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Historia potwierdzeń</p>
+          <div className="flex flex-col gap-1.5">
+            {history.map(c => (
+              <div key={c.id} className="flex items-start gap-2 rounded-xl bg-gray-50 border border-gray-100 px-3 py-2">
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 mt-0.5 ${CONF_STYLE[c.status] ?? 'bg-gray-100 text-gray-500'}`}>
+                  {CONF_LABEL[c.status] ?? c.status}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-gray-800 truncate">{fmtEvent(c)}</p>
+                  {c.comment && <p className="text-[10px] text-gray-500 mt-0.5 italic">„{c.comment}"</p>}
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    {c.responded_at ? `Odpowiedź: ${fmtSent(c.responded_at)}` : `Wysłano: ${fmtSent(c.sent_at)}`}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Message history ─────────────────────────────────────────── */}
+      <div>
+        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Historia wiadomości</p>
+        {detail.messages.length === 0 ? (
+          <p className="text-xs text-gray-400 italic">Brak wysłanych wiadomości</p>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {detail.messages.map(m => (
+              <div key={m.id} className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+                <button
+                  onClick={() => setExpandedMsgId(expandedMsgId === m.id ? null : m.id)}
+                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 transition-colors text-left"
+                >
+                  <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${m.type === 'email' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                    {m.type === 'email' ? 'Email' : 'SMS'}
+                  </span>
+                  <span className="flex-1 text-xs font-medium text-gray-800 truncate">
+                    {m.subject ?? m.body.slice(0, 40)}
+                  </span>
+                  <span className="text-[10px] text-gray-400 shrink-0">{fmtSent(m.sent_at)}</span>
+                  <span className="text-gray-400 text-xs">{expandedMsgId === m.id ? '▲' : '▼'}</span>
+                </button>
+                {expandedMsgId === m.id && (
+                  <div className="px-3 pb-3 border-t border-gray-100">
+                    {m.subject && <p className="text-[10px] font-semibold text-gray-500 mt-2 mb-1">Temat: {m.subject}</p>}
+                    <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{m.body}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Compose ─────────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Nowa wiadomość</p>
+          {!composing && (
+            <button
+              onClick={() => setComposing(true)}
+              className="text-xs font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50 transition-colors"
+            >
+              + Napisz
+            </button>
+          )}
+        </div>
+        {composing && (
+          <div className="border border-gray-200 rounded-xl overflow-hidden">
+            {/* Type toggle */}
+            <div className="flex border-b border-gray-100">
+              {(['email', 'sms'] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setComposeType(t)}
+                  className={`flex-1 py-2 text-xs font-semibold transition-colors ${composeType === t ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+                >
+                  {t === 'email' ? '📧 Email' : '📱 SMS'}
+                </button>
+              ))}
+            </div>
+            <div className="p-3 space-y-2">
+              {composeType === 'email' && (
+                <input
+                  value={subject}
+                  onChange={e => setSubject(e.target.value)}
+                  placeholder="Temat…"
+                  className={inputCls}
+                />
+              )}
+              <textarea
+                rows={composeType === 'sms' ? 3 : 5}
+                value={body}
+                onChange={e => setBody(composeType === 'sms' ? e.target.value.slice(0, 160) : e.target.value)}
+                placeholder={composeType === 'sms' ? `Treść SMS (${body.length}/160)…` : 'Treść wiadomości…'}
+                className={`${inputCls} resize-none`}
+              />
+              {sent ? (
+                <p className="text-xs text-green-600 font-semibold text-center py-1">✓ Wysłano</p>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setComposing(false); setBody(''); setSubject('') }}
+                    className="flex-1 py-2 text-xs font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                  >
+                    Anuluj
+                  </button>
+                  <button
+                    onClick={handleSend}
+                    disabled={sending || !body.trim() || (composeType === 'email' && !artist.email)}
+                    className="flex-1 py-2 text-xs font-semibold bg-gray-900 text-white rounded-xl hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                  >
+                    {sending ? 'Wysyłanie…' : 'Wyślij'}
+                  </button>
+                </div>
+              )}
+              {composeType === 'email' && !artist.email && (
+                <p className="text-[10px] text-red-500">Brak adresu email aktora</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Detail panel ─────────────────────────────────────────────────────────────
 
-function ProfilePanel({ artist, detail, loading, onEdit, onClose }: {
+function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefresh }: {
   artist: ArtistRow
   detail: ArtistDetail | null
   loading: boolean
   onEdit: () => void
   onClose: () => void
+  onDetailRefresh: () => void
 }) {
   const { t, locale } = useLanguage()
   const ta = t.artists
   const localeStr = locale === 'pl' ? 'pl-PL' : 'en-US'
   const now = new Date()
 
-  const [activeTab,    setActiveTab]    = useState<'profile' | 'plan'>('profile')
+  const [activeTab,    setActiveTab]    = useState<'profile' | 'plan' | 'messages'>('profile')
   const [emailOpen,    setEmailOpen]    = useState(false)
   const [emailSubject, setEmailSubject] = useState('')
   const [emailBody,    setEmailBody]    = useState('')
@@ -538,19 +801,29 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose }: {
 
         {/* Tab switcher */}
         <div className="flex gap-1 mt-3 p-0.5 bg-gray-100 rounded-xl">
-          {(['profile', 'plan'] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-1.5 text-xs font-semibold rounded-[10px] transition-colors ${
-                activeTab === tab
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {tab === 'profile' ? ta.profileTab : ta.planTab}
-            </button>
-          ))}
+          {(['profile', 'plan', 'messages'] as const).map(tab => {
+            const pendingCount = tab === 'messages' && detail
+              ? detail.confirmations.filter(c => c.status === 'pending').length
+              : 0
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 py-1.5 text-xs font-semibold rounded-[10px] transition-colors relative ${
+                  activeTab === tab
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tab === 'profile' ? ta.profileTab : tab === 'plan' ? ta.planTab : 'Wiad.'}
+                {pendingCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-orange-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+                    {pendingCount}
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -560,6 +833,17 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose }: {
           <ArtistWeekView artistId={artist.id} localeStr={localeStr} ta={ta} />
         </div>
       )}
+
+      {/* Messages tab */}
+      {activeTab === 'messages' && loading ? (
+        <div className="flex-1 flex items-center justify-center text-gray-500 text-xs">{ta.loading}</div>
+      ) : activeTab === 'messages' && detail ? (
+        <div className="flex-1 overflow-y-auto">
+          <MessagesTab artist={artist} detail={detail} onDetailRefresh={onDetailRefresh} />
+        </div>
+      ) : activeTab === 'messages' ? (
+        <div className="flex-1 flex items-center justify-center text-gray-500 text-xs">{ta.loading}</div>
+      ) : null}
 
       {/* Profile tab */}
       {activeTab === 'profile' && loading ? (
@@ -773,7 +1057,7 @@ export default function ArtistsPage() {
     setDetailLoading(true)
     const now = new Date().toISOString()
 
-    const [{ data: apData }, { data: avData }, { data: eaData }, { data: subData }] = await Promise.all([
+    const [{ data: apData }, { data: avData }, { data: eaData }, { data: subData }, { data: confData }, { data: msgData }] = await Promise.all([
       supabase.from('artist_productions')
         .select('productions(id, title, status, theatres(name))')
         .eq('artist_id', artistId),
@@ -788,6 +1072,16 @@ export default function ArtistsPage() {
       supabase.from('actor_substitutes')
         .select('substitute_id, artists!actor_substitutes_substitute_id_fkey(id, name, avatar_url, status)')
         .eq('actor_id', artistId),
+      supabase.from('event_confirmations')
+        .select('id, status, sent_at, responded_at, comment, events(id, title, type, start_time, end_time, productions(title))')
+        .eq('artist_id', artistId)
+        .order('sent_at', { ascending: false })
+        .limit(50),
+      supabase.from('actor_messages')
+        .select('id, type, subject, body, sent_at')
+        .eq('artist_id', artistId)
+        .order('sent_at', { ascending: false })
+        .limit(50),
     ])
 
     const eventIds = (eaData ?? []).map((r: any) => r.event_id)
@@ -835,6 +1129,27 @@ export default function ArtistsPage() {
       return a ? { id: a.id, name: a.name, avatar_url: a.avatar_url ?? null, status: a.status ?? null } : null
     }).filter(Boolean) as SubstituteRef[]
 
+    const confirmations: ConfirmationRef[] = ((confData ?? []) as any[]).map(c => {
+      const ev = Array.isArray(c.events) ? c.events[0] : c.events
+      const prod = ev ? (Array.isArray(ev.productions) ? ev.productions[0] : ev.productions) : null
+      return {
+        id: c.id,
+        status: c.status,
+        sent_at: c.sent_at,
+        responded_at: c.responded_at ?? null,
+        comment: c.comment ?? null,
+        event: ev ? {
+          id: ev.id, title: ev.title, type: ev.type,
+          start_time: ev.start_time, end_time: ev.end_time,
+          productionTitle: prod?.title ?? null,
+        } : null,
+      }
+    })
+
+    const messages: MessageRef[] = ((msgData ?? []) as any[]).map(m => ({
+      id: m.id, type: m.type, subject: m.subject ?? null, body: m.body, sent_at: m.sent_at,
+    }))
+
     setDetail({
       productions:    prods,
       upcomingEvents,
@@ -842,6 +1157,8 @@ export default function ArtistsPage() {
       vacations:  avRaw.filter(r => r.type === 'Urlop'),
       sicknesses: avRaw.filter(r => r.type === 'Choroba'),
       substitutes,
+      confirmations,
+      messages,
     })
     setDetailLoading(false)
   }
@@ -973,6 +1290,7 @@ export default function ArtistsPage() {
               loading={detailLoading}
               onEdit={() => setModal(selectedArtist)}
               onClose={() => { setSelectedId(null); setDetail(null) }}
+              onDetailRefresh={() => { if (selectedId) fetchDetail(selectedId) }}
             />
           )}
         </div>
