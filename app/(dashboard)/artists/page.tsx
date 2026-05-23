@@ -425,15 +425,15 @@ function MessagesTab({ artist, detail, onDetailRefresh }: {
   const history  = confirmations.filter(c => c.status !== 'pending')
 
   const CONF_STYLE: Record<string, string> = {
-    confirmed: 'bg-green-100 text-green-700',
-    declined:  'bg-red-100 text-red-600',
-    maybe:     'bg-amber-100 text-amber-700',
+    confirmed: 'bg-green-600 text-white',
+    declined:  'bg-red-600 text-white',
+    maybe:     'bg-orange-500 text-white',
     pending:   'bg-gray-100 text-gray-500',
   }
   const CONF_LABEL: Record<string, string> = {
-    confirmed: 'Potwierdzone',
-    declined:  'Odmówione',
-    maybe:     'Może',
+    confirmed: 'BĘDĘ',
+    declined:  'NIE BĘDĘ',
+    maybe:     'BYĆ MOŻE',
     pending:   'Oczekuje',
   }
 
@@ -493,17 +493,17 @@ function MessagesTab({ artist, detail, onDetailRefresh }: {
                     disabled={confirmingId === c.id}
                     onClick={() => updateConfirmation(c.id, 'confirmed')}
                     className="flex-1 py-1 text-[11px] font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
-                  >✓ Potwierdź</button>
+                  >BĘDĘ</button>
                   <button
                     disabled={confirmingId === c.id}
                     onClick={() => updateConfirmation(c.id, 'maybe')}
-                    className="flex-1 py-1 text-[11px] font-semibold rounded-lg bg-amber-400 text-black hover:bg-amber-500 disabled:opacity-50 transition-colors"
-                  >~ Może</button>
+                    className="flex-1 py-1 text-[11px] font-semibold rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50 transition-colors"
+                  >BYĆ MOŻE</button>
                   <button
                     disabled={confirmingId === c.id}
                     onClick={() => updateConfirmation(c.id, 'declined')}
-                    className="flex-1 py-1 text-[11px] font-semibold rounded-lg bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-50 transition-colors"
-                  >✗ Odmów</button>
+                    className="flex-1 py-1 text-[11px] font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+                  >NIE BĘDĘ</button>
                 </div>
               </div>
             ))}

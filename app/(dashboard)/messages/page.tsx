@@ -300,12 +300,35 @@ function ComposeModal({
   )
 }
 
+// ── Types for responses ─────────────────────────────────────────
+interface ActorResponse {
+  id: string
+  actorName: string
+  eventTitle: string
+  eventStart: string | null
+  status: 'confirmed' | 'declined' | 'maybe'
+  respondedAt: string
+  comment: string | null
+}
+
+const RESP_CFG: Record<string, { cls: string; label: string }> = {
+  confirmed: { cls: 'bg-green-600 text-white',  label: 'BĘDĘ'     },
+  declined:  { cls: 'bg-red-600 text-white',    label: 'NIE BĘDĘ' },
+  maybe:     { cls: 'bg-orange-500 text-white', label: 'BYĆ MOŻE' },
+}
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
 /* ── Main page ─────────────────────────────────────────────────── */
 export default function MessagesPage() {
   const { t } = useLanguage()
   const tm = t.messages
   const [people, setPeople] = useState<Person[]>([])
   const [theatres, setTheatres] = useState<Theatre[]>([])
+  const [responses, setResponses] = useState<ActorResponse[]>([])
+  const [responsesOpen, setResponsesOpen] = useState(true)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [teamFilter, setTeamFilter] = useState<string>('all')
@@ -316,6 +339,30 @@ export default function MessagesPage() {
   const [compose, setCompose] = useState<{ type: 'email' | 'sms'; ids: string[] } | null>(null)
 
   useEffect(() => {
+    // Load actor responses
+    supabase
+      .from('event_confirmations')
+      .select('id, status, responded_at, comment, artists(name), events(title, type, start_time)')
+      .in('status', ['confirmed', 'declined', 'maybe'])
+      .not('responded_at', 'is', null)
+      .order('responded_at', { ascending: false })
+      .limit(60)
+      .then(({ data }) => {
+        setResponses(((data ?? []) as any[]).map(r => {
+          const artist = Array.isArray(r.artists) ? r.artists[0] : r.artists
+          const event  = Array.isArray(r.events)  ? r.events[0]  : r.events
+          return {
+            id:          r.id,
+            actorName:   artist?.name ?? '—',
+            eventTitle:  event?.type ?? event?.title ?? 'Wydarzenie',
+            eventStart:  event?.start_time ?? null,
+            status:      r.status,
+            respondedAt: r.responded_at,
+            comment:     r.comment ?? null,
+          }
+        }))
+      })
+
     Promise.all([
       supabase
         .from('artists')
@@ -472,6 +519,53 @@ export default function MessagesPage() {
           <option value="status">{tm.sortByStatus}</option>
         </select>
       </div>
+
+      {/* ── Responses section ──────────────────────────────────────── */}
+      {responses.length > 0 && (
+        <div className="mb-6 bg-white border border-gray-200 rounded-2xl overflow-hidden">
+          <button
+            onClick={() => setResponsesOpen(v => !v)}
+            className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-gray-900">Odpowiedzi aktorów</span>
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{responses.length}</span>
+              <span className="flex gap-1 ml-1">
+                {(['confirmed','maybe','declined'] as const).map(s => {
+                  const n = responses.filter(r => r.status === s).length
+                  if (!n) return null
+                  return <span key={s} className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${RESP_CFG[s].cls}`}>{n}</span>
+                })}
+              </span>
+            </div>
+            <span className="text-gray-400 text-sm">{responsesOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {responsesOpen && (
+            <div className="border-t border-gray-100 divide-y divide-gray-50">
+              {responses.map(r => (
+                <div key={r.id} className="flex items-center gap-3 px-5 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{r.actorName}</p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {r.eventTitle}{r.eventStart ? ` · ${fmtDate(r.eventStart)}` : ''}
+                    </p>
+                    {r.comment && (
+                      <p className="text-[11px] text-gray-400 italic mt-0.5">„{r.comment}"</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${RESP_CFG[r.status].cls}`}>
+                      {RESP_CFG[r.status].label}
+                    </span>
+                    <span className="text-[10px] text-gray-400">{fmtDate(r.respondedAt)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Person list */}
       {loading ? (
