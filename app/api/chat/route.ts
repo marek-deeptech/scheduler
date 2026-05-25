@@ -1,7 +1,22 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
+import fs from 'fs'
+import path from 'path'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+function getAnthropicKey(): string {
+  // Try process.env first
+  if (process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY
+
+  // Fall back to reading .env.local directly
+  try {
+    const envPath = path.join(process.cwd(), '.env.local')
+    const contents = fs.readFileSync(envPath, 'utf-8')
+    const match = contents.match(/^ANTHROPIC_API_KEY=(.+)$/m)
+    if (match) return match[1].trim()
+  } catch {}
+
+  return ''
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -126,7 +141,7 @@ export async function POST(request: Request) {
   // Build context
   const context = await buildContext()
 
-  const systemPrompt = `Jesteś asystentem koordynatora teatralnego. Pomagasz zarządzać repertuarem, obsadą i komunikacją z aktorami.
+  const systemPrompt = `Jesteś Stefanem — asystentem koordynatora teatralnego. Masz na imię Stefan. Pomagasz zarządzać repertuarem, obsadą i komunikacją z aktorami.
 
 Poniżej aktualne dane teatru:
 
@@ -144,7 +159,13 @@ Zasady:
     { role: 'user', content: message },
   ]
 
+  const apiKey = getAnthropicKey()
+  if (!apiKey) {
+    return Response.json({ error: 'ANTHROPIC_API_KEY not set' }, { status: 500 })
+  }
+
   // Stream response
+  const anthropic = new Anthropic({ apiKey })
   const encoder = new TextEncoder()
   let fullResponse = ''
 

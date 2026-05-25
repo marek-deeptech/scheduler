@@ -147,7 +147,7 @@ export default function AssistantPage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-900">Asystent koordynatora</h1>
+            <h1 className="text-lg font-bold text-gray-900">Stefan</h1>
             <p className="text-xs text-gray-500">Pytaj o repertuar, obsadę, dostępność aktorów</p>
           </div>
         </div>
@@ -166,7 +166,7 @@ export default function AssistantPage() {
                   <circle cx="12" cy="9" r="2" fill="white" stroke="none"/>
                 </svg>
               </div>
-              <p className="text-base font-semibold text-gray-800">Witaj! Jestem asystentem koordynatora.</p>
+              <p className="text-base font-semibold text-gray-800">Witaj! Jestem Stefan, asystent koordynatora.</p>
               <p className="text-sm text-gray-500 mt-1">Mam dostęp do aktualnych danych teatru — zapytaj o cokolwiek.</p>
             </div>
             <div className="flex flex-wrap gap-2 justify-center max-w-lg">

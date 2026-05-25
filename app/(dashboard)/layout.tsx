@@ -265,7 +265,7 @@ function Sidebar() {
               <div className="space-y-0.5">
                 <Link href="/assistant" className={`${linkCls('/assistant')} ${isActive('/assistant') ? '' : 'text-gray-900 font-semibold hover:bg-gray-100'}`}>
                   {icons.assistant}
-                  <span>Asystent</span>
+                  <span>Stefan</span>
                 </Link>
               </div>
             </div>
