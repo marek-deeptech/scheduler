@@ -44,12 +44,6 @@ const STATUS_CFG: Record<string, { label: string; cls: string }> = {
 
 const DAY_PL = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb']
 
-const MONTH_PL: Record<string, string> = {
-  '01': 'styczeń', '02': 'luty', '03': 'marzec', '04': 'kwiecień',
-  '05': 'maj',     '06': 'czerwiec', '07': 'lipiec', '08': 'sierpień',
-  '09': 'wrzesień','10': 'październik','11': 'listopad','12': 'grudzień',
-}
-
 function getNextMonths(n: number) {
   const now = new Date()
   return Array.from({ length: n }, (_, i) => {
@@ -60,216 +54,28 @@ function getNextMonths(n: number) {
   })
 }
 
-function monthLabel(month: string) {
-  const [y, m] = month.split('-')
-  const name = MONTH_PL[m] ?? m
-  return `${name.charAt(0).toUpperCase() + name.slice(1)} ${y}`
-}
-
-type Tab = 'repertuar' | 'planowanie'
-
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function PlanningPage() {
-  const [tab, setTab] = useState<Tab>('repertuar')
+  const allMonths = getNextMonths(7)
+  const [approvedMonths, setApprovedMonths] = useState<Set<string>>(new Set())
+  const [monthsReady,    setMonthsReady]    = useState(false)
 
-  return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Repertuar</h1>
-        <p className="text-sm text-gray-500 mt-1">Zatwierdzone miesiące i narzędzia planowania</p>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
-        {(['repertuar', 'planowanie'] as Tab[]).map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-1.5 text-sm font-semibold rounded-[10px] transition-colors capitalize ${
-              tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {t === 'repertuar' ? 'Repertuar' : 'Planowanie'}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'repertuar' ? <RepertuarTab /> : <PlanowanieTab />}
-    </div>
-  )
-}
-
-// ── Repertuar tab ─────────────────────────────────────────────────────────────
-
-function RepertuarTab() {
-  const [proposals, setProposals] = useState<Proposal[]>([])
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState<string | null>(null)
-
+  // Fetch approved months once on mount so we can exclude them from picker
   useEffect(() => {
-    async function load() {
-      setLoading(true)
-      setError(null)
-      try {
-        const r = await fetch('/api/planning/generate?status=approved')
-        const json = await r.json()
-        if (json.error) throw new Error(json.error)
-        setProposals(json.proposals ?? [])
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Błąd ładowania')
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
+    fetch('/api/planning/generate?status=approved')
+      .then(r => r.json())
+      .then(json => {
+        const approved = new Set<string>((json.proposals ?? []).map((p: Proposal) => p.month))
+        setApprovedMonths(approved)
+        setMonthsReady(true)
+      })
+      .catch(() => setMonthsReady(true))
   }, [])
 
-  if (loading) return <div className="flex items-center justify-center h-48 text-gray-400 text-sm">Ładowanie…</div>
-  if (error)   return <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{error}</div>
+  const months = allMonths.filter(mo => !approvedMonths.has(mo.value))
 
-  if (proposals.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-56 text-center">
-        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" className="text-gray-200 mb-3">
-          <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
-        </svg>
-        <p className="text-sm font-semibold text-gray-500">Brak zatwierdzonych miesięcy</p>
-        <p className="text-xs text-gray-400 mt-1 max-w-xs">Przejdź do zakładki Planowanie, wygeneruj propozycje i zatwierdź wybrany miesiąc</p>
-      </div>
-    )
-  }
-
-  // Group by month, sorted ascending
-  const byMonth: Record<string, Proposal> = {}
-  for (const p of proposals) byMonth[p.month] = p
-  const months = Object.keys(byMonth).sort()
-
-  return (
-    <div className="space-y-6">
-      {months.map(month => {
-        const p      = byMonth[month]
-        const events = [...(p.proposal_data ?? [])].sort((a, b) => a.date.localeCompare(b.date))
-        const byProd = p.stats?.by_production ?? {}
-
-        return (
-          <div key={month} className="bg-white rounded-2xl border border-green-200 overflow-hidden">
-
-            {/* Month header */}
-            <div className="px-6 py-4 border-b border-green-100 bg-green-50 flex items-center justify-between gap-4 flex-wrap">
-              <div>
-                <div className="flex items-center gap-3">
-                  <h2 className="text-lg font-bold text-gray-900">{monthLabel(month)}</h2>
-                  <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full uppercase tracking-wide bg-green-100 text-green-800">
-                    Zatwierdzony
-                  </span>
-                </div>
-                {p.reasoning && <p className="text-xs text-gray-500 mt-0.5">{p.reasoning}</p>}
-              </div>
-              <div className="flex items-center gap-3 flex-wrap">
-                {/* Stats chips */}
-                <div className="flex gap-1.5 flex-wrap">
-                  <Chip value={events.length} label="spektakli" />
-                  {Object.entries(byProd).slice(0, 4).map(([title, n]) => (
-                    <Chip key={title} value={n as number} label={title.length > 14 ? title.slice(0, 14) + '…' : title} />
-                  ))}
-                </div>
-                <Link
-                  href={`/planning/${p.id}`}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-green-700 border border-green-300 bg-white rounded-xl hover:bg-green-50 transition-colors shrink-0"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                  </svg>
-                  Podgląd
-                </Link>
-              </div>
-            </div>
-
-            {/* Calendar grid — compact */}
-            <div className="px-6 py-4">
-              <div className="grid grid-cols-7 gap-1 text-center mb-1">
-                {['Pn','Wt','Śr','Cz','Pt','Sb','Nd'].map(d => (
-                  <div key={d} className="text-[9px] font-semibold text-gray-400 uppercase">{d}</div>
-                ))}
-              </div>
-              <MiniCalendar month={month} events={events} />
-            </div>
-
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ── Mini calendar grid ────────────────────────────────────────────────────────
-
-function MiniCalendar({ month, events }: { month: string; events: ProposalEvent[] }) {
-  const [y, m] = month.split('-').map(Number)
-  const daysInMonth = new Date(y, m, 0).getDate()
-  // 1=Mon…7=Sun in ISO week; JS getDay() is 0=Sun…6=Sat
-  const firstDow  = new Date(y, m - 1, 1).getDay()       // 0=Sun
-  const startPad  = firstDow === 0 ? 6 : firstDow - 1    // pad to Mon-start
-
-  const showDates = new Set(events.map(e => e.date))
-  const prodByDate: Record<string, string[]> = {}
-  for (const e of events) {
-    prodByDate[e.date] ??= []
-    if (!prodByDate[e.date].includes(e.production_title))
-      prodByDate[e.date].push(e.production_title)
-  }
-
-  const cells: (number | null)[] = [
-    ...Array(startPad).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ]
-  // pad to full rows
-  while (cells.length % 7 !== 0) cells.push(null)
-
-  return (
-    <div className="grid grid-cols-7 gap-1">
-      {cells.map((day, i) => {
-        if (day === null) return <div key={i} />
-        const dateStr = `${month}-${String(day).padStart(2, '0')}`
-        const dow     = new Date(dateStr + 'T12:00:00').getDay()
-        const isWeekend = dow === 0 || dow === 6
-        const hasShow   = showDates.has(dateStr)
-        const prods     = prodByDate[dateStr] ?? []
-
-        return (
-          <div
-            key={i}
-            title={hasShow ? prods.join(', ') : undefined}
-            className={`relative flex flex-col items-center justify-start pt-1 pb-1 rounded-lg min-h-[40px] text-center transition-colors
-              ${hasShow
-                ? 'bg-green-100 text-green-900'
-                : isWeekend
-                  ? 'bg-gray-50 text-gray-300'
-                  : 'text-gray-200'
-              }`}
-          >
-            <span className={`text-[11px] font-bold leading-none ${hasShow ? 'text-green-800' : ''}`}>{day}</span>
-            {hasShow && (
-              <div className="flex flex-wrap justify-center gap-0.5 mt-0.5">
-                {prods.slice(0, 2).map((_, pi) => (
-                  <span key={pi} className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                ))}
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ── Planowanie tab ────────────────────────────────────────────────────────────
-
-function PlanowanieTab() {
-  const months = getNextMonths(7)
-  const [selectedMonth, setSelectedMonth] = useState(months[1].value)
+  const [selectedMonth, setSelectedMonth] = useState<string>('')
   const [proposals,     setProposals]     = useState<Proposal[]>([])
   const [loading,       setLoading]       = useState(false)
   const [generating,    setGenerating]    = useState(false)
@@ -278,7 +84,16 @@ function PlanowanieTab() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [error,         setError]         = useState<string | null>(null)
 
-  useEffect(() => { loadProposals() }, [selectedMonth])   // eslint-disable-line
+  // Set default selected month once approved list is known
+  useEffect(() => {
+    if (!monthsReady) return
+    const first = months[0]?.value
+    if (first && !selectedMonth) setSelectedMonth(first)
+  }, [monthsReady])   // eslint-disable-line
+
+  useEffect(() => {
+    if (selectedMonth) loadProposals()
+  }, [selectedMonth])   // eslint-disable-line
 
   async function loadProposals() {
     setLoading(true)
@@ -287,7 +102,13 @@ function PlanowanieTab() {
       const r = await fetch(`/api/planning/generate?month=${selectedMonth}`)
       const json = await r.json()
       if (json.error) throw new Error(json.error)
-      setProposals(json.proposals ?? [])
+      // Sort by numeric label: "Propozycja 1" → 1, "Propozycja 2" → 2, …
+      const sorted = (json.proposals ?? []).slice().sort((a: Proposal, b: Proposal) => {
+        const numA = parseInt(a.label.replace(/\D/g, ''), 10) || 0
+        const numB = parseInt(b.label.replace(/\D/g, ''), 10) || 0
+        return numA - numB
+      })
+      setProposals(sorted)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Błąd ładowania')
     } finally {
@@ -306,8 +127,8 @@ function PlanowanieTab() {
       })
       const json = await r.json()
       if (json.error) throw new Error(json.error)
-      setProposals(prev => [...(json.proposals ?? []), ...prev])
       setConstraints('')
+      await loadProposals()   // reload so we always show the 4 most recent drafts
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Błąd generowania')
     } finally {
@@ -333,36 +154,40 @@ function PlanowanieTab() {
     }
   }
 
-  const drafts   = proposals.filter(p => p.status === 'draft')
-  const approved = proposals.filter(p => p.status === 'approved')
-  const rejected = proposals.filter(p => p.status === 'rejected')
-
   return (
     <div className="space-y-6">
 
-      {/* Controls */}
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Planowanie repertuaru</h1>
+          <p className="text-sm text-gray-500 mt-1">Stefan analizuje obsadę i dostępność, generuje propozycje układu spektakli</p>
+        </div>
+      </div>
+
+      {/* ── Controls ── */}
       <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
         <div className="flex gap-3 items-end flex-wrap">
 
-          {/* Month picker */}
+          {/* Month picker — only months without approved repertoire */}
           <div className="w-52 shrink-0">
             <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Miesiąc</label>
             <select
               value={selectedMonth}
               onChange={e => setSelectedMonth(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              disabled={!monthsReady || months.length === 0}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:opacity-50"
             >
-              {months.map(mo => (
-                <option key={mo.value} value={mo.value}>{mo.label}</option>
-              ))}
+              {months.length === 0
+                ? <option value="">Wszystkie miesiące zatwierdzone</option>
+                : months.map(mo => <option key={mo.value} value={mo.value}>{mo.label}</option>)
+              }
             </select>
           </div>
 
           {/* Constraints */}
           <div className="flex-1 min-w-[260px]">
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-              Dodatkowe ograniczenia <span className="normal-case font-normal">(opcjonalne)</span>
-            </label>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Dodatkowe ograniczenia <span className="normal-case font-normal">(opcjonalne)</span></label>
             <input
               type="text"
               value={constraints}
@@ -398,6 +223,7 @@ function PlanowanieTab() {
           </button>
         </div>
 
+        {/* Generating banner */}
         {generating && (
           <div className="flex items-center gap-3 text-sm text-gray-600 bg-gray-50 rounded-xl px-4 py-3">
             <span className="inline-flex gap-1 text-gray-400">
@@ -410,7 +236,7 @@ function PlanowanieTab() {
         )}
       </div>
 
-      {/* Error */}
+      {/* ── Error ── */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700 flex items-center gap-2">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
@@ -420,74 +246,24 @@ function PlanowanieTab() {
         </div>
       )}
 
-      {/* Content */}
+      {/* ── Content ── */}
       {loading ? (
         <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Ładowanie propozycji…</div>
       ) : proposals.length === 0 ? (
         <EmptyState />
       ) : (
-        <div className="space-y-8">
-
-          {/* Drafts */}
-          {drafts.length > 0 && (
-            <section>
-              <SectionLabel>Propozycje do zatwierdzenia ({drafts.length})</SectionLabel>
-              <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-4">
-                {drafts.map(p => (
-                  <ProposalCard
-                    key={p.id}
-                    proposal={p}
-                    expanded={expandedId === p.id}
-                    onToggle={() => setExpandedId(expandedId === p.id ? null : p.id)}
-                    onApprove={() => handleAction(p.id, 'approve')}
-                    onReject={() => handleAction(p.id, 'reject')}
-                    actionLoading={actionLoading}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Approved */}
-          {approved.length > 0 && (
-            <section>
-              <SectionLabel>Zatwierdzony repertuar</SectionLabel>
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                {approved.map(p => (
-                  <ProposalCard
-                    key={p.id}
-                    proposal={p}
-                    expanded={expandedId === p.id}
-                    onToggle={() => setExpandedId(expandedId === p.id ? null : p.id)}
-                    onApprove={() => {}}
-                    onReject={() => {}}
-                    actionLoading={null}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Rejected */}
-          {rejected.length > 0 && (
-            <section className="opacity-50">
-              <SectionLabel>Odrzucone propozycje</SectionLabel>
-              <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-4">
-                {rejected.map(p => (
-                  <ProposalCard
-                    key={p.id}
-                    proposal={p}
-                    expanded={expandedId === p.id}
-                    onToggle={() => setExpandedId(expandedId === p.id ? null : p.id)}
-                    onApprove={() => {}}
-                    onReject={() => {}}
-                    actionLoading={null}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
+        <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-4">
+          {proposals.map(p => (
+            <ProposalCard
+              key={p.id}
+              proposal={p}
+              expanded={expandedId === p.id}
+              onToggle={() => setExpandedId(expandedId === p.id ? null : p.id)}
+              onApprove={() => handleAction(p.id, 'approve')}
+              onReject={() => handleAction(p.id, 'reject')}
+              actionLoading={actionLoading}
+            />
+          ))}
         </div>
       )}
     </div>

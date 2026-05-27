@@ -88,21 +88,60 @@ function extractJson(text: string): any | null {
 // strategy 3 — diversity-max: every day, all rooms, rotate productions maximally
 // strategy 4 — balanced:      weekends (2 rooms), Tue+Thu (1 room)
 
-function buildSchedule(strategy: 1 | 2 | 3 | 4, daySlots: DaySlot[]): Show[] {
-  const counts: Record<string, number>  = {} // shows per production
+const MAX_CONFLICTS = 1
+
+function buildSchedule(
+  strategy: 1 | 2 | 3 | 4,
+  daySlots: DaySlot[],
+  castMap: Record<string, string[]>,   // production_id → actor names
+): Show[] {
+  const counts: Record<string, number>     = {} // shows per production
   const lastInRoom: Record<string, string> = {} // room id → last production id
+  const actorsByDate: Record<string, Set<string>> = {} // date → actors already committed
+  let conflictsUsed = 0
   const result: Show[] = []
 
-  function pick(avail: Production[], usedToday: Set<string>, roomId: string): Production | null {
+  function actorConflict(prodId: string, date: string): boolean {
+    const cast = castMap[prodId] ?? []
+    const busy = actorsByDate[date] ?? new Set()
+    return cast.some(a => busy.has(a))
+  }
+
+  function pick(
+    avail: Production[],
+    usedToday: Set<string>,
+    roomId: string,
+    date: string,
+  ): Production | null {
     const prev = lastInRoom[roomId]
-    const cands = avail.filter(p => !usedToday.has(p.id) && p.id !== prev)
-    if (!cands.length) {
-      // Relax: allow yesterday's production if nothing else available
-      const relaxed = avail.filter(p => !usedToday.has(p.id))
-      if (!relaxed.length) return null
-      return [...relaxed].sort((a, b) => (counts[a.id] ?? 0) - (counts[b.id] ?? 0))[0]
+
+    // Sort candidates by least-used first (constant across all filter levels)
+    const byCount = (a: Production, b: Production) =>
+      (counts[a.id] ?? 0) - (counts[b.id] ?? 0)
+
+    // Level 1 — ideal: not used today, not yesterday, no actor conflict
+    const ideal = avail.filter(p =>
+      !usedToday.has(p.id) && p.id !== prev && !actorConflict(p.id, date)
+    )
+    if (ideal.length) return [...ideal].sort(byCount)[0]
+
+    // Level 2 — allow yesterday's production, still no actor conflict
+    const noConflict = avail.filter(p =>
+      !usedToday.has(p.id) && !actorConflict(p.id, date)
+    )
+    if (noConflict.length) return [...noConflict].sort(byCount)[0]
+
+    // Level 3 — use conflict budget (max 1 per whole proposal)
+    if (conflictsUsed < MAX_CONFLICTS) {
+      const withConflict = avail.filter(p => !usedToday.has(p.id))
+      if (withConflict.length) {
+        conflictsUsed++
+        return [...withConflict].sort(byCount)[0]
+      }
     }
-    return [...cands].sort((a, b) => (counts[a.id] ?? 0) - (counts[b.id] ?? 0))[0]
+
+    // Budget exhausted — skip this slot rather than add another conflict
+    return null
   }
 
   // For strategy 1 sort weekends first so they get priority when filling
@@ -111,7 +150,9 @@ function buildSchedule(strategy: 1 | 2 | 3 | 4, daySlots: DaySlot[]): Show[] {
     : daySlots
 
   for (const slot of slots) {
-    for (const [tid, th] of Object.entries(slot.byTheatre)) {
+    actorsByDate[slot.date] ??= new Set()
+
+    for (const [, th] of Object.entries(slot.byTheatre)) {
       if (!th.availableProds.length || !th.rooms.length) continue
 
       // How many rooms to fill
@@ -120,16 +161,17 @@ function buildSchedule(strategy: 1 | 2 | 3 | 4, daySlots: DaySlot[]): Show[] {
       else if (strategy === 2) roomCount = 1
       else if (strategy === 3) roomCount = th.rooms.length
       else { // 4 — balanced
-        if   (slot.isWeekend)                        roomCount = th.rooms.length
-        else if (slot.dow === 2 || slot.dow === 4)   roomCount = 1  // Tue / Thu
-        else                                         roomCount = 0
+        if   (slot.isWeekend)                      roomCount = th.rooms.length
+        else if (slot.dow === 2 || slot.dow === 4) roomCount = 1  // Tue / Thu
+        else                                       roomCount = 0
       }
 
       const usedToday = new Set<string>()
       for (let i = 0; i < roomCount && i < th.rooms.length; i++) {
         const room = th.rooms[i]
-        const prod = pick(th.availableProds, usedToday, room.id)
+        const prod = pick(th.availableProds, usedToday, room.id, slot.date)
         if (!prod) continue
+
         result.push({
           date:             slot.date,
           production_id:    prod.id,
@@ -140,9 +182,14 @@ function buildSchedule(strategy: 1 | 2 | 3 | 4, daySlots: DaySlot[]): Show[] {
           end_time:         '21:30:00',
           type:             'spektakl',
         })
-        counts[prod.id]   = (counts[prod.id]   ?? 0) + 1
-        lastInRoom[room.id] = prod.id
+        counts[prod.id]       = (counts[prod.id]   ?? 0) + 1
+        lastInRoom[room.id]   = prod.id
         usedToday.add(prod.id)
+
+        // Register this production's actors as committed for the day
+        for (const actor of (castMap[prod.id] ?? [])) {
+          actorsByDate[slot.date].add(actor)
+        }
       }
     }
   }
@@ -200,9 +247,17 @@ export async function GET(request: Request) {
 
   const status = searchParams.get('status')
 
-  let q = supabase.from('repertoire_proposals').select('*').order('month', { ascending: false }).limit(60)
+  let q = supabase.from('repertoire_proposals').select('*').order('created_at', { ascending: false })
   if (month)  q = (q as any).eq('month', month)
   if (status) q = (q as any).eq('status', status)
+
+  // For planning view (month filter, no status filter): return only the 4 most recent drafts
+  if (month && !status) {
+    q = (q as any).eq('status', 'draft').limit(4)
+  } else {
+    q = (q as any).limit(60)
+  }
+
   const { data, error } = await q
   if (error) return Response.json({ error: error.message }, { status: 500 })
   return Response.json({ proposals: data ?? [] })
@@ -341,7 +396,7 @@ export async function POST(request: Request) {
 
   // ── Run 4 algorithms ────────────────────────────────────────────────────────
   const [shows1, shows2, shows3, shows4] = ([1, 2, 3, 4] as const).map(s =>
-    buildSchedule(s, daySlots)
+    buildSchedule(s, daySlots, castMap)
   )
 
   const strategies = [
@@ -382,6 +437,28 @@ ${constraints ? `Życzenia koordynatora: ${constraints}\n` : ''}Odpowiedz TYLKO 
   }
 
   // ── Save to DB ──────────────────────────────────────────────────────────────
+
+  function countConflicts(shows: Show[]): number {
+    const byDate: Record<string, Show[]> = {}
+    for (const s of shows) { byDate[s.date] ??= []; byDate[s.date].push(s) }
+    let conflicts = 0
+    for (const dayShows of Object.values(byDate)) {
+      if (dayShows.length < 2) continue
+      const checked = new Set<string>()
+      for (let i = 0; i < dayShows.length; i++) {
+        for (let j = i + 1; j < dayShows.length; j++) {
+          const castA = new Set(castMap[dayShows[i].production_id ?? ''] ?? [])
+          const castB = castMap[dayShows[j].production_id ?? ''] ?? []
+          if (castB.some(a => castA.has(a))) {
+            if (!checked.has(dayShows[i].production_id ?? '')) { conflicts++; checked.add(dayShows[i].production_id ?? '') }
+            if (!checked.has(dayShows[j].production_id ?? '')) { conflicts++; checked.add(dayShows[j].production_id ?? '') }
+          }
+        }
+      }
+    }
+    return conflicts
+  }
+
   const toInsert = strategies.map((s, i) => {
     const byProd: Record<string, number> = {}
     for (const e of s.shows) byProd[e.production_title] = (byProd[e.production_title] ?? 0) + 1
@@ -391,7 +468,7 @@ ${constraints ? `Życzenia koordynatora: ${constraints}\n` : ''}Odpowiedz TYLKO 
       status:        'draft',
       proposal_data: s.shows,
       reasoning:     descriptions[i] || s.hint,
-      stats:         { total: s.shows.length, conflicts: 0, by_production: byProd },
+      stats:         { total: s.shows.length, conflicts: countConflicts(s.shows), by_production: byProd },
     }
   })
 

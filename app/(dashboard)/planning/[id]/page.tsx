@@ -68,6 +68,44 @@ function getDaysInMonth(month: string): string[] {
   )
 }
 
+// ── Conflict detection ────────────────────────────────────────────────────────
+// Returns a map: "date||production_id" → string[] of conflicting actor names
+
+function detectConflicts(
+  shows: ProposalEvent[],
+  castByProdId: Record<string, string[]>,
+): Map<string, string[]> {
+  const result = new Map<string, string[]>()
+
+  // Group shows by date
+  const byDate: Record<string, ProposalEvent[]> = {}
+  for (const s of shows) {
+    byDate[s.date] ??= []
+    byDate[s.date].push(s)
+  }
+
+  for (const dayShows of Object.values(byDate)) {
+    if (dayShows.length < 2) continue
+    for (let i = 0; i < dayShows.length; i++) {
+      for (let j = i + 1; j < dayShows.length; j++) {
+        const a    = dayShows[i]
+        const b    = dayShows[j]
+        const castA = new Set(castByProdId[a.production_id ?? ''] ?? [])
+        const castB = castByProdId[b.production_id ?? ''] ?? []
+        const shared = castB.filter(actor => castA.has(actor))
+        if (shared.length > 0) {
+          const keyA = `${a.date}||${a.production_id}`
+          const keyB = `${b.date}||${b.production_id}`
+          result.set(keyA, [...new Set([...(result.get(keyA) ?? []), ...shared])])
+          result.set(keyB, [...new Set([...(result.get(keyB) ?? []), ...shared])])
+        }
+      }
+    }
+  }
+
+  return result
+}
+
 // ── Alternatives helper ───────────────────────────────────────────────────────
 
 function getAlternatives(
@@ -282,8 +320,14 @@ export default function ProposalDetailPage() {
   const byProd: Record<string, number> = {}
   for (const s of localShows) byProd[s.production_title] = (byProd[s.production_title] ?? 0) + 1
 
+  // Conflict map: "date||production_id" → conflicting actor names
+  const conflicts = availData
+    ? detectConflicts(localShows, availData.castByProdId)
+    : new Map<string, string[]>()
+  const conflictCount = conflicts.size
+
   return (
-    <div className="space-y-5 max-w-3xl" ref={dropdownRef}>
+    <div className="space-y-5" ref={dropdownRef}>
 
       {/* Back + header */}
       <div>
@@ -294,24 +338,25 @@ export default function ProposalDetailPage() {
           Planowanie
         </Link>
 
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <div className="flex items-center gap-3 mb-1 flex-wrap">
-              <h1 className="text-xl font-bold text-gray-900">{proposal.label}</h1>
-              <span className={`px-2.5 py-0.5 text-[10px] font-semibold rounded-full uppercase tracking-wide ${cfg.cls}`}>
-                {cfg.label}
-              </span>
-              {saving && <span className="text-[11px] text-gray-400">Zapisuję…</span>}
-            </div>
-            <p className="text-sm text-gray-500">
-              {monthName.charAt(0).toUpperCase() + monthName.slice(1)}
-              {proposal.reasoning ? ` · ${proposal.reasoning}` : ''}
-            </p>
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-xl font-bold text-gray-900">{proposal.label}</h1>
+            <span className={`px-2.5 py-0.5 text-[10px] font-semibold rounded-full uppercase tracking-wide ${cfg.cls}`}>
+              {cfg.label}
+            </span>
+            {saving && <span className="text-[11px] text-gray-400">Zapisuję…</span>}
           </div>
-          <div className="flex gap-2 flex-wrap shrink-0">
+          <p className="text-sm text-gray-500">
+            {monthName.charAt(0).toUpperCase() + monthName.slice(1)}
+            {proposal.reasoning ? ` · ${proposal.reasoning}` : ''}
+          </p>
+          <div className="flex gap-2 flex-wrap">
             <StatChip value={localShows.length} label="spektakli" />
+            {conflictCount > 0 && (
+              <StatChip value={conflictCount} label="konfliktów obsady" warn />
+            )}
             {Object.entries(byProd).sort((a,b) => b[1]-a[1]).map(([title, n]) => (
-              <StatChip key={title} value={n} label={title.length > 16 ? title.slice(0,16)+'…' : title} />
+              <StatChip key={title} value={n} label={title.length > 20 ? title.slice(0,20)+'…' : title} />
             ))}
           </div>
         </div>
@@ -322,8 +367,8 @@ export default function ProposalDetailPage() {
 
       {/* Approve bar */}
       {isDraft && (
-        <div className="flex items-center gap-3 bg-yellow-50 border border-yellow-200 rounded-2xl px-5 py-3">
-          <p className="flex-1 text-sm text-yellow-800">Ta propozycja czeka na zatwierdzenie. Możesz edytować spektakle przed zatwierdzeniem.</p>
+        <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-2xl px-5 py-3">
+          <p className="flex-1 text-sm text-gray-500">Ta propozycja czeka na zatwierdzenie. Możesz edytować spektakle przed zatwierdzeniem.</p>
           <button
             onClick={handleApprove}
             disabled={approving}
@@ -346,94 +391,123 @@ export default function ProposalDetailPage() {
           <p className="text-xs text-gray-400">{eventsByDate.size} z {days.length} dni zaplanowanych</p>
         </div>
 
-        <div className="divide-y divide-gray-50">
-          {days.map(date => {
+        <div className="divide-y divide-gray-100">
+          {days.map((date, di) => {
             const dow       = new Date(date + 'T12:00:00').getDay()
             const isWeekend = dow === 0 || dow === 5 || dow === 6
+            const isMonday  = dow === 1
             const isHoliday = PL_HOLIDAYS.has(date)
             const dayShows  = eventsByDate.get(date) ?? []
             const hasShows  = dayShows.length > 0
             const dayNum    = parseInt(date.slice(8), 10)
 
             return (
-              <div key={date} className={`${isWeekend && hasShows ? 'bg-blue-50/30' : isWeekend ? 'bg-gray-50/40' : ''}`}>
-
+              <div
+                key={date}
+                className={[
+                  isMonday && di > 0 ? 'border-t-2 border-gray-200' : '',
+                  hasShows && isWeekend ? 'bg-blue-50/40' : hasShows ? 'bg-gray-50/60' : '',
+                ].join(' ')}
+              >
                 {/* Date row */}
-                <div className="flex items-start gap-3 px-5 py-2.5">
-                  {/* Date */}
-                  <div className="w-14 shrink-0 flex items-center gap-1.5 pt-0.5">
-                    <span className={`text-sm font-bold tabular-nums ${hasShows ? (isWeekend ? 'text-gray-900':'text-gray-700') : 'text-gray-300'}`}>
+                <div className="flex items-start gap-3 px-5 py-3">
+                  {/* Date number + short DOW */}
+                  <div className="w-10 shrink-0 pt-0.5 flex flex-col items-center">
+                    <span className={`text-sm font-bold tabular-nums leading-none ${hasShows ? (isWeekend ? 'text-gray-900' : 'text-gray-700') : 'text-gray-300'}`}>
                       {dayNum}
                     </span>
-                    <span className={`text-[11px] font-medium ${isWeekend ? 'text-gray-500':'text-gray-300'}`}>
+                    <span className={`text-[9px] font-semibold uppercase mt-0.5 ${isWeekend ? 'text-blue-400' : 'text-gray-300'}`}>
                       {DOW_SHORT[dow]}
                     </span>
                   </div>
 
                   {/* Shows */}
-                  <div className="flex-1 min-w-0 space-y-2">
+                  <div className="flex-1 min-w-0 space-y-1.5">
                     {isHoliday && !hasShows && <span className="text-[11px] text-red-400 font-medium">🚫 Święto</span>}
                     {!isHoliday && !hasShows && <span className="text-[11px] text-gray-200 select-none">—</span>}
 
                     {dayShows.map((show, i) => {
-                      const dropKey   = `${date}||${show.production_id}`
-                      const isOpen    = openDropdown === dropKey
+                      const dropKey     = `${date}||${show.production_id}`
+                      const isOpen      = openDropdown === dropKey
                       const theatreName = availData?.theatreNameByProdId[show.production_id ?? '']
-                      const alts = (availData && isOpen)
+                      const alts        = (availData && isOpen)
                         ? getAlternatives(date, show, localShows, availData)
                         : []
 
+                      const conflictActors = conflicts.get(dropKey) ?? []
+                      const hasConflict    = conflictActors.length > 0
+
                       return (
                         <div key={i}>
-                          {/* Show row */}
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {/* Theatre badge */}
-                            {theatreName && (
-                              <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded shrink-0">
-                                {theatreName}
-                              </span>
-                            )}
-                            {/* Title */}
-                            <span className="text-sm font-semibold text-gray-900">{show.production_title}</span>
-                            {/* Time */}
-                            <span className="text-[11px] text-gray-400 font-mono shrink-0">
-                              {show.start_time?.slice(0,5)}–{show.end_time?.slice(0,5)}
-                            </span>
-                            {/* Room */}
-                            {show.room_name && (
-                              <span className="text-[11px] text-gray-400 shrink-0 flex items-center gap-1">
-                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 22V12h6v10"/>
-                                </svg>
-                                {show.room_name}
-                              </span>
-                            )}
+                          {/* Show row — info grows, right column fixed */}
+                          <div className="flex items-center gap-2 min-w-0">
 
-                            {/* Edit buttons — only for draft */}
-                            {isDraft && (
-                              <div className="flex gap-1 ml-auto shrink-0">
-                                <button
-                                  onClick={() => setOpenDropdown(isOpen ? null : dropKey)}
-                                  className={`flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-lg border transition-colors ${isOpen ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700'}`}
+                            {/* Info section (grows) */}
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-wrap">
+                              {theatreName && (
+                                <TheatreBadge name={theatreName} />
+                              )}
+                              <span className={`text-sm font-semibold truncate ${hasConflict ? 'text-red-700' : 'text-gray-900'}`}>
+                                {show.production_title}
+                              </span>
+                              {/* Conflict icon */}
+                              {hasConflict && (
+                                <span
+                                  title={`Konflikt obsady: ${conflictActors.join(', ')}`}
+                                  className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 bg-red-50 border border-red-200 rounded text-[10px] font-semibold text-red-600 cursor-help"
                                 >
-                                  Zmień
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}>
-                                    <path d="M6 9l6 6 6-6" strokeLinecap="round"/>
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" strokeLinecap="round" strokeLinejoin="round"/>
+                                    <path d="M12 9v4M12 17h.01" strokeLinecap="round"/>
                                   </svg>
-                                </button>
-                                <button
-                                  onClick={() => deleteShow(date, show.production_id)}
-                                  className="px-2 py-0.5 text-[11px] font-medium text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
-                                >
-                                  Usuń
-                                </button>
-                              </div>
-                            )}
+                                  {conflictActors.length === 1
+                                    ? conflictActors[0].split(' ').pop()   // last name only
+                                    : `${conflictActors.length} aktorów`}
+                                </span>
+                              )}
+                              <span className="text-[11px] text-gray-400 font-mono shrink-0">
+                                {show.start_time?.slice(0,5)}–{show.end_time?.slice(0,5)}
+                              </span>
+                              {show.room_name && (
+                                <span className="text-[11px] text-gray-400 shrink-0 flex items-center gap-1">
+                                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 22V12h6v10"/>
+                                  </svg>
+                                  {show.room_name}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Right column — day name + buttons, always same width */}
+                            <div className="flex items-center gap-1.5 shrink-0 w-[200px] justify-end">
+                              {isWeekend && (
+                                <span className="text-[11px] font-medium text-gray-400 mr-1">{DOW_FULL[dow]}</span>
+                              )}
+                              {isDraft && (
+                                <>
+                                  <button
+                                    onClick={() => setOpenDropdown(isOpen ? null : dropKey)}
+                                    className={`flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-lg border transition-colors ${isOpen ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700'}`}
+                                  >
+                                    Zmień
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}>
+                                      <path d="M6 9l6 6 6-6" strokeLinecap="round"/>
+                                    </svg>
+                                  </button>
+                                  <button
+                                    onClick={() => deleteShow(date, show.production_id)}
+                                    className="px-2 py-0.5 text-[11px] font-medium text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                                  >
+                                    Usuń
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </div>
 
                           {/* Alternatives dropdown */}
                           {isOpen && (
-                            <div className="mt-1.5 ml-0 bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
+                            <div className="mt-1.5 bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
                               {alts.length === 0 ? (
                                 <p className="px-3 py-2 text-xs text-gray-400 italic">Brak dostępnych zastępstw w tym dniu</p>
                               ) : (
@@ -444,9 +518,7 @@ export default function ProposalDetailPage() {
                                       onClick={() => replaceShow(date, show.production_id, alt)}
                                       className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white transition-colors"
                                     >
-                                      <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-gray-200 text-gray-500 rounded shrink-0">
-                                        {alt.theatreName}
-                                      </span>
+                                      <TheatreBadge name={alt.theatreName} />
                                       <span className="text-xs font-medium text-gray-800 flex-1">{alt.title}</span>
                                       <span className="text-[10px] text-blue-600 font-semibold shrink-0">Wybierz →</span>
                                     </button>
@@ -459,13 +531,6 @@ export default function ProposalDetailPage() {
                       )
                     })}
                   </div>
-
-                  {/* Weekend badge */}
-                  {isWeekend && hasShows && (
-                    <span className="shrink-0 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-semibold rounded-md self-start mt-0.5">
-                      {DOW_FULL[dow]}
-                    </span>
-                  )}
                 </div>
               </div>
             )
@@ -477,9 +542,29 @@ export default function ProposalDetailPage() {
   )
 }
 
-function StatChip({ value, label }: { value: number; label: string }) {
+function TheatreBadge({ name }: { name: string }) {
+  const cls =
+    name === 'Teatr Polonia' ? 'bg-red-600 text-white' :
+    name === 'Och-Teatr'    ? 'bg-amber-400 text-amber-950' :
+                              'bg-gray-200 text-gray-700'
   return (
-    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-gray-100 text-gray-600">
+    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 tracking-wide ${cls}`}>
+      {name}
+    </span>
+  )
+}
+
+function StatChip({ value, label, warn }: { value: number; label: string; warn?: boolean }) {
+  return (
+    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium ${
+      warn ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-gray-100 text-gray-600'
+    }`}>
+      {warn && (
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0">
+          <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M12 9v4M12 17h.01" strokeLinecap="round"/>
+        </svg>
+      )}
       <span className="font-bold">{value}</span>
       <span>{label}</span>
     </span>
