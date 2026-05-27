@@ -49,6 +49,12 @@ const icons = {
       <path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
     </svg>
   ),
+  planning: (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/>
+      <path d="M9 15l1.5 1.5 3-3"/>
+    </svg>
+  ),
   mail: (
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
@@ -183,7 +189,7 @@ function Sidebar() {
   const isActive = (href: string) => pathname === href
 
   const linkCls = (href: string) =>
-    `flex items-center gap-2.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors no-underline hover:no-underline ${
+    `flex items-center gap-2 px-2.5 py-1.5 text-sm font-medium rounded-lg transition-colors no-underline hover:no-underline ${
       isActive(href)
         ? 'bg-gray-900 text-white'
         : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
@@ -194,7 +200,7 @@ function Sidebar() {
       selectedTheatreId === id ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
     }`
 
-  const sectionLabel = 'px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500'
+  const sectionLabel = 'px-2.5 mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-500'
 
   return (
     <aside className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0">
@@ -237,32 +243,33 @@ function Sidebar() {
             </div>
           </div>
 
-          <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
+          <nav className="flex-1 px-3 py-3 space-y-3 overflow-y-auto">
             <div>
               <p className={sectionLabel}>{t.nav.sections.main}</p>
-              <div className="space-y-0.5">
+              <div className="space-y-px">
                 <Link href="/dashboard"   className={linkCls('/dashboard')}  >{icons.home}    {t.nav.dashboard}</Link>
                 <Link href="/calendar"    className={linkCls('/calendar')}   >{icons.calendar}{t.nav.calendar}</Link>
+                <Link href="/planning"   className={linkCls('/planning')}   >{icons.planning}Planowanie</Link>
                 <Link href="/artists"     className={linkCls('/artists')}    >{icons.user}    {t.nav.artists}</Link>
                 <Link href="/productions" className={linkCls('/productions')}>{icons.film}    {t.nav.productions}</Link>
               </div>
             </div>
             <div>
               <p className={sectionLabel}>{t.nav.sections.communication}</p>
-              <div className="space-y-0.5">
+              <div className="space-y-px">
                 <Link href="/messages" className={linkCls('/messages')}>{icons.mail}{t.nav.messages}</Link>
               </div>
             </div>
             <div>
               <p className={sectionLabel}>{t.nav.sections.extra}</p>
-              <div className="space-y-0.5">
+              <div className="space-y-px">
                 <Link href="/reports"  className={linkCls('/reports')} >{icons.chart}{t.nav.reports}</Link>
                 <Link href="/settings" className={linkCls('/settings')}>{icons.gear}{t.nav.settings}</Link>
               </div>
             </div>
             <div>
               <p className={sectionLabel}>AI</p>
-              <div className="space-y-0.5">
+              <div className="space-y-px">
                 <Link href="/assistant" className={`${linkCls('/assistant')} ${isActive('/assistant') ? '' : 'text-gray-900 font-semibold hover:bg-gray-100'}`}>
                   {icons.assistant}
                   <span>Stefan</span>
@@ -275,7 +282,7 @@ function Sidebar() {
         /* Actor mode nav */
         <nav className="flex-1 px-3 py-4">
           <p className={sectionLabel}>Moje konto</p>
-          <div className="space-y-0.5">
+          <div className="space-y-px">
             <Link href="/actor/calendar" className={linkCls('/actor/calendar')}>{icons.calendar}Kalendarz</Link>
             <Link href="/actor/messages" className={linkCls('/actor/messages')}>{icons.mail}Wiadomości</Link>
           </div>
