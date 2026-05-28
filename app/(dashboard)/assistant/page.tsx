@@ -305,8 +305,7 @@ export default function AssistantPage() {
             rows={1}
             disabled={streaming}
             className="flex-1 rounded-2xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#c8102e] disabled:opacity-50 max-h-40 overflow-y-auto bg-white"
-            style={{ border: '1px solid #e4ddd4', color: '#1a1410' }}
-            style={{ height: 'auto' }}
+            style={{ border: '1px solid #e4ddd4', color: '#1a1410', height: 'auto' }}
             onInput={e => {
               const t = e.currentTarget
               t.style.height = 'auto'
