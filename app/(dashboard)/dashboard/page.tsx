@@ -685,7 +685,7 @@ export default function DashboardPage() {
 
           {todayEvents.length === 0 ? (
             <div className="text-center py-10" style={{ color: '#a89e92' }}>
-              <div className="flex justify-center mb-2"><IconInbox size={28} style={{ color: '#a89e92' }} /></div>
+              <div className="flex justify-center mb-2"><span style={{ color: '#a89e92' }}><IconInbox size={28} /></span></div>
               <p className="text-xs">{td.noTodayEvents}</p>
             </div>
           ) : (
@@ -732,7 +732,7 @@ export default function DashboardPage() {
 
           {upcoming.length === 0 ? (
             <div className="text-center py-12" style={{ color: '#a89e92' }}>
-              <div className="flex justify-center mb-2"><IconCalendar size={28} style={{ color: '#a89e92' }} /></div>
+              <div className="flex justify-center mb-2"><span style={{ color: '#a89e92' }}><IconCalendar size={28} /></span></div>
               <p className="text-xs">{td.noUpcomingEvents}</p>
             </div>
           ) : (
