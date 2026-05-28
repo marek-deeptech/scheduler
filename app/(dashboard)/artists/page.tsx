@@ -976,7 +976,7 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
                       style={isActive
                         ? { background: '#fffbeb', border: '1px solid #fde68a' }
                         : { background: '#fff', border: '1px solid #e4ddd4' }}>
-                      <IconSun size={16} className="shrink-0 mt-0.5" style={{ color: '#a89e92' } as any} />
+                      <span className="shrink-0 mt-0.5" style={{ color: '#a89e92' }}><IconSun size={16} /></span>
                       <div className="min-w-0">
                         <p className="text-xs font-medium" style={{ color: '#3e3830' }}>
                           {fmtDate(v.start_time)} – {fmtDate(v.end_time)}
