@@ -55,10 +55,11 @@ function EditableRow({ name, sub, onSave, onDelete }: {
           value={val}
           onChange={e => setVal(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
-          className="flex-1 border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+          className="flex-1 border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
         />
         <button onClick={save} disabled={busy}
-          className="text-xs px-2.5 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50">
+          className="text-xs px-2.5 py-1.5 rounded-lg disabled:opacity-50"
+          style={{ background: '#1a1410', color: '#fff' }}>
           {busy ? '…' : 'Zapisz'}
         </button>
         <button onClick={cancel}
@@ -99,8 +100,8 @@ function Section({ title, description, children }: {
   return (
     <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-100">
-        <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
-        {description && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
+        <h2 className="text-sm font-semibold" style={{ color: '#1a1410' }}>{title}</h2>
+        {description && <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>{description}</p>}
       </div>
       {children}
     </div>
@@ -112,7 +113,7 @@ function Section({ title, description, children }: {
 function Divider({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3 px-4 pt-3 pb-1">
-      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{label}</span>
+      <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#b8b0a4' }}>{label}</span>
       <div className="flex-1 h-px bg-gray-100" />
     </div>
   )
@@ -192,7 +193,7 @@ function TemplateField({
           ref={ref as React.RefObject<HTMLInputElement>}
           value={value}
           onChange={e => onChange(e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+          className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
         />
       ) : (
         <div className="relative">
@@ -201,7 +202,7 @@ function TemplateField({
             value={value}
             rows={field.rows ?? 3}
             onChange={e => onChange(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black resize-none"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e] resize-none"
           />
           {field.smsLimit && (
             <span className={`absolute bottom-2 right-2.5 text-[11px] font-mono ${over160 ? 'text-red-500 font-bold' : 'text-gray-400'}`}>
@@ -231,7 +232,8 @@ function TemplateField({
           type="button"
           onClick={save}
           disabled={busy}
-          className="text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors"
+          className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-50 transition-colors"
+          style={{ background: '#1a1410', color: '#fff' }}
         >
           {busy ? '…' : 'Zapisz'}
         </button>
@@ -400,9 +402,9 @@ export default function SettingsPage() {
 
   // ── Shared input/button styles ───────────────────────────────────────────────
 
-  const inputCls = 'flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-black'
+  const inputCls = 'flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e]'
   const addBtnCls = (key: string) =>
-    `text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-40 transition-colors whitespace-nowrap ${saving === key ? 'opacity-50 cursor-not-allowed' : ''}`
+    `text-xs px-3 py-1.5 bg-[#1a1410] text-white rounded-lg hover:bg-[#3e3830] disabled:opacity-40 transition-colors whitespace-nowrap ${saving === key ? 'opacity-50 cursor-not-allowed' : ''}`
 
   if (loading) {
     return (
@@ -411,11 +413,15 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Ustawienia</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Zarządzaj teatrami, salami i zespołami</p>
+    <div className="-m-8 flex flex-col min-h-full">
+      {/* Full-width header */}
+      <div className="flex items-start gap-4 px-8 py-5 shrink-0" style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
+        <div>
+          <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>Ustawienia</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>Zarządzaj teatrami, salami i zespołami</p>
+        </div>
       </div>
+    <div className="max-w-2xl mx-auto w-full space-y-6 px-8 py-6">
 
       {/* ── Tab navigation ─────────────────────────────────────────────────── */}
       <div className="flex gap-2">
@@ -423,9 +429,10 @@ export default function SettingsPage() {
           onClick={() => setActiveTab('general')}
           className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
             activeTab === 'general'
-              ? 'bg-gray-900 text-white'
+              ? ''
               : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
           }`}
+          style={activeTab === 'general' ? { background: '#1a1410', color: '#fff' } : undefined}
         >
           Ogólne
         </button>
@@ -433,9 +440,10 @@ export default function SettingsPage() {
           onClick={() => setActiveTab('notifications')}
           className={`rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
             activeTab === 'notifications'
-              ? 'bg-gray-900 text-white'
+              ? ''
               : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
           }`}
+          style={activeTab === 'notifications' ? { background: '#1a1410', color: '#fff' } : undefined}
         >
           Powiadomienia
         </button>
@@ -506,7 +514,7 @@ export default function SettingsPage() {
                 <select
                   value={newRoomTh}
                   onChange={e => setNewRoomTh(e.target.value)}
-                  className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-black bg-white text-gray-700"
+                  className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e] bg-white text-gray-700"
                 >
                   {theatres.map(th => <option key={th.id} value={th.id}>{th.name}</option>)}
                 </select>
@@ -558,6 +566,7 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'notifications' && <NotificationsTab />}
+    </div>
     </div>
   )
 }

@@ -189,7 +189,7 @@ export default function ProposalDetailPage() {
         ] = await Promise.all([
           supabase.from('productions').select('id, title, theatre_id').order('title'),
           supabase.from('artist_productions').select('artist_id, production_id'),
-          supabase.from('artists').select('id, name'),
+          supabase.from('artists').select('id, name, teams!inner(name)').eq('teams.name', 'Cast').order('name'),
           supabase.from('theatres').select('id, name'),
           supabase.from('actor_day_status')
             .select('artist_id, date, status, artists(name)')
@@ -331,7 +331,7 @@ export default function ProposalDetailPage() {
 
       {/* Back + header */}
       <div>
-        <Link href="/planning" className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors mb-3">
+        <Link href="/planning" className="inline-flex items-center gap-1.5 text-xs transition-colors mb-3" style={{ color: '#a89e92' }} onMouseOver={e => (e.currentTarget.style.color = '#3e3830')} onMouseOut={e => (e.currentTarget.style.color = '#a89e92')}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
@@ -340,7 +340,7 @@ export default function ProposalDetailPage() {
 
         <div className="space-y-2">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-xl font-bold text-gray-900">{proposal.label}</h1>
+            <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.5rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>{proposal.label}</h1>
             <span className={`px-2.5 py-0.5 text-[10px] font-semibold rounded-full uppercase tracking-wide ${cfg.cls}`}>
               {cfg.label}
             </span>
@@ -367,12 +367,15 @@ export default function ProposalDetailPage() {
 
       {/* Approve bar */}
       {isDraft && (
-        <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-2xl px-5 py-3">
+        <div className="flex items-center gap-3 bg-white rounded-2xl px-5 py-3" style={{ border: '1px solid #e4ddd4' }}>
           <p className="flex-1 text-sm text-gray-500">Ta propozycja czeka na zatwierdzenie. Możesz edytować spektakle przed zatwierdzeniem.</p>
           <button
             onClick={handleApprove}
             disabled={approving}
-            className="flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-xs font-semibold rounded-xl hover:bg-gray-700 disabled:opacity-50 transition-colors shrink-0"
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl disabled:opacity-50 transition-colors shrink-0"
+            style={{ background: '#c8102e', color: '#fff' }}
+            onMouseOver={e => !e.currentTarget.disabled && (e.currentTarget.style.background = '#9e0c24')}
+            onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
           >
             {approving ? 'Zatwierdzam…' : '✓ Zatwierdź repertuar'}
           </button>
@@ -387,7 +390,7 @@ export default function ProposalDetailPage() {
       {/* Day-by-day calendar */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-          <p className="text-sm font-semibold text-gray-700">Harmonogram</p>
+          <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>Harmonogram</p>
           <p className="text-xs text-gray-400">{eventsByDate.size} z {days.length} dni zaplanowanych</p>
         </div>
 
@@ -406,7 +409,7 @@ export default function ProposalDetailPage() {
                 key={date}
                 className={[
                   isMonday && di > 0 ? 'border-t-2 border-gray-200' : '',
-                  hasShows && isWeekend ? 'bg-blue-50/40' : hasShows ? 'bg-gray-50/60' : '',
+                  hasShows && isWeekend ? 'bg-gray-50/60' : hasShows ? 'bg-gray-50/60' : '',
                 ].join(' ')}
               >
                 {/* Date row */}
@@ -416,7 +419,7 @@ export default function ProposalDetailPage() {
                     <span className={`text-sm font-bold tabular-nums leading-none ${hasShows ? (isWeekend ? 'text-gray-900' : 'text-gray-700') : 'text-gray-300'}`}>
                       {dayNum}
                     </span>
-                    <span className={`text-[9px] font-semibold uppercase mt-0.5 ${isWeekend ? 'text-blue-400' : 'text-gray-300'}`}>
+                    <span className={`text-[9px] font-semibold uppercase mt-0.5 ${isWeekend ? 'text-gray-500' : 'text-gray-300'}`}>
                       {DOW_SHORT[dow]}
                     </span>
                   </div>
@@ -487,7 +490,8 @@ export default function ProposalDetailPage() {
                                 <>
                                   <button
                                     onClick={() => setOpenDropdown(isOpen ? null : dropKey)}
-                                    className={`flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-lg border transition-colors ${isOpen ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700'}`}
+                                    className={`flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-lg border transition-colors ${isOpen ? 'border-[#1a1410]' : 'border-[#e4ddd4] hover:border-[#cec5b8]'}`}
+                                    style={isOpen ? { background: '#1a1410', color: '#fff' } : { color: '#7a7068' }}
                                   >
                                     Zmień
                                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}>
@@ -507,7 +511,7 @@ export default function ProposalDetailPage() {
 
                           {/* Alternatives dropdown */}
                           {isOpen && (
-                            <div className="mt-1.5 bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
+                            <div className="mt-1.5 rounded-xl overflow-hidden" style={{ background: '#faf8f5', border: '1px solid #e4ddd4' }}>
                               {alts.length === 0 ? (
                                 <p className="px-3 py-2 text-xs text-gray-400 italic">Brak dostępnych zastępstw w tym dniu</p>
                               ) : (
@@ -520,7 +524,7 @@ export default function ProposalDetailPage() {
                                     >
                                       <TheatreBadge name={alt.theatreName} />
                                       <span className="text-xs font-medium text-gray-800 flex-1">{alt.title}</span>
-                                      <span className="text-[10px] text-blue-600 font-semibold shrink-0">Wybierz →</span>
+                                      <span className="text-[10px] font-semibold shrink-0" style={{ color: '#c8102e' }}>Wybierz →</span>
                                     </button>
                                   ))}
                                 </div>
@@ -543,12 +547,8 @@ export default function ProposalDetailPage() {
 }
 
 function TheatreBadge({ name }: { name: string }) {
-  const cls =
-    name === 'Teatr Polonia' ? 'bg-red-600 text-white' :
-    name === 'Och-Teatr'    ? 'bg-amber-400 text-amber-950' :
-                              'bg-gray-200 text-gray-700'
   return (
-    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 tracking-wide ${cls}`}>
+    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 tracking-wide bg-gray-100 text-gray-500">
       {name}
     </span>
   )
@@ -557,7 +557,7 @@ function TheatreBadge({ name }: { name: string }) {
 function StatChip({ value, label, warn }: { value: number; label: string; warn?: boolean }) {
   return (
     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium ${
-      warn ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-gray-100 text-gray-600'
+      warn ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-[#f2ede6] text-[#5a524a]'
     }`}>
       {warn && (
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0">

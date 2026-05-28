@@ -40,7 +40,7 @@ const STATUS_OPTIONS = ['Koncepcja', 'W produkcji', 'Na afiszu', 'Zawieszony', '
 
 const STATUS_STYLE: Record<string, { badge: string; dot: string }> = {
   'Koncepcja':   { badge: 'bg-slate-100 text-slate-600',  dot: 'bg-slate-400'  },
-  'W produkcji': { badge: 'bg-blue-100 text-blue-700',    dot: 'bg-blue-400'   },
+  'W produkcji': { badge: 'bg-amber-100 text-amber-700',  dot: 'bg-amber-400'  },
   'Na afiszu':   { badge: 'bg-green-100 text-green-700',  dot: 'bg-green-400'  },
   'Zawieszony':  { badge: 'bg-amber-100 text-amber-700',  dot: 'bg-amber-400'  },
   'Zdjęty':      { badge: 'bg-red-100 text-red-500',      dot: 'bg-red-400'    },
@@ -94,7 +94,8 @@ function Avatar({ member, size = 'sm' }: { member: CastMember; size?: 'sm' | 'md
       className={`${sz} rounded-full object-cover border-2 border-white shrink-0`} />
   ) : (
     <div title={member.name}
-      className={`${sz} rounded-full bg-gray-200 border-2 border-white flex items-center justify-center font-semibold text-gray-600 shrink-0`}>
+      className={`${sz} rounded-full border-2 border-white flex items-center justify-center font-semibold shrink-0`}
+      style={{ background: '#e8e0d6', color: '#5a524a' }}>
       {initials(member.name)}
     </div>
   )
@@ -119,8 +120,9 @@ function ProductionCard({ prod, isSelected, onClick, onEdit }: {
     <div
       onClick={onClick}
       className={`bg-white border rounded-2xl overflow-hidden flex flex-col cursor-pointer transition-all ${
-        isSelected ? 'border-gray-900 shadow-lg ring-1 ring-gray-900' : 'border-gray-200 hover:shadow-md hover:border-gray-300'
+        isSelected ? 'shadow-lg ring-1 ring-[#c8102e]' : 'border-[#e4ddd4] hover:shadow-md hover:border-[#cec5b8]'
       }`}
+      style={isSelected ? { borderColor: '#c8102e' } : undefined}
     >
       <div className={`h-1 w-full ${barColor}`} />
 
@@ -136,7 +138,7 @@ function ProductionCard({ prod, isSelected, onClick, onEdit }: {
 
         {/* Title + director */}
         <div>
-          <h3 className="text-lg font-bold text-gray-900 leading-tight">{prod.title}</h3>
+          <h3 className="text-lg font-bold leading-tight" style={{ color: '#1a1410' }}>{prod.title}</h3>
           {prod.director && <p className="text-xs text-gray-500 mt-0.5">reż. {prod.director}</p>}
         </div>
 
@@ -303,7 +305,7 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
 
         <button
           onClick={onEdit}
-          className="mt-3 w-full py-2 text-xs font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+          className="mt-3 w-full py-2 text-xs font-medium text-gray-600 border border-[#e4ddd4] rounded-xl hover:bg-gray-50 transition-colors"
         >
           Edytuj szczegóły
         </button>
@@ -314,7 +316,7 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
 
         {/* Cast */}
         <div className="px-5 py-4">
-          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">
+          <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#b8b0a4' }}>
             Obsada ({prod.cast.length})
           </p>
           {prod.cast.length === 0 ? (
@@ -360,7 +362,8 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
                 <button
                   onClick={handleSendMessage}
                   disabled={msgSending || !msgSubject || !msgBody}
-                  className="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg disabled:opacity-40"
+                  className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-40"
+                  style={{ background: '#1a1410', color: '#fff' }}
                 >
                   {msgSending ? 'Wysyłanie…' : 'Wyślij'}
                 </button>
@@ -373,7 +376,7 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
         {/* Upcoming events */}
         {upcoming.length > 0 && (
           <div className="px-5 py-4">
-            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">
+            <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#b8b0a4' }}>
               Zaplanowane ({upcoming.length})
             </p>
             <div className="space-y-1.5">
@@ -406,7 +409,7 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
         {/* Past events */}
         {past.length > 0 && (
           <div className="px-5 py-4">
-            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">
+            <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#b8b0a4' }}>
               Odbyte ({past.length})
             </p>
             <div className="space-y-1">
@@ -428,7 +431,7 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
         {/* Notes */}
         {prod.comment && (
           <div className="px-5 py-4">
-            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Notatki</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: '#b8b0a4' }}>Notatki</p>
             <p className="text-xs text-gray-600 leading-relaxed">{prod.comment}</p>
           </div>
         )}
@@ -470,9 +473,12 @@ export default function ProductionsPage() {
     const [{ data: prodData }, { data: thData }, { data: artistData }, { data: roomData }] = await Promise.all([
       query,
       supabase.from('theatres').select('id, name').order('name'),
-      supabase.from('artists').select('id, name, role, teams(name)').order('name'),
+      supabase.from('artists').select('id, name, role, teams!inner(name)').eq('teams.name', 'Cast').order('name'),
       supabase.from('rooms').select('id, theatre_id, name').order('name'),
     ])
+
+    // Only show Cast team members in production casts
+    const castIdSet = new Set((artistData ?? []).map((a: any) => a.id))
 
     const rows: ProductionRow[] = (prodData ?? []).map((p: any) => {
       const th     = Array.isArray(p.theatres) ? p.theatres[0] : p.theatres
@@ -482,7 +488,7 @@ export default function ProductionsPage() {
           const a = Array.isArray(ap.artists) ? ap.artists[0] : ap.artists
           return a ? { id: a.id, name: a.name, role: a.role ?? null, avatar_url: a.avatar_url ?? null } : null
         })
-        .filter(Boolean)
+        .filter((a: any) => a && castIdSet.has(a.id))
         .sort((a: CastMember, b: CastMember) => a.name.localeCompare(b.name))
       const events: EventRow[] = rawEvs
         .map((e: any) => {
@@ -566,21 +572,24 @@ export default function ProductionsPage() {
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
           {/* Toolbar */}
-          <div className="flex items-center justify-between px-8 py-5 shrink-0 border-b border-gray-100 bg-white">
+          <div className="flex items-center justify-between px-8 py-5 shrink-0 bg-white" style={{ borderBottom: '1px solid #e4ddd4' }}>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">{t.productions.title}</h2>
-              <p className="text-xs text-gray-500 mt-0.5">{productions.length} produkcji</p>
+              <h2 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>{t.productions.title}</h2>
+              <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>{productions.length} produkcji</p>
             </div>
             <button
               onClick={() => setModal(null)}
-              className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors"
+              className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
+              style={{ background: '#c8102e', color: '#fff' }}
+              onMouseOver={e => (e.currentTarget.style.background = '#9e0c24')}
+              onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
             >
               + Nowa produkcja
             </button>
           </div>
 
           {/* Status filter */}
-          <div className="px-8 py-3 border-b border-gray-100 bg-white shrink-0 flex items-center gap-1.5 overflow-x-auto">
+          <div className="px-8 py-3 shrink-0 flex items-center gap-1.5 overflow-x-auto" style={{ borderBottom: '1px solid #e4ddd4', background: '#faf8f5' }}>
             {[{ key: 'all', label: 'Wszystkie' }, ...STATUS_OPTIONS.map(s => ({ key: s, label: s }))].map(f => (
               <button
                 key={f.key}
@@ -588,10 +597,17 @@ export default function ProductionsPage() {
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
                   statusFilter === f.key
                     ? f.key === 'all'
-                      ? 'bg-gray-900 text-white'
+                      ? ''
                       : (STATUS_STYLE[f.key]?.badge ?? 'bg-gray-100 text-gray-700')
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                    : 'hover:text-gray-700 hover:bg-gray-100'
                 }`}
+                style={
+                  statusFilter === f.key && f.key === 'all'
+                    ? { background: '#1a1410', color: '#fff' }
+                    : statusFilter !== f.key
+                    ? { color: '#7a7068' }
+                    : undefined
+                }
               >
                 {f.label}
                 {counts[f.key] != null && (

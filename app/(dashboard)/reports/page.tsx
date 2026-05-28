@@ -58,7 +58,7 @@ const FITTING_TYPES = new Set(['Przymiarki kostiumowe'])
 
 // PERIOD_OPTIONS built inside component (locale-aware)
 
-const COLORS = ['#3b82f6','#dc2626','#d97706','#16a34a','#7c3aed','#0891b2','#db2777']
+const COLORS = ['#c8102e','#d97706','#16a34a','#7c3aed','#0891b2','#db2777','#4b5563']
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -407,22 +407,25 @@ export default function ReportsPage() {
     <div className="max-w-6xl mx-auto space-y-6 pb-10">
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-center justify-between gap-4 px-8 py-5 -mx-8 -mt-8 mb-2" style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">{tr.pageTitle}</h2>
-          <p className="text-sm text-gray-500 mt-1">{theatreName} · {tr.generated} {generatedStr}</p>
+          <h2 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>{tr.pageTitle}</h2>
+          <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>{theatreName} · {tr.generated} {generatedStr}</p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <select
             value={period}
             onChange={e => setPeriod(e.target.value)}
-            className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-700"
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c8102e] text-gray-700"
           >
             {PERIOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-xl hover:bg-gray-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-xl transition-colors"
+            style={{ background: '#c8102e' }}
+            onMouseOver={e => (e.currentTarget.style.background = '#9e0c24')}
+            onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 16l-5-5 1.4-1.4 2.6 2.6V4h2v8.2l2.6-2.6L17 11l-5 5zm-7 4v-4h2v2h10v-2h2v4H5z"/>
@@ -440,9 +443,9 @@ export default function ReportsPage() {
               const isConflict = s.label === tr.statConflicts
               const hasConflicts = isConflict && (s.value as number) > 0
               return (
-                <div key={s.label} className={`bg-white border rounded-2xl px-5 py-6 text-center ${hasConflicts ? 'border-red-200 bg-red-50/40' : 'border-gray-200'}`}>
-                  <p className={`text-xs font-medium mb-3 leading-tight ${hasConflicts ? 'text-red-400' : 'text-gray-500'}`}>{s.label}</p>
-                  <p className={`text-4xl font-bold leading-none ${hasConflicts ? 'text-red-600' : 'text-gray-700'}`}>{s.value}</p>
+                <div key={s.label} className={`bg-white border rounded-2xl px-5 py-6 text-center ${hasConflicts ? 'border-red-200 bg-red-50/40' : ''}`} style={hasConflicts ? undefined : { borderColor: '#e4ddd4' }}>
+                  <p className={`text-xs font-medium mb-3 leading-tight ${hasConflicts ? 'text-red-400' : ''}`} style={hasConflicts ? undefined : { color: '#7a7068' }}>{s.label}</p>
+                  <p className={`text-4xl font-bold leading-none ${hasConflicts ? 'text-red-600' : ''}`} style={hasConflicts ? undefined : { color: '#1a1410' }}>{s.value}</p>
                 </div>
               )
             })
@@ -453,25 +456,25 @@ export default function ReportsPage() {
       {!loading && productionTable.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-900">{tr.productionsSection}</h3>
+            <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>{tr.productionsSection}</h3>
             <p className="text-xs text-gray-500 mt-0.5">{tr.productionsCount(productionTable.length, !!selectedTheatreId)}</p>
           </div>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colProduction}</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colStatus}</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colRehearsals}</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colShows}</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colNextEvent}</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colTheatre}</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#b8b0a4' }}>{tr.colProduction}</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#b8b0a4' }}>{tr.colStatus}</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#b8b0a4' }}>{tr.colRehearsals}</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#b8b0a4' }}>{tr.colShows}</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#b8b0a4' }}>{tr.colNextEvent}</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#b8b0a4' }}>{tr.colTheatre}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {productionTable.map(p => {
                 const statusColors: Record<string, string> = {
                   'Na afiszu':   'bg-green-100 text-green-700',
-                  'W produkcji': 'bg-blue-100 text-blue-700',
+                  'W produkcji': 'bg-amber-100 text-amber-700',
                   'Koncepcja':   'bg-slate-100 text-slate-600',
                   'Zawieszony':  'bg-amber-100 text-amber-700',
                 }
@@ -513,7 +516,7 @@ export default function ReportsPage() {
 
         {/* Artist workload */}
         <div className="col-span-3 bg-white border border-gray-200 rounded-2xl p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-5">{tr.chartArtistWorkload}</h3>
+          <h3 className="text-sm font-semibold mb-5" style={{ color: '#1a1410' }}>{tr.chartArtistWorkload}</h3>
           {loading || artistWorkload.length === 0 ? (
             <div className="flex items-center justify-center h-48 text-xs text-gray-500 italic">
               {loading ? tr.loading : tr.noDataPeriod}
@@ -534,7 +537,7 @@ export default function ReportsPage() {
 
         {/* Artist status donut */}
         <div className="col-span-2 bg-white border border-gray-200 rounded-2xl p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-5">{tr.chartArtistStatus}</h3>
+          <h3 className="text-sm font-semibold mb-5" style={{ color: '#1a1410' }}>{tr.chartArtistStatus}</h3>
           {loading || artistStatus.length === 0 ? (
             <div className="flex items-center justify-center h-48 text-xs text-gray-500 italic">
               {loading ? tr.loading : tr.noData}
@@ -569,7 +572,7 @@ export default function ReportsPage() {
 
         {/* Rehearsals per production */}
         <div className="bg-white border border-gray-200 rounded-2xl p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-5">{tr.chartRehearsalsPerProd}</h3>
+          <h3 className="text-sm font-semibold mb-5" style={{ color: '#1a1410' }}>{tr.chartRehearsalsPerProd}</h3>
           {loading || perProduction.length === 0 ? (
             <div className="flex items-center justify-center h-44 text-xs text-gray-500 italic">
               {loading ? tr.loading : tr.noRehearsals}
@@ -591,7 +594,7 @@ export default function ReportsPage() {
 
         {/* Room utilization */}
         <div className="bg-white border border-gray-200 rounded-2xl p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-5">{tr.chartRoomUsage}</h3>
+          <h3 className="text-sm font-semibold mb-5" style={{ color: '#1a1410' }}>{tr.chartRoomUsage}</h3>
           {loading || roomUtil.length === 0 ? (
             <div className="flex items-center justify-center h-44 text-xs text-gray-500 italic">
               {loading ? tr.loading : tr.noRooms}
@@ -621,7 +624,7 @@ export default function ReportsPage() {
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-semibold text-gray-900">{tr.workloadSection}</h3>
+              <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>{tr.workloadSection}</h3>
               <p className="text-xs text-gray-500 mt-0.5">{tr.workloadSubtitle}</p>
             </div>
             <span className="text-xs text-gray-500">{tr.workloadCount(artistTable.length)}</span>
@@ -635,14 +638,15 @@ export default function ReportsPage() {
                 <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider">
                   <button
                     onClick={() => setWorkloadSort(s => s === 'absence' ? 'hours' : 'absence')}
-                    className={`flex items-center gap-1 mx-auto transition-colors ${workloadSort === 'absence' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
+                    className={`flex items-center gap-1 mx-auto transition-colors ${workloadSort === 'absence' ? '' : 'text-gray-400 hover:text-gray-600'}`}
+                    style={workloadSort === 'absence' ? { color: '#c8102e' } : undefined}
                   >
                     {tr.colAbsenceDays}
                     <span className="text-[10px]">{workloadSort === 'absence' ? '↓' : '↕'}</span>
                   </button>
                 </th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  <span className={`flex items-center gap-1 mx-auto ${workloadSort === 'hours' ? 'text-gray-900' : 'text-gray-500'}`}>
+                  <span className={`flex items-center gap-1 mx-auto ${workloadSort === 'hours' ? '' : 'text-gray-500'}`} style={workloadSort === 'hours' ? { color: '#c8102e' } : undefined}>
                     Godz. {m1Lbl} {workloadSort === 'hours' && <span className="text-[10px]">↓</span>}
                   </span>
                 </th>
@@ -680,12 +684,12 @@ export default function ReportsPage() {
                       }
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`text-sm font-bold ${a.hoursM1 > 0 ? 'text-indigo-600' : 'text-gray-400'}`}>
+                      <span className={`text-sm font-bold ${a.hoursM1 > 0 ? 'text-gray-700' : 'text-gray-400'}`}>
                         {fmtH(a.hoursM1)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`text-sm font-bold ${a.hoursM2 > 0 ? 'text-indigo-400' : 'text-gray-400'}`}>
+                      <span className={`text-sm font-bold ${a.hoursM2 > 0 ? 'text-gray-500' : 'text-gray-400'}`}>
                         {fmtH(a.hoursM2)}
                       </span>
                     </td>
@@ -705,7 +709,7 @@ export default function ReportsPage() {
       {!loading && absenceList.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-900">{tr.absencesSection}</h3>
+            <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>{tr.absencesSection}</h3>
             <p className="text-xs text-gray-500 mt-0.5">{tr.absencesCount(absenceList.length)}</p>
           </div>
           <div className="divide-y divide-gray-50">
@@ -730,7 +734,7 @@ export default function ReportsPage() {
       {/* Event type breakdown */}
       {!loading && typeCounts.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-2xl p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">{tr.eventTypesSection}</h3>
+          <h3 className="text-sm font-semibold mb-4" style={{ color: '#1a1410' }}>{tr.eventTypesSection}</h3>
           <div className="flex flex-wrap gap-2.5">
             {typeCounts.map((t, i) => (
               <div key={t.name} className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-xl border border-gray-100">

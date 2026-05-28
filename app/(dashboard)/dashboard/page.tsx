@@ -459,7 +459,7 @@ export default function DashboardPage() {
         : inPrepList.map(p => (
             <TipRow key={p.id} label={p.title}
               sub={p.status}
-              dot={p.status === 'W produkcji' ? 'bg-blue-400' : 'bg-slate-300'} />
+              dot={p.status === 'W produkcji' ? 'bg-amber-400' : 'bg-slate-300'} />
           ))
       }
       <span className="block pb-1" />
@@ -563,7 +563,7 @@ export default function DashboardPage() {
               <TipRow key={e.id}
                 label={e.production_title ?? e.title}
                 sub={new Date(e.start_time).toLocaleDateString(localeStr, { day: 'numeric', month: 'short' }) + ' · ' + fmtTime(e.start_time, localeStr)}
-                dot="bg-indigo-400" />
+                dot="bg-gray-400" />
             ))
         }
         <span className="block pb-1" />
@@ -623,7 +623,7 @@ export default function DashboardPage() {
     return (
       <div className="max-w-7xl mx-auto flex items-center justify-center h-64">
         <div className="flex items-center gap-3 text-gray-500">
-          <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-400 rounded-full animate-spin" />
+          <div className="w-5 h-5 border-2 border-[#e4ddd4] border-t-[#7a7068] rounded-full animate-spin" />
           <span className="text-sm">{td.loading}</span>
         </div>
       </div>
@@ -653,11 +653,11 @@ export default function DashboardPage() {
         {statCards.map(s => (
           <div
             key={s.label}
-            className={`bg-white border border-gray-200 rounded-2xl px-5 py-4 flex flex-col gap-1 transition-shadow ${s.onClick ? 'cursor-pointer hover:shadow-md hover:border-gray-300' : ''}`}
+            className={`bg-white border border-[#e4ddd4] rounded-2xl px-5 py-4 flex flex-col gap-1 transition-shadow ${s.onClick ? 'cursor-pointer hover:shadow-md hover:border-[#cec5b8]' : ''}`}
             onClick={s.onClick}
           >
-            <p className="text-xs text-gray-500 font-medium">{s.label}</p>
-            <p className={`text-4xl font-bold leading-none mt-1 ${s.warn ? 'text-red-600' : 'text-gray-900'}`}>{s.value}</p>
+            <p className="text-xs font-medium" style={{ color: '#7a7068' }}>{s.label}</p>
+            <p className={`text-4xl font-bold leading-none mt-1 ${s.warn ? 'text-red-600' : ''}`} style={s.warn ? undefined : { color: '#1a1410' }}>{s.value}</p>
             <Tooltip tip={s.tip} align={s.tipAlign}>
               <span className={`text-xs font-medium mt-1 underline decoration-dotted underline-offset-2 cursor-help transition-colors
                 ${s.warn ? 'text-red-500 decoration-red-300' : 'text-gray-500 decoration-gray-300'}`}>
@@ -668,38 +668,6 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* ── Next premiere banner ─────────────────────────────────── */}
-      {nextPremiere && daysToPremi !== null && (() => {
-        const theatreName = allTheatres.find(t => t.id === nextPremiere.theatre_id)?.name ?? ''
-        const isPolonia  = theatreName === 'Teatr Polonia'
-        const isOch      = theatreName === 'Och-Teatr'
-        const bg  = isPolonia ? 'bg-red-600'    : isOch ? 'bg-yellow-400'  : 'bg-gray-900'
-        const txt = isPolonia ? 'text-white'     : isOch ? 'text-gray-900'  : 'text-white'
-        const sub = isPolonia ? 'text-red-200'   : isOch ? 'text-yellow-800' : 'text-gray-400'
-        const cnt = isPolonia ? 'text-red-100'   : isOch ? 'text-yellow-900' : 'text-gray-300'
-        return (
-          <div className={`${bg} rounded-2xl px-5 py-3 flex items-center justify-between`}>
-            <div className="flex items-center gap-3">
-              <IconStar size={20} className={sub} />
-              <div>
-                <p className={`text-[10px] font-bold uppercase tracking-wider ${sub}`}>{td.nextPremiere}</p>
-                <Link href="/productions"
-                  className={`text-base font-bold leading-tight hover:underline decoration-current/60 underline-offset-2 block ${txt}`}>
-                  {nextPremiere.production_title ?? nextPremiere.title}
-                </Link>
-                <p className={`text-xs mt-0.5 ${sub}`}>
-                  {new Date(nextPremiere.start_time).toLocaleDateString(localeStr, { weekday: 'long', day: 'numeric', month: 'long' })}
-                  {nextPremiere.location ? ` · ${nextPremiere.location}` : ''}
-                </p>
-              </div>
-            </div>
-            <div className="text-right shrink-0 pl-4">
-              <p className={`text-4xl font-black leading-none ${txt}`}>{daysToPremi}</p>
-              <p className={`text-xs mt-0.5 ${sub}`}>{td.days(daysToPremi!)}</p>
-            </div>
-          </div>
-        )
-      })()}
 
       {/* ── 3-column body ──────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_280px] gap-5 items-start">
@@ -707,17 +675,17 @@ export default function DashboardPage() {
         {/* LEFT — Today ─────────────────────────────────────────── */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-900">{td.todaySection(dayLabel)}</h3>
+            <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>{td.todaySection(dayLabel)}</h3>
             {todayEvents.length > 0 && (
-              <span className="text-[11px] font-medium text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">
+              <span className="text-[11px] font-medium rounded-full px-2 py-0.5" style={{ background: '#e4ddd4', color: '#7a7068' }}>
                 {td.eventCount(todayEvents.length)}
               </span>
             )}
           </div>
 
           {todayEvents.length === 0 ? (
-            <div className="text-center py-10 text-gray-500">
-              <div className="flex justify-center mb-2"><IconInbox size={28} className="text-gray-500" /></div>
+            <div className="text-center py-10" style={{ color: '#a89e92' }}>
+              <div className="flex justify-center mb-2"><IconInbox size={28} style={{ color: '#a89e92' }} /></div>
               <p className="text-xs">{td.noTodayEvents}</p>
             </div>
           ) : (
@@ -727,7 +695,7 @@ export default function DashboardPage() {
                   <div className="text-xs font-semibold text-gray-500 w-10 shrink-0 pt-0.5 tabular-nums">
                     {fmtTime(ev.start_time, localeStr)}
                   </div>
-                  <div className="border-l-2 border-gray-300 pl-3 flex-1 min-w-0">
+                  <div className="border-l-2 pl-3 flex-1 min-w-0" style={{ borderLeftColor: '#e4ddd4' }}>
                     <Link href={`/calendar?date=${eventDateParam(ev.start_time)}`}
                       className="text-sm font-semibold text-gray-900 hover:text-gray-600 transition-colors truncate block">
                       {ev.title}
@@ -758,13 +726,13 @@ export default function DashboardPage() {
         {/* MIDDLE — Upcoming ──────────────────────────────────────── */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900">{td.upcomingSection}</h3>
+            <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>{td.upcomingSection}</h3>
             <span className="text-xs text-gray-500">{td.upcomingDays}</span>
           </div>
 
           {upcoming.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <div className="flex justify-center mb-2"><IconCalendar size={28} className="text-gray-500" /></div>
+            <div className="text-center py-12" style={{ color: '#a89e92' }}>
+              <div className="flex justify-center mb-2"><IconCalendar size={28} style={{ color: '#a89e92' }} /></div>
               <p className="text-xs">{td.noUpcomingEvents}</p>
             </div>
           ) : (
@@ -780,7 +748,7 @@ export default function DashboardPage() {
                   <div key={ev.id}>
                     {newDay && (
                       <div className="flex items-center gap-3 px-5 pt-3 pb-1">
-                        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                        <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#b8b0a4' }}>
                           {DAYS_SHORT[d.getDay()]} {d.getDate()} {locale === 'pl' ? MONTHS_PL[d.getMonth()].substring(0,3) : MONTHS_PL[d.getMonth()].substring(0,3)}
                         </span>
                         <div className="flex-1 h-px bg-gray-100" />
@@ -831,7 +799,7 @@ export default function DashboardPage() {
           {/* Alerty */}
           {(alertArtists.length > 0 || conflictPairs.length > 0) && (
             <div className="bg-white border border-gray-200 rounded-2xl px-4 py-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">{td.alertsSection}</h3>
+              <h3 className="text-sm font-semibold mb-3" style={{ color: '#1a1410' }}>{td.alertsSection}</h3>
               <div className="space-y-2">
 
                 {conflictPairs.length > 0 && (
@@ -890,7 +858,7 @@ export default function DashboardPage() {
 
           {/* Dostępność */}
           <div className="bg-white border border-gray-200 rounded-2xl px-4 py-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">{td.teamAvailSection}</h3>
+            <h3 className="text-sm font-semibold mb-3" style={{ color: '#1a1410' }}>{td.teamAvailSection}</h3>
             <div className="flex h-2 rounded-full overflow-hidden mb-3 gap-0.5">
               {pctD > 0 && <div className="bg-green-400 rounded-full" style={{ width: `${pctD}%` }} />}
               {pctU > 0 && <div className="bg-amber-400 rounded-full" style={{ width: `${pctU}%` }} />}

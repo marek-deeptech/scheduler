@@ -39,7 +39,7 @@ interface Proposal {
 const STATUS_CFG: Record<string, { label: string; cls: string }> = {
   draft:    { label: 'Propozycja',   cls: 'bg-yellow-100 text-yellow-800' },
   approved: { label: 'Zatwierdzony', cls: 'bg-green-100  text-green-800'  },
-  rejected: { label: 'Odrzucony',    cls: 'bg-gray-100   text-gray-500'   },
+  rejected: { label: 'Odrzucony',    cls: 'bg-[#f2ede6] text-[#7a7068]'  },
 }
 
 const DAY_PL = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb']
@@ -158,25 +158,26 @@ export default function PlanningPage() {
     <div className="space-y-6">
 
       {/* ── Header ── */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 px-8 py-5 -mx-8 -mt-8 mb-2"
+        style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Planowanie repertuaru</h1>
-          <p className="text-sm text-gray-500 mt-1">Stefan analizuje obsadę i dostępność, generuje propozycje układu spektakli</p>
+          <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>Planowanie repertuaru</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>Stefan analizuje obsadę i dostępność, generuje propozycje układu spektakli</p>
         </div>
       </div>
 
       {/* ── Controls ── */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
+      <div className="bg-white rounded-2xl border border-[#e4ddd4] p-5 space-y-4">
         <div className="flex gap-3 items-end flex-wrap">
 
           {/* Month picker — only months without approved repertoire */}
           <div className="w-52 shrink-0">
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Miesiąc</label>
+            <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#b8b0a4' }}>Miesiąc</label>
             <select
               value={selectedMonth}
               onChange={e => setSelectedMonth(e.target.value)}
               disabled={!monthsReady || months.length === 0}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:opacity-50"
+              className="w-full rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e] disabled:opacity-50" style={{ border: '1px solid #e4ddd4', color: '#3e3830' }}
             >
               {months.length === 0
                 ? <option value="">Wszystkie miesiące zatwierdzone</option>
@@ -187,14 +188,14 @@ export default function PlanningPage() {
 
           {/* Constraints */}
           <div className="flex-1 min-w-[260px]">
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Dodatkowe ograniczenia <span className="normal-case font-normal">(opcjonalne)</span></label>
+            <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#b8b0a4' }}>Dodatkowe ograniczenia <span className="normal-case font-normal" style={{ color: '#a89e92' }}>(opcjonalne)</span></label>
             <input
               type="text"
               value={constraints}
               onChange={e => setConstraints(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !generating && generate()}
               placeholder="np. Hamlet min. 4 razy, bez środowego grania w 1. tygodniu…"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              className="w-full rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e]" style={{ border: '1px solid #e4ddd4', color: '#3e3830' }}
             />
           </div>
 
@@ -202,7 +203,10 @@ export default function PlanningPage() {
           <button
             onClick={generate}
             disabled={generating}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white text-sm font-semibold rounded-xl hover:bg-gray-700 disabled:opacity-50 transition-colors shrink-0"
+            className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors shrink-0"
+            style={{ background: '#c8102e', color: '#fff' }}
+            onMouseOver={e => !e.currentTarget.disabled && (e.currentTarget.style.background = '#9e0c24')}
+            onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
           >
             {generating ? (
               <>
@@ -225,8 +229,8 @@ export default function PlanningPage() {
 
         {/* Generating banner */}
         {generating && (
-          <div className="flex items-center gap-3 text-sm text-gray-600 bg-gray-50 rounded-xl px-4 py-3">
-            <span className="inline-flex gap-1 text-gray-400">
+          <div className="flex items-center gap-3 text-sm rounded-xl px-4 py-3" style={{ background: '#faf8f5', color: '#7a7068' }}>
+            <span className="inline-flex gap-1" style={{ color: '#cec5b8' }}>
               <span className="animate-bounce" style={{ animationDelay: '0ms' }}>●</span>
               <span className="animate-bounce" style={{ animationDelay: '150ms' }}>●</span>
               <span className="animate-bounce" style={{ animationDelay: '300ms' }}>●</span>
@@ -248,7 +252,7 @@ export default function PlanningPage() {
 
       {/* ── Content ── */}
       {loading ? (
-        <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Ładowanie propozycji…</div>
+        <div className="flex items-center justify-center h-32 text-sm" style={{ color: '#cec5b8' }}>Ładowanie propozycji…</div>
       ) : proposals.length === 0 ? (
         <EmptyState />
       ) : (
@@ -273,17 +277,17 @@ export default function PlanningPage() {
 // ── Sub-components ───────────────────────────────────────────────────────────
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-3">{children}</p>
+  return <p className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#b8b0a4' }}>{children}</p>
 }
 
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center h-52 text-center">
-      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" className="text-gray-200 mb-3">
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" strokeWidth="1.3" className="mb-3" style={{ color: '#e4ddd4' }} stroke="currentColor">
         <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" strokeLinecap="round"/>
       </svg>
-      <p className="text-sm font-semibold text-gray-500">Brak propozycji dla tego miesiąca</p>
-      <p className="text-xs text-gray-400 mt-1 max-w-xs">Kliknij „Generuj propozycje" — Stefan przygotuje kilka wariantów repertuaru uwzględniając obsadę i dostępność aktorów</p>
+      <p className="text-sm font-semibold" style={{ color: '#7a7068' }}>Brak propozycji dla tego miesiąca</p>
+      <p className="text-xs mt-1 max-w-xs" style={{ color: '#a89e92' }}>Kliknij „Generuj propozycje" — Stefan przygotuje kilka wariantów repertuaru uwzględniając obsadę i dostępność aktorów</p>
     </div>
   )
 }
@@ -307,23 +311,23 @@ function ProposalCard({
 
   const borderCls =
     proposal.status === 'approved' ? 'border-green-300' :
-    proposal.status === 'rejected' ? 'border-gray-100'  : 'border-gray-200'
+    proposal.status === 'rejected' ? 'border-[#f2ede6]'  : 'border-[#e4ddd4]'
 
   return (
     <div className={`bg-white rounded-2xl border ${borderCls} overflow-hidden flex flex-col`}>
 
       {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-100">
+      <div className="px-5 py-4" style={{ borderBottom: '1px solid #e4ddd4' }}>
         <div className="flex items-start gap-3 mb-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-base font-bold text-gray-900">{proposal.label}</span>
+              <span className="text-base font-bold" style={{ color: '#1a1410' }}>{proposal.label}</span>
               <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full uppercase tracking-wide ${cfg.cls}`}>
                 {cfg.label}
               </span>
             </div>
             {proposal.reasoning && (
-              <p className="text-xs text-gray-500 mt-1 leading-relaxed">{proposal.reasoning}</p>
+              <p className="text-xs mt-1 leading-relaxed" style={{ color: '#7a7068' }}>{proposal.reasoning}</p>
             )}
           </div>
         </div>
@@ -345,7 +349,10 @@ function ProposalCard({
       {/* Toggle event list */}
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-5 py-2.5 text-xs font-medium text-gray-500 hover:bg-gray-50 transition-colors"
+        className="w-full flex items-center justify-between px-5 py-2.5 text-xs font-medium transition-colors"
+        style={{ color: '#7a7068' }}
+        onMouseOver={e => (e.currentTarget.style.background = '#faf8f5')}
+        onMouseOut={e => (e.currentTarget.style.background = 'transparent')}
       >
         <span>{expanded ? 'Ukryj harmonogram' : `Pokaż harmonogram (${events.length} spektakli)`}</span>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
@@ -355,20 +362,20 @@ function ProposalCard({
       </button>
 
       {expanded && (
-        <div className="px-5 pb-3 max-h-72 overflow-y-auto border-t border-gray-50">
-          <div className="divide-y divide-gray-50">
+        <div className="px-5 pb-3 max-h-72 overflow-y-auto" style={{ borderTop: '1px solid #f2ede6' }}>
+          <div className="divide-y" style={{ borderColor: '#f2ede6' }}>
             {events.map((e, i) => {
               const d   = new Date(e.date + 'T00:00:00')
               const dow = d.getDay()
               const isWeekend = dow === 0 || dow === 5 || dow === 6
               return (
                 <div key={i} className="flex items-center gap-2 py-2">
-                  <span className={`w-16 shrink-0 text-[11px] font-semibold ${isWeekend ? 'text-gray-900' : 'text-gray-400'}`}>
+                  <span className="w-16 shrink-0 text-[11px] font-semibold" style={{ color: isWeekend ? '#1a1410' : '#a89e92' }}>
                     {DAY_PL[dow]} {d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })}
                   </span>
-                  <span className="flex-1 min-w-0 text-xs font-medium text-gray-800 truncate">{e.production_title}</span>
+                  <span className="flex-1 min-w-0 text-xs font-medium truncate" style={{ color: '#3e3830' }}>{e.production_title}</span>
                   {e.room_name && (
-                    <span className="text-[10px] text-gray-400 shrink-0">{e.room_name}</span>
+                    <span className="text-[10px] shrink-0" style={{ color: '#a89e92' }}>{e.room_name}</span>
                   )}
                 </div>
               )
@@ -380,10 +387,13 @@ function ProposalCard({
       {/* Actions */}
       <div className="mt-auto">
         {proposal.status === 'draft' && (
-          <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex gap-2">
+          <div className="px-5 py-3 flex gap-2" style={{ background: '#faf8f5', borderTop: '1px solid #e4ddd4' }}>
             <Link
               href={`/planning/${proposal.id}`}
-              className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-600 border border-gray-200 bg-white rounded-xl hover:bg-gray-100 transition-colors shrink-0"
+              className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
+              style={{ color: '#5a524a', border: '1px solid #e4ddd4', background: '#fff' }}
+              onMouseOver={(e: React.MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.background = '#f2ede6')}
+              onMouseOut={(e: React.MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.background = '#fff')}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
@@ -393,14 +403,20 @@ function ProposalCard({
             <button
               onClick={onApprove}
               disabled={!!actionLoading}
-              className="flex-1 py-2 text-xs font-semibold bg-gray-900 text-white rounded-xl hover:bg-gray-700 disabled:opacity-50 transition-colors"
+              className="flex-1 py-2 text-xs font-semibold rounded-xl disabled:opacity-50 transition-colors"
+              style={{ background: '#c8102e', color: '#fff' }}
+              onMouseOver={e => !e.currentTarget.disabled && (e.currentTarget.style.background = '#9e0c24')}
+              onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
             >
               {isApproving ? 'Zatwierdzam…' : '✓ Zatwierdź'}
             </button>
             <button
               onClick={onReject}
               disabled={!!actionLoading}
-              className="px-4 py-2 text-xs font-semibold text-gray-500 border border-gray-200 bg-white rounded-xl hover:bg-gray-100 disabled:opacity-50 transition-colors"
+              className="px-4 py-2 text-xs font-semibold rounded-xl disabled:opacity-50 transition-colors"
+              style={{ color: '#7a7068', border: '1px solid #e4ddd4', background: '#fff' }}
+              onMouseOver={e => (e.currentTarget.style.background = '#f2ede6')}
+              onMouseOut={e => (e.currentTarget.style.background = '#fff')}
             >
               {isRejecting ? '…' : 'Odrzuć'}
             </button>
@@ -434,7 +450,7 @@ function ProposalCard({
 function Chip({ value, label, warn }: { value: number; label: string; warn?: boolean }) {
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium ${
-      warn ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'
+      warn ? 'bg-red-50 text-red-700' : 'bg-[#f2ede6] text-[#5a524a]'
     }`}>
       <span className="font-bold">{value}</span>
       <span>{label}</span>

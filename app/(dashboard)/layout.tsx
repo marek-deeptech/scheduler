@@ -113,22 +113,24 @@ function ProfileSwitcher() {
   }
 
   return (
-    <div className="px-3 py-3 border-b border-gray-100">
+    <div className="px-3 py-3" style={{ borderBottom: '1px solid #e4ddd4' }}>
       {/* Toggle */}
-      <div className="flex p-0.5 bg-gray-100 rounded-xl mb-2">
+      <div className="flex p-0.5 rounded-lg mb-2" style={{ background: '#ede7df' }}>
         <button
           onClick={switchToCoordinator}
-          className={`flex-1 py-1.5 text-[11px] font-semibold rounded-[10px] transition-colors ${
-            mode === 'coordinator' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-          }`}
+          className="flex-1 py-1.5 text-[11px] font-semibold rounded-md transition-all"
+          style={mode === 'coordinator'
+            ? { background: '#fff', color: '#1a1410', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+            : { color: '#a89e92' }}
         >
           Koordynator
         </button>
         <button
           onClick={switchToActor}
-          className={`flex-1 py-1.5 text-[11px] font-semibold rounded-[10px] transition-colors ${
-            mode === 'actor' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-          }`}
+          className="flex-1 py-1.5 text-[11px] font-semibold rounded-md transition-all"
+          style={mode === 'actor'
+            ? { background: '#fff', color: '#1a1410', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+            : { color: '#a89e92' }}
         >
           Aktor
         </button>
@@ -139,24 +141,25 @@ function ProfileSwitcher() {
         <div className="relative">
           <button
             onClick={() => { loadActors(); setOpen(v => !v) }}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-medium border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center justify-between px-2.5 py-1.5 text-[12px] font-medium rounded-lg transition-colors"
+            style={{ background: '#fff', color: '#5a524a', border: '1px solid #e4ddd4' }}
           >
-            <span className="truncate text-gray-700">{actorName ?? 'Wybierz aktora…'}</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-gray-400 ml-1">
+            <span className="truncate">{actorName ?? 'Wybierz aktora…'}</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 ml-1 opacity-40">
               <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
 
           {open && (
-            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 max-h-52 overflow-y-auto">
-              {loading && <p className="px-3 py-2 text-xs text-gray-500">Ładowanie…</p>}
+            <div className="absolute left-0 right-0 top-full mt-1 rounded-xl z-50 max-h-52 overflow-y-auto"
+              style={{ background: '#fff', border: '1px solid #e4ddd4', boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}>
+              {loading && <p className="px-3 py-2 text-[11px] italic text-gray-400">Ładowanie…</p>}
               {actors.map(a => (
                 <button
                   key={a.id}
                   onClick={() => selectActor(a)}
-                  className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors ${
-                    a.id === actorId ? 'font-semibold text-gray-900' : 'text-gray-700'
-                  }`}
+                  className="w-full text-left px-3 py-2 text-[12px] transition-colors hover:bg-gray-50"
+                  style={{ color: a.id === actorId ? '#1a1410' : '#7a7068', fontWeight: a.id === actorId ? 600 : 400 }}
                 >
                   {a.name}
                 </button>
@@ -187,55 +190,58 @@ function Sidebar() {
   }, [])
 
   const isActive = (href: string) => pathname === href
+  const lnk      = (href: string) => `sidebar-link${isActive(href) ? ' active' : ''}`
 
-  const linkCls = (href: string) =>
-    `flex items-center gap-2 px-2.5 py-1.5 text-sm font-medium rounded-lg transition-colors no-underline hover:no-underline ${
-      isActive(href)
-        ? 'bg-gray-900 text-white'
-        : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
-    }`
-
-  const theatreBtnCls = (id: string | null) =>
-    `w-full text-left px-3 py-1.5 text-xs font-medium rounded-lg transition-colors truncate ${
-      selectedTheatreId === id ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
-    }`
-
-  const sectionLabel = 'px-2.5 mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-500'
+  const theatreBtnCls = (id: string | null) => {
+    const active = selectedTheatreId === id
+    return [
+      'w-full text-left px-2.5 py-1.5 rounded-lg text-[12px] font-medium transition-colors flex items-center gap-2 truncate',
+      active
+        ? 'bg-[#e8e0d6] text-[#1a1410] font-semibold'
+        : 'text-[#7a7068] hover:bg-[#ede7df] hover:text-[#1a1410]',
+    ].join(' ')
+  }
 
   return (
-    <aside className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0">
+    <aside className="w-[210px] flex flex-col shrink-0" style={{ background: '#faf6f0', borderRight: '1px solid #e4ddd4' }}>
+
       {/* Logo */}
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-center">
+      <div className="px-4 pt-5 pb-4 flex items-center justify-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/logo-teatr-polonia.jpg"
           alt="Teatr Polonia"
-          style={{ width: '160px', height: 'auto', display: 'block' }}
+          className="w-full max-w-[148px] h-auto"
         />
       </div>
+
+      {/* Crimson divider */}
+      <div className="mx-4 h-px" style={{ background: 'rgba(200,16,46,0.20)' }} />
 
       {/* Profile switcher */}
       <ProfileSwitcher />
 
-      {/* Navigation — conditional on mode */}
+      {/* Navigation */}
       {mode === 'coordinator' ? (
         <>
-          {/* Theatre switcher */}
-          <div className="px-3 py-3 border-b border-gray-100">
-            <p className={sectionLabel}>{t.nav.theatreLabel}</p>
+          {/* Theatre filter */}
+          <div className="px-3 pt-3 pb-2" style={{ borderBottom: '1px solid #e4ddd4' }}>
+            <p className="sidebar-section mb-2">{t.nav.theatreLabel}</p>
             <div className="flex flex-col gap-0.5">
               <button className={theatreBtnCls(null)} onClick={() => setSelectedTheatreId(null)}>
+                <span className="w-1.5 h-1.5 rounded-full bg-[#5c5248] shrink-0" />
                 {t.nav.allTheatres}
               </button>
-              {theatres === null && <p className="px-1 text-[10px] text-gray-500 italic">{t.nav.loading}</p>}
-              {theatres !== null && theatres.length === 0 && <p className="px-1 text-[10px] text-red-400 italic">{t.nav.noTheatres}</p>}
+              {theatres === null && (
+                <p className="px-2.5 text-[10px] italic" style={{ color: '#3d3530' }}>{t.nav.loading}</p>
+              )}
               {(theatres ?? []).map(th => {
-                const dot = th.name === 'Teatr Polonia' ? 'bg-red-500'
-                          : th.name === 'Och-Teatr'     ? 'bg-yellow-400'
-                          : 'bg-gray-400'
+                const dotColor = th.name === 'Teatr Polonia' ? '#c8102e'
+                               : th.name === 'Och-Teatr'    ? '#e8a020'
+                               : '#5c5248'
                 return (
-                  <button key={th.id} className={`${theatreBtnCls(th.id)} flex items-center gap-2`} onClick={() => setSelectedTheatreId(th.id)}>
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+                  <button key={th.id} className={theatreBtnCls(th.id)} onClick={() => setSelectedTheatreId(th.id)}>
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dotColor }} />
                     {th.name}
                   </button>
                 )
@@ -243,34 +249,34 @@ function Sidebar() {
             </div>
           </div>
 
-          <nav className="flex-1 px-3 py-3 space-y-3 overflow-y-auto">
+          <nav className="flex-1 px-3 py-3 space-y-4 overflow-y-auto">
             <div>
-              <p className={sectionLabel}>{t.nav.sections.main}</p>
+              <p className="sidebar-section mb-1.5">{t.nav.sections.main}</p>
               <div className="space-y-px">
-                <Link href="/dashboard"   className={linkCls('/dashboard')}  >{icons.home}    {t.nav.dashboard}</Link>
-                <Link href="/calendar"    className={linkCls('/calendar')}   >{icons.calendar}{t.nav.calendar}</Link>
-                <Link href="/planning"   className={linkCls('/planning')}   >{icons.planning}Planowanie</Link>
-                <Link href="/artists"     className={linkCls('/artists')}    >{icons.user}    {t.nav.artists}</Link>
-                <Link href="/productions" className={linkCls('/productions')}>{icons.film}    {t.nav.productions}</Link>
+                <Link href="/dashboard"   className={lnk('/dashboard')}  >{icons.home}    {t.nav.dashboard}</Link>
+                <Link href="/calendar"    className={lnk('/calendar')}   >{icons.calendar}{t.nav.calendar}</Link>
+                <Link href="/planning"    className={lnk('/planning')}   >{icons.planning}Planowanie</Link>
+                <Link href="/artists"     className={lnk('/artists')}    >{icons.user}    {t.nav.artists}</Link>
+                <Link href="/productions" className={lnk('/productions')}>{icons.film}    {t.nav.productions}</Link>
               </div>
             </div>
             <div>
-              <p className={sectionLabel}>{t.nav.sections.communication}</p>
+              <p className="sidebar-section mb-1.5">{t.nav.sections.communication}</p>
               <div className="space-y-px">
-                <Link href="/messages" className={linkCls('/messages')}>{icons.mail}{t.nav.messages}</Link>
+                <Link href="/messages" className={lnk('/messages')}>{icons.mail}{t.nav.messages}</Link>
               </div>
             </div>
             <div>
-              <p className={sectionLabel}>{t.nav.sections.extra}</p>
+              <p className="sidebar-section mb-1.5">{t.nav.sections.extra}</p>
               <div className="space-y-px">
-                <Link href="/reports"  className={linkCls('/reports')} >{icons.chart}{t.nav.reports}</Link>
-                <Link href="/settings" className={linkCls('/settings')}>{icons.gear}{t.nav.settings}</Link>
+                <Link href="/reports"  className={lnk('/reports')} >{icons.chart}{t.nav.reports}</Link>
+                <Link href="/settings" className={lnk('/settings')}>{icons.gear}{t.nav.settings}</Link>
               </div>
             </div>
             <div>
-              <p className={sectionLabel}>AI</p>
+              <p className="sidebar-section mb-1.5">AI</p>
               <div className="space-y-px">
-                <Link href="/assistant" className={`${linkCls('/assistant')} ${isActive('/assistant') ? '' : 'text-gray-900 font-semibold hover:bg-gray-100'}`}>
+                <Link href="/assistant" className={lnk('/assistant')} style={isActive('/assistant') ? {} : { color: '#c8102e', fontWeight: 600 }}>
                   {icons.assistant}
                   <span>Stefan</span>
                 </Link>
@@ -279,24 +285,22 @@ function Sidebar() {
           </nav>
         </>
       ) : (
-        /* Actor mode nav */
-        <nav className="flex-1 px-3 py-4">
-          <p className={sectionLabel}>Moje konto</p>
-          <div className="space-y-px">
-            <Link href="/actor/calendar" className={linkCls('/actor/calendar')}>{icons.calendar}Kalendarz</Link>
-            <Link href="/actor/messages" className={linkCls('/actor/messages')}>{icons.mail}Wiadomości</Link>
-          </div>
+        <nav className="flex-1 px-3 py-4 space-y-px">
+          <p className="sidebar-section mb-1.5">Moje konto</p>
+          <Link href="/actor/calendar" className={lnk('/actor/calendar')}>{icons.calendar}Kalendarz</Link>
+          <Link href="/actor/messages" className={lnk('/actor/messages')}>{icons.mail}Wiadomości</Link>
         </nav>
       )}
 
       {/* Language toggle */}
-      <div className="px-3 py-3 border-t border-gray-100">
+      <div className="px-3 py-3" style={{ borderTop: '1px solid #e4ddd4' }}>
         <button
           onClick={toggle}
-          className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-gray-500 rounded-lg hover:bg-gray-100 transition-colors"
+          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-colors hover:bg-[#ede7df]"
+          style={{ color: '#a89e92' }}
         >
           <span>{locale === 'en' ? '🇬🇧 English' : '🇵🇱 Polski'}</span>
-          <span className="text-gray-500">{locale === 'en' ? 'PL' : 'EN'}</span>
+          <span>{locale === 'en' ? 'PL' : 'EN'}</span>
         </button>
       </div>
     </aside>
@@ -308,10 +312,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <LanguageProvider>
       <TheatreProvider>
         <ProfileProvider>
-          <div className="flex h-screen bg-gray-50">
+          <div className="flex h-screen" style={{ background: 'var(--bg)' }}>
             <Sidebar />
-            <main className="flex-1 overflow-y-auto p-8">
-              {children}
+            <main className="flex-1 overflow-y-auto">
+              <div className="px-8 py-8 max-w-[1400px]">
+                {children}
+              </div>
             </main>
           </div>
         </ProfileProvider>

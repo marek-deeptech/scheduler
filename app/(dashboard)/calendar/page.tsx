@@ -24,32 +24,33 @@ interface Proposal {
   approved_at: string | null
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const MONTH_PL: Record<string, string> = {
-  '01': 'Styczeń',  '02': 'Luty',      '03': 'Marzec',    '04': 'Kwiecień',
-  '05': 'Maj',      '06': 'Czerwiec',  '07': 'Lipiec',    '08': 'Sierpień',
-  '09': 'Wrzesień', '10': 'Październik','11': 'Listopad',  '12': 'Grudzień',
+  '01': 'Styczeń',  '02': 'Luty',       '03': 'Marzec',     '04': 'Kwiecień',
+  '05': 'Maj',      '06': 'Czerwiec',   '07': 'Lipiec',     '08': 'Sierpień',
+  '09': 'Wrzesień', '10': 'Październik','11': 'Listopad',   '12': 'Grudzień',
 }
+const DOW = ['Pn','Wt','Śr','Cz','Pt','Sb','Nd']
 
 function monthLabel(month: string) {
   const [y, m] = month.split('-')
-  return `${MONTH_PL[m] ?? m} ${y}`
+  return { name: MONTH_PL[m] ?? m, year: y }
 }
 
-// ── Mini calendar ─────────────────────────────────────────────────────────────
+// ── Full calendar ─────────────────────────────────────────────────────────────
 
-function MiniCalendar({ month, events }: { month: string; events: ProposalEvent[] }) {
+function MonthCalendar({ month, events }: { month: string; events: ProposalEvent[] }) {
   const [y, m]      = month.split('-').map(Number)
   const daysInMonth = new Date(y, m, 0).getDate()
-  const firstDow    = new Date(y, m - 1, 1).getDay()          // 0=Sun
-  const startPad    = firstDow === 0 ? 6 : firstDow - 1       // shift to Mon-start
+  const firstDow    = new Date(y, m - 1, 1).getDay()
+  const startPad    = firstDow === 0 ? 6 : firstDow - 1
 
-  const prodByDate: Record<string, string[]> = {}
+  // Build lookup: date → events
+  const byDate: Record<string, ProposalEvent[]> = {}
   for (const e of events) {
-    prodByDate[e.date] ??= []
-    if (!prodByDate[e.date].includes(e.production_title))
-      prodByDate[e.date].push(e.production_title)
+    byDate[e.date] ??= []
+    byDate[e.date].push(e)
   }
 
   const cells: (number | null)[] = [
@@ -60,44 +61,69 @@ function MiniCalendar({ month, events }: { month: string; events: ProposalEvent[
 
   return (
     <div>
-      {/* Day headers */}
-      <div className="grid grid-cols-7 gap-1 mb-1">
-        {['Pn','Wt','Śr','Cz','Pt','Sb','Nd'].map(d => (
-          <div key={d} className="text-[9px] font-semibold text-gray-400 uppercase text-center">{d}</div>
+      {/* Day-of-week headers */}
+      <div className="grid grid-cols-7 gap-px mb-1">
+        {DOW.map(d => (
+          <div key={d} className="text-[9px] font-bold uppercase tracking-widest text-center pb-1.5"
+            style={{ color: d === 'Sb' || d === 'Nd' ? '#a89e92' : '#cec5b8' }}>
+            {d}
+          </div>
         ))}
       </div>
-      {/* Day cells */}
-      <div className="grid grid-cols-7 gap-1">
+
+      {/* Grid */}
+      <div className="grid grid-cols-7 gap-px" style={{ background: '#e4ddd4' }}>
         {cells.map((day, i) => {
-          if (day === null) return <div key={i} />
+          if (day === null) return (
+            <div key={i} className="min-h-[72px]" style={{ background: '#fff' }} />
+          )
+
           const dateStr   = `${month}-${String(day).padStart(2, '0')}`
           const dow       = new Date(dateStr + 'T12:00:00').getDay()
           const isWeekend = dow === 0 || dow === 6
-          const prods     = prodByDate[dateStr] ?? []
-          const hasShow   = prods.length > 0
+          const dayEvents = byDate[dateStr] ?? []
+          const hasShow   = dayEvents.length > 0
+
+          // Unique production titles
+          const titles = [...new Set(dayEvents.map(e => e.production_title))]
 
           return (
             <div
               key={i}
-              title={hasShow ? prods.join('\n') : undefined}
-              className={`flex flex-col items-center justify-start pt-1 rounded-lg min-h-[44px] cursor-default select-none
-                ${hasShow
-                  ? 'bg-green-100'
-                  : isWeekend
-                    ? 'bg-gray-50'
-                    : ''
-                }`}
+              className="min-h-[72px] p-1.5 flex flex-col gap-1 select-none"
+              style={{
+                background: '#fff',
+              }}
             >
-              <span className={`text-[11px] font-bold leading-none
-                ${hasShow ? 'text-green-800' : isWeekend ? 'text-gray-400' : 'text-gray-200'}`}>
+              {/* Day number */}
+              <span className="text-[11px] font-bold leading-none" style={{
+                color: hasShow
+                  ? (isWeekend ? '#1a1410' : '#3e3830')
+                  : (isWeekend ? '#cec5b8' : '#e4ddd4')
+              }}>
                 {day}
               </span>
-              {hasShow && (
-                <div className="flex flex-wrap justify-center gap-0.5 mt-1">
-                  {prods.slice(0, 2).map((_, pi) => (
-                    <span key={pi} className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                  ))}
-                </div>
+
+              {/* Show pills */}
+              {titles.map((title, ti) => (
+                <span
+                  key={ti}
+                  title={title}
+                  className="block text-[9px] font-semibold leading-tight px-1 py-0.5 rounded truncate"
+                  style={{
+                    background: isWeekend ? '#1a1410' : '#e8e0d6',
+                    color:      isWeekend ? '#f5ede0' : '#5a524a',
+                  }}
+                >
+                  {title.length > 18 ? title.slice(0, 17) + '…' : title}
+                </span>
+              ))}
+
+              {/* Room count if >1 show */}
+              {dayEvents.length > 1 && (
+                <span className="text-[8px] leading-none mt-auto" style={{ color: '#a89e92' }}>
+                  {dayEvents.length} sale
+                </span>
               )}
             </div>
           )
@@ -132,7 +158,6 @@ export default function RepertuarPage() {
     load()
   }, [])
 
-  // Keep only the single approved proposal per month, sorted ascending
   const months: Proposal[] = Object.values(
     (proposals as Proposal[]).reduce<Record<string, Proposal>>((acc, p) => {
       if (!acc[p.month]) acc[p.month] = p
@@ -141,17 +166,19 @@ export default function RepertuarPage() {
   ).sort((a, b) => a.month.localeCompare(b.month))
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-center justify-between gap-4 px-8 py-5 -mx-8 -mt-8 mb-2"
+        style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Repertuar</h1>
-          <p className="text-sm text-gray-500 mt-1">Zatwierdzone miesiące</p>
+          <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>Repertuar</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>Zatwierdzone miesiące</p>
         </div>
         <Link
           href="/planning"
-          className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-gray-600 border border-gray-200 bg-white rounded-xl hover:bg-gray-100 transition-colors shrink-0"
+          className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
+          style={{ background: '#fff', border: '1px solid #e4ddd4', color: '#7a7068' }}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M12 2a7 7 0 0 1 7 7c0 4-3 6-5 8l-2 2-2-2c-2-2-5-4-5-8a7 7 0 0 1 7-7z" strokeLinecap="round" strokeLinejoin="round"/>
@@ -168,86 +195,105 @@ export default function RepertuarPage() {
 
       {/* Loading */}
       {loading && (
-        <div className="flex items-center justify-center h-48 text-gray-400 text-sm">Ładowanie…</div>
+        <div className="flex items-center justify-center h-48 text-sm" style={{ color: '#cec5b8' }}>Ładowanie…</div>
       )}
 
       {/* Empty */}
       {!loading && !error && months.length === 0 && (
         <div className="flex flex-col items-center justify-center h-56 text-center">
-          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" className="text-gray-200 mb-3">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" className="mb-3" style={{ color: '#e4ddd4' }}>
             <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
           </svg>
-          <p className="text-sm font-semibold text-gray-500">Brak zatwierdzonych miesięcy</p>
-          <p className="text-xs text-gray-400 mt-1 max-w-xs">
-            Przejdź do{' '}
-            <Link href="/planning" className="underline hover:text-gray-600">Planowania</Link>
-            , wygeneruj propozycje i zatwierdź wybrany miesiąc
+          <p className="text-sm font-semibold" style={{ color: '#a89e92' }}>Brak zatwierdzonych miesięcy</p>
+          <p className="text-xs mt-1" style={{ color: '#b8b0a4' }}>
+            Przejdź do <Link href="/planning" className="underline">Planowania</Link>, wygeneruj i zatwierdź repertuar
           </p>
         </div>
       )}
 
-      {/* Month cards */}
-      {!loading && months.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {months.map(p => {
-            const events  = [...(p.proposal_data ?? [])].sort((a, b) => a.date.localeCompare(b.date))
-            const byProd  = p.stats?.by_production ?? {}
+      {/* Month cards — full width, stacked */}
+      {!loading && months.map(p => {
+        const events  = [...(p.proposal_data ?? [])].sort((a, b) => a.date.localeCompare(b.date))
+        const byProd  = p.stats?.by_production ?? {}
+        const { name, year } = monthLabel(p.month)
 
-            return (
-              <div key={p.id} className="bg-white rounded-2xl border border-green-200 overflow-hidden flex flex-col">
+        // Count weekend shows vs weekday shows
+        const weekendShows = events.filter(e => {
+          const d = new Date(e.date + 'T12:00:00').getDay()
+          return d === 0 || d === 6
+        }).length
+        const uniqueProds = Object.keys(byProd).length
 
-                {/* Month header */}
-                <div className="px-5 py-4 border-b border-green-100 bg-green-50">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-base font-bold text-gray-900">{monthLabel(p.month)}</h2>
-                      <p className="text-[11px] text-green-700 mt-0.5">
-                        ✓ Zatwierdzono
-                        {p.approved_at
-                          ? ` ${new Date(p.approved_at).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' })}`
-                          : ''}
-                      </p>
-                    </div>
-                    <Link
-                      href={`/planning/${p.id}`}
-                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-green-700 border border-green-300 bg-white rounded-xl hover:bg-green-50 transition-colors shrink-0"
-                    >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                      </svg>
-                      Podgląd
-                    </Link>
-                  </div>
+        return (
+          <div key={p.id} className="rounded-2xl overflow-hidden" style={{ background: '#fff', border: '1px solid #e4ddd4', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
 
-                  {/* Stats */}
-                  <div className="flex flex-wrap gap-1.5 mt-3">
-                    <StatChip value={events.length} label="spektakli" />
-                    {Object.entries(byProd).slice(0, 3).map(([title, n]) => (
-                      <StatChip key={title} value={n as number} label={title.length > 14 ? title.slice(0, 14) + '…' : title} />
-                    ))}
-                  </div>
-                </div>
+            {/* Card header */}
+            <div className="px-6 py-5 flex items-start justify-between gap-6 flex-wrap" style={{ borderBottom: '1px solid #e4ddd4' }}>
 
-                {/* Mini calendar */}
-                <div className="px-5 py-4 flex-1">
-                  <MiniCalendar month={p.month} events={events} />
-                </div>
-
+              {/* Month title */}
+              <div className="flex items-baseline gap-3">
+                <h2 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.01em', color: '#1a1410' }}>
+                  {name}
+                </h2>
+                <span className="text-lg font-light" style={{ color: '#cec5b8' }}>{year}</span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ml-1"
+                  style={{ background: '#e8f5e9', color: '#2e7d32' }}>
+                  ✓ Zatwierdzony
+                </span>
               </div>
-            )
-          })}
-        </div>
-      )}
+
+              {/* Actions */}
+              <Link
+                href={`/planning/${p.id}`}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl transition-colors shrink-0"
+                style={{ background: '#f2ede6', color: '#5a524a', border: '1px solid #e4ddd4' }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+                Harmonogram
+              </Link>
+            </div>
+
+            {/* Stats row */}
+            <div className="px-6 py-3 flex items-center gap-6 flex-wrap" style={{ borderBottom: '1px solid #f2ede6', background: '#faf8f5' }}>
+              <Stat icon="🎭" value={events.length} label="spektakli" />
+              <Stat icon="📅" value={weekendShows} label="w weekendy" />
+              <Stat icon="🎬" value={uniqueProds} label={uniqueProds === 1 ? 'produkcja' : 'produkcje'} />
+              <div className="flex gap-2 flex-wrap ml-2">
+                {Object.entries(byProd).sort((a, b) => (b[1] as number) - (a[1] as number)).map(([title, n]) => (
+                  <span key={title} className="text-[11px] font-medium px-2 py-0.5 rounded-md"
+                    style={{ background: '#e8e0d6', color: '#5a524a' }}>
+                    <span className="font-bold">{n as number}×</span> {title.length > 22 ? title.slice(0, 21) + '…' : title}
+                  </span>
+                ))}
+              </div>
+              {p.approved_at && (
+                <span className="ml-auto text-[11px] shrink-0" style={{ color: '#cec5b8' }}>
+                  Zatwierdzono {new Date(p.approved_at).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' })}
+                </span>
+              )}
+            </div>
+
+            {/* Calendar */}
+            <div className="p-6">
+              <MonthCalendar month={p.month} events={events} />
+            </div>
+
+          </div>
+        )
+      })}
 
     </div>
   )
 }
 
-function StatChip({ value, label }: { value: number; label: string }) {
+function Stat({ icon, value, label }: { icon: string; value: number; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium bg-white text-gray-600 border border-green-200">
-      <span className="font-bold">{value}</span>
-      <span>{label}</span>
-    </span>
+    <div className="flex items-center gap-1.5">
+      <span className="text-sm">{icon}</span>
+      <span className="text-sm font-bold" style={{ color: '#3e3830' }}>{value}</span>
+      <span className="text-xs" style={{ color: '#a89e92' }}>{label}</span>
+    </div>
   )
 }

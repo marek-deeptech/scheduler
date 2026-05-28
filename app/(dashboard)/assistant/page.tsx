@@ -54,28 +54,64 @@ const SUGGESTIONS = [
   'Jakie produkcje mamy w Teatrze Polonia?',
 ]
 
+const SESSION_KEY = 'stefan_chat_messages'
+
+function loadFromSession(): Message[] | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function saveToSession(msgs: Message[]) {
+  try {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(msgs))
+  } catch {}
+}
+
 export default function AssistantPage() {
-  const [messages,  setMessages]  = useState<Message[]>([])
+  const [messages,  setMessages]  = useState<Message[]>(() => loadFromSession() ?? [])
   const [input,     setInput]     = useState('')
-  const [loading,   setLoading]   = useState(true)
+  const [loading,   setLoading]   = useState(() => loadFromSession() === null)
   const [streaming, setStreaming] = useState(false)
   const bottomRef  = useRef<HTMLDivElement>(null)
   const inputRef   = useRef<HTMLTextAreaElement>(null)
 
-  // Load history on mount
+  // Load history from DB only if nothing in sessionStorage
   useEffect(() => {
+    if (!loading) return  // already have cached messages
     fetch('/api/chat')
       .then(r => r.json())
       .then(({ messages: hist }) => {
-        setMessages(hist ?? [])
+        const loaded = hist ?? []
+        setMessages(loaded)
+        if (loaded.length > 0) saveToSession(loaded)
         setLoading(false)
       })
       .catch(() => setLoading(false))
-  }, [])
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-scroll
+  // Keep sessionStorage in sync whenever messages change
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (!loading && messages.length > 0) {
+      saveToSession(messages)
+    }
+  }, [messages, loading])
+
+  // Auto-scroll — instant on initial load (from cache), smooth on new messages
+  const isFirstScroll = useRef(true)
+  useEffect(() => {
+    if (!bottomRef.current) return
+    if (isFirstScroll.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'instant' })
+      isFirstScroll.current = false
+    } else {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages])
 
   async function send(text?: string) {
@@ -138,18 +174,39 @@ export default function AssistantPage() {
     <div className="flex flex-col h-full -m-8">
 
       {/* Header */}
-      <div className="px-8 py-5 border-b border-gray-100 bg-white shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gray-900 flex items-center justify-center shrink-0">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8">
-              <path d="M12 2a7 7 0 0 1 7 7c0 4-3 6-5 8l-2 2-2-2c-2-2-5-4-5-8a7 7 0 0 1 7-7z" strokeLinecap="round" strokeLinejoin="round"/>
-              <circle cx="12" cy="9" r="2" fill="white" stroke="none"/>
-            </svg>
+      <div className="px-8 py-5 bg-white shrink-0" style={{ borderBottom: '1px solid #e4ddd4' }}>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: '#1a1410' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8">
+                <path d="M12 2a7 7 0 0 1 7 7c0 4-3 6-5 8l-2 2-2-2c-2-2-5-4-5-8a7 7 0 0 1 7-7z" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="9" r="2" fill="white" stroke="none"/>
+              </svg>
+            </div>
+            <div>
+              <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>Stefan</h1>
+              <p className="text-xs" style={{ color: '#a89e92' }}>Pytaj o repertuar, obsadę, dostępność aktorów</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-lg font-bold text-gray-900">Stefan</h1>
-            <p className="text-xs text-gray-500">Pytaj o repertuar, obsadę, dostępność aktorów</p>
-          </div>
+          {messages.length > 0 && !streaming && (
+            <button
+              onClick={() => {
+                try { sessionStorage.removeItem(SESSION_KEY) } catch {}
+                fetch('/api/chat/clear', { method: 'POST' }).catch(() => {})
+                setMessages([])
+                isFirstScroll.current = true
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl transition-colors"
+              style={{ color: '#7a7068', border: '1px solid #e4ddd4', background: '#faf8f5' }}
+              onMouseOver={e => (e.currentTarget.style.background = '#f2ede6')}
+              onMouseOut={e => (e.currentTarget.style.background = '#faf8f5')}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M3 6h18M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Wyczyść
+            </button>
+          )}
         </div>
       </div>
 
@@ -160,7 +217,7 @@ export default function AssistantPage() {
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center gap-6 pb-8">
             <div>
-              <div className="w-14 h-14 rounded-2xl bg-gray-900 flex items-center justify-center mx-auto mb-4">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: '#1a1410' }}>
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.6">
                   <path d="M12 2a7 7 0 0 1 7 7c0 4-3 6-5 8l-2 2-2-2c-2-2-5-4-5-8a7 7 0 0 1 7-7z" strokeLinecap="round" strokeLinejoin="round"/>
                   <circle cx="12" cy="9" r="2" fill="white" stroke="none"/>
@@ -174,7 +231,8 @@ export default function AssistantPage() {
                 <button
                   key={s}
                   onClick={() => send(s)}
-                  className="px-3 py-2 text-xs font-medium bg-white border border-gray-200 rounded-xl hover:border-gray-400 hover:bg-gray-50 transition-colors text-gray-700"
+                  className="px-3 py-2 text-xs font-medium bg-white border border-gray-200 rounded-xl hover:border-[#cec5b8] hover:bg-[#faf8f5] transition-colors"
+                  style={{ color: '#3e3830' }}
                 >
                   {s}
                 </button>
@@ -186,18 +244,22 @@ export default function AssistantPage() {
             {messages.map((msg, i) => (
               <div key={msg.id ?? i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'assistant' && (
-                  <div className="w-7 h-7 rounded-lg bg-gray-900 flex items-center justify-center shrink-0 mt-0.5">
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5" style={{ background: '#1a1410' }}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
                       <path d="M12 2a7 7 0 0 1 7 7c0 4-3 6-5 8l-2 2-2-2c-2-2-5-4-5-8a7 7 0 0 1 7-7z" strokeLinecap="round" strokeLinejoin="round"/>
                       <circle cx="12" cy="9" r="2" fill="white" stroke="none"/>
                     </svg>
                   </div>
                 )}
-                <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'bg-gray-900 text-white rounded-br-sm'
-                    : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm shadow-sm'
-                }`}>
+                <div
+                  className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                    msg.role === 'user' ? 'rounded-br-sm' : 'rounded-bl-sm shadow-sm border'
+                  }`}
+                  style={msg.role === 'user'
+                    ? { background: '#1a1410', color: '#fff' }
+                    : { background: '#fff', borderColor: '#e4ddd4', color: '#3e3830' }
+                  }
+                >
                   {msg.role === 'assistant' ? (
                     msg.content
                       ? <MarkdownText text={msg.content} />
@@ -218,14 +280,15 @@ export default function AssistantPage() {
       </div>
 
       {/* Input */}
-      <div className="px-8 py-4 border-t border-gray-100 bg-white shrink-0">
+      <div className="px-8 py-4 shrink-0" style={{ borderTop: '1px solid #e4ddd4' }}>
         {messages.length > 0 && !streaming && (
           <div className="flex gap-2 mb-3 flex-wrap">
             {SUGGESTIONS.slice(0, 3).map(s => (
               <button
                 key={s}
                 onClick={() => send(s)}
-                className="px-2.5 py-1 text-[11px] font-medium bg-gray-50 border border-gray-200 rounded-lg hover:border-gray-400 transition-colors text-gray-600"
+                className="px-2.5 py-1 text-[11px] font-medium border rounded-lg transition-colors"
+                style={{ background: '#faf8f5', color: '#7a7068', borderColor: '#e4ddd4' }}
               >
                 {s}
               </button>
@@ -241,7 +304,8 @@ export default function AssistantPage() {
             placeholder="Napisz wiadomość… (Enter = wyślij, Shift+Enter = nowa linia)"
             rows={1}
             disabled={streaming}
-            className="flex-1 border border-gray-200 rounded-2xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:opacity-50 max-h-40 overflow-y-auto"
+            className="flex-1 rounded-2xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#c8102e] disabled:opacity-50 max-h-40 overflow-y-auto bg-white"
+            style={{ border: '1px solid #e4ddd4', color: '#1a1410' }}
             style={{ height: 'auto' }}
             onInput={e => {
               const t = e.currentTarget
@@ -252,7 +316,10 @@ export default function AssistantPage() {
           <button
             onClick={() => send()}
             disabled={!input.trim() || streaming}
-            className="w-11 h-11 rounded-2xl bg-gray-900 text-white flex items-center justify-center hover:bg-gray-700 disabled:opacity-40 transition-colors shrink-0"
+            className="w-11 h-11 rounded-2xl text-white flex items-center justify-center disabled:opacity-40 transition-colors shrink-0"
+            style={{ background: '#c8102e' }}
+            onMouseOver={e => (e.currentTarget.style.background = '#9e0c24')}
+            onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
           >
             {streaming ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="white" className="animate-spin">

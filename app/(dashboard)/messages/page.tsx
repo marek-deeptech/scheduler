@@ -26,8 +26,8 @@ interface Theatre {
 function PersonAvatar({ name, url }: { name: string; url: string | null }) {
   if (url) return <img src={url} alt={name} className="w-8 h-8 rounded-full object-cover shrink-0" />
   return (
-    <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-      <span className="text-xs font-bold text-gray-500">{name.charAt(0).toUpperCase()}</span>
+    <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: '#e8e0d6', color: '#5a524a' }}>
+      <span className="text-xs font-bold">{name.charAt(0).toUpperCase()}</span>
     </div>
   )
 }
@@ -54,7 +54,7 @@ function PhoneIcon() {
 function statusClasses(status: string | null) {
   switch (status) {
     case 'Dostępny':                    return 'bg-green-100 text-green-700'
-    case 'Dostępny tylko w Warszawie':  return 'bg-blue-100 text-blue-700'
+    case 'Dostępny tylko w Warszawie':  return 'bg-amber-100 text-amber-700'
     case 'Niepewny':                    return 'bg-amber-100 text-amber-700'
     case 'Niedostępny':                 return 'bg-red-100 text-red-600'
     case 'Urlop':                       return 'bg-orange-100 text-orange-700'
@@ -82,7 +82,7 @@ function PersonRow({
   onSms: () => void
 }) {
   return (
-    <div className={`${ROW} hover:bg-gray-50/50 group transition-colors`}>
+    <div className={`${ROW} hover:bg-[#faf8f5]/50 group transition-colors`}>
       {/* checkbox */}
       <input
         type="checkbox"
@@ -223,7 +223,7 @@ function ComposeModal({
                   value={subject}
                   onChange={e => setSubject(e.target.value)}
                   placeholder={tm.subjectPlaceholder}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
                 />
               </div>
               <div>
@@ -233,7 +233,7 @@ function ComposeModal({
                   onChange={e => setBody(e.target.value)}
                   rows={6}
                   placeholder={tm.bodyPlaceholder}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e] resize-none"
                 />
               </div>
               {sent ? (
@@ -242,7 +242,10 @@ function ComposeModal({
                 <button
                   onClick={handleSendEmail}
                   disabled={sending || !subject.trim() || !body.trim()}
-                  className="w-full px-4 py-2.5 text-sm font-medium bg-gray-900 text-white rounded-xl hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2.5 text-sm font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: '#c8102e', color: '#fff' }}
+                  onMouseOver={e => !e.currentTarget.disabled && (e.currentTarget.style.background = '#9e0c24')}
+                  onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
                 >
                   {sending ? 'Wysyłanie…' : tm.sendTo(recipients.length)}
                 </button>
@@ -259,7 +262,7 @@ function ComposeModal({
                   onChange={e => setBody(e.target.value.slice(0, 160))}
                   rows={5}
                   placeholder={tm.smsBodyPlaceholder}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e] resize-none"
                 />
               </div>
               {phoneRecipients.length > 0 && (
@@ -286,7 +289,8 @@ function ComposeModal({
                 {phoneRecipients.length === 1 && body.trim() && (
                   <a
                     href={`sms:${phoneRecipients[0].phone}?body=${encodeURIComponent(body)}`}
-                    className="flex-1 px-4 py-2 text-sm font-medium text-center bg-gray-900 text-white rounded-xl hover:bg-gray-700 transition-colors"
+                    className="flex-1 px-4 py-2 text-sm font-medium text-center rounded-xl transition-colors"
+                    style={{ background: '#1a1410', color: '#fff' }}
                   >
                     {tm.openSmsApp}
                   </a>
@@ -366,7 +370,8 @@ export default function MessagesPage() {
     Promise.all([
       supabase
         .from('artists')
-        .select('id, name, email, phone, role, status, birth_date, avatar_url, teams(name), artist_productions(productions(theatre_id))')
+        .select('id, name, email, phone, role, status, birth_date, avatar_url, teams!inner(name), artist_productions(productions(theatre_id))')
+        .eq('teams.name', 'Cast')
         .order('name'),
       supabase.from('theatres').select('id, name').order('name'),
     ]).then(([{ data: artistData }, { data: theatreData }]) => {
@@ -451,10 +456,10 @@ export default function MessagesPage() {
   return (
     <div className="pb-24">
       {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between px-8 py-5 -mx-8 -mt-8 mb-6" style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{tm.title}</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{tm.subtitle(people.length)}</p>
+          <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>{tm.title}</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>{tm.subtitle(people.length)}</p>
         </div>
       </div>
 
@@ -465,7 +470,7 @@ export default function MessagesPage() {
           placeholder={tm.searchPlaceholder}
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="border border-gray-200 rounded-xl px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-gray-900"
+          className="border border-gray-200 rounded-xl px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
         />
 
         {([[  'all', tm.allTeams], ['Cast', tm.teamCast], ['Technique', tm.teamTechnique], ['Wardrobe', tm.teamWardrobe]] as [string, string][]).map(([val, label]) => (
@@ -474,9 +479,10 @@ export default function MessagesPage() {
             onClick={() => setTeamFilter(val)}
             className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
               teamFilter === val
-                ? 'bg-gray-900 text-white border-gray-900'
+                ? ''
                 : 'text-gray-500 border-gray-200 hover:bg-gray-50'
             }`}
+            style={teamFilter === val ? { background: '#1a1410', color: '#fff', borderColor: '#1a1410' } : undefined}
           >
             {label}
           </button>
@@ -573,7 +579,7 @@ export default function MessagesPage() {
       ) : (
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           {/* List header */}
-          <div className={`${ROW} border-b border-gray-100 bg-gray-50`}>
+          <div className={`${ROW} border-b border-gray-100`} style={{ background: '#faf8f5' }}>
             <input
               type="checkbox"
               checked={allFilteredSelected}
@@ -623,7 +629,10 @@ export default function MessagesPage() {
           <span className="text-gray-500">·</span>
           <button
             onClick={() => setCompose({ type: 'email', ids: Array.from(selected) })}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-xl hover:bg-gray-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition-colors"
+            style={{ background: '#c8102e', color: '#fff' }}
+            onMouseOver={e => (e.currentTarget.style.background = '#9e0c24')}
+            onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
           >
             <MailIcon /> {tm.sendEmail}
           </button>

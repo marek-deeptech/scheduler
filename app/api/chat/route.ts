@@ -37,19 +37,22 @@ async function buildContext(): Promise<string> {
     { data: events },
     { data: confirmations },
     { data: dayStatuses },
+    { data: availabilities },
+    { data: substitutes },
   ] = await Promise.all([
     supabase
       .from('artists')
-      .select('id, name, role, email, phone')
+      .select('id, name, role, email, phone, teams!inner(name)')
+      .eq('teams.name', 'Cast')
       .order('name')
-      .limit(150),
+      .limit(50),
     supabase
       .from('productions')
-      .select('id, title, status, theatres(name)')
+      .select('id, title, status, theatres(name), artist_productions(artists(name, role))')
       .order('title'),
     supabase
       .from('events')
-      .select('id, title, type, start_time, end_time, productions(title), rooms(name)')
+      .select('id, title, type, start_time, end_time, productions(title), rooms(name), event_artists(artists(name))')
       .gte('start_time', monthStart + 'T00:00:00')
       .lte('start_time', nextMonth + 'T00:00:00')
       .order('start_time')
@@ -58,15 +61,35 @@ async function buildContext(): Promise<string> {
       .from('event_confirmations')
       .select('status, responded_at, artists(name), events(title, type, start_time)')
       .in('status', ['confirmed', 'declined', 'maybe'])
+      .gte('events.start_time', monthStart + 'T00:00:00')
       .order('responded_at', { ascending: false })
-      .limit(80),
+      .limit(120),
     supabase
       .from('actor_day_status')
-      .select('artist_id, date, status, note, artists(name)')
+      .select('artist_id, date, status, note')
       .gte('date', today)
       .lte('date', nextMonth)
-      .limit(500),
+      .order('date', { ascending: true })
+      .limit(5000),
+    supabase
+      .from('availabilities')
+      .select('artist_id, type, start_time, end_time, note')
+      .gte('end_time', today + 'T00:00:00')
+      .lte('start_time', nextMonth + 'T00:00:00')
+      .limit(300),
+    supabase
+      .from('actor_substitutes')
+      .select('actor:artists!actor_substitutes_artist_id_fkey(name), substitute:artists!actor_substitutes_substitute_id_fkey(name)')
+      .limit(200),
   ])
+
+  // Cast-only ID set — all downstream filtering uses this
+  const castIds = new Set<string>(((artists ?? []) as any[]).map(a => a.id))
+
+  // Lookup map: artist_id → name (used for tables without FK to artists)
+  const artistById = new Map<string, string>(
+    ((artists ?? []) as any[]).map(a => [a.id, a.name])
+  )
 
   const artistList = ((artists ?? []) as any[])
     .map(a => `- ${a.name}${a.role ? ` (${a.role})` : ''}${a.email ? ` <${a.email}>` : ''}`)
@@ -74,17 +97,33 @@ async function buildContext(): Promise<string> {
 
   const prodList = ((productions ?? []) as any[])
     .map(p => {
-      const th = Array.isArray(p.theatres) ? p.theatres[0] : p.theatres
-      return `- ${p.title} [${p.status ?? 'brak statusu'}]${th ? ` — ${th.name}` : ''}`
+      const th   = Array.isArray(p.theatres) ? p.theatres[0] : p.theatres
+      const cast = ((p.artist_productions ?? []) as any[])
+        .map((ap: any) => {
+          const a = Array.isArray(ap.artists) ? ap.artists[0] : ap.artists
+          if (!a || !castIds.has(a.id ?? '')) return null
+          return `${a.name}${a.role ? ` (${a.role})` : ''}`
+        })
+        .filter(Boolean)
+        .join(', ')
+      return `- ${p.title} [${p.status ?? 'brak statusu'}]${th ? ` — ${th.name}` : ''}${cast ? `\n  Obsada: ${cast}` : ''}`
     })
     .join('\n')
 
   const eventList = ((events ?? []) as any[])
     .map(e => {
-      const prod = Array.isArray(e.productions) ? e.productions[0] : e.productions
-      const room = Array.isArray(e.rooms) ? e.rooms[0] : e.rooms
-      const dt = new Date(e.start_time).toLocaleString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-      return `- ${dt}: ${e.type ?? e.title}${prod ? ` (${prod.title})` : ''}${room ? ` · ${room.name}` : ''}`
+      const prod    = Array.isArray(e.productions) ? e.productions[0] : e.productions
+      const room    = Array.isArray(e.rooms) ? e.rooms[0] : e.rooms
+      const dt      = new Date(e.start_time).toLocaleString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      const actors  = ((e.event_artists ?? []) as any[])
+        .map((ea: any) => {
+          const a = Array.isArray(ea.artists) ? ea.artists[0] : ea.artists
+          if (!a || !castIds.has(a.id ?? '')) return null
+          return a.name
+        })
+        .filter(Boolean)
+        .join(', ')
+      return `- ${dt}: ${e.type ?? e.title}${prod ? ` (${prod.title})` : ''}${room ? ` · ${room.name}` : ''}${actors ? ` | Aktorzy: ${actors}` : ''}`
     })
     .join('\n')
 
@@ -99,10 +138,31 @@ async function buildContext(): Promise<string> {
     .join('\n')
 
   const statusList = ((dayStatuses ?? []) as any[])
+    .filter(s => castIds.has(s.artist_id))
     .map(s => {
-      const artist = Array.isArray(s.artists) ? s.artists[0] : s.artists
-      return `- ${artist?.name ?? s.artist_id}: ${s.date} → ${s.status}${s.note ? ` (${s.note})` : ''}`
+      const name = artistById.get(s.artist_id) ?? s.artist_id
+      return `- ${name}: ${s.date} → ${s.status}${s.note ? ` (${s.note})` : ''}`
     })
+    .join('\n')
+
+  const availList = ((availabilities ?? []) as any[])
+    .filter(av => castIds.has(av.artist_id))
+    .map(av => {
+      const name  = artistById.get(av.artist_id) ?? av.artist_id
+      const from  = new Date(av.start_time).toLocaleString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      const to    = new Date(av.end_time).toLocaleString('pl-PL',   { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      return `- ${name}: ${av.type} od ${from} do ${to}${av.note ? ` (${av.note})` : ''}`
+    })
+    .join('\n')
+
+  const subList = ((substitutes ?? []) as any[])
+    .map(s => {
+      const actor = Array.isArray(s.actor) ? s.actor[0] : s.actor
+      const sub   = Array.isArray(s.substitute) ? s.substitute[0] : s.substitute
+      if (!actor?.name || !sub?.name) return null
+      return `- ${actor.name} → zastępca: ${sub.name}`
+    })
+    .filter(Boolean)
     .join('\n')
 
   return `DZISIAJ: ${today}
@@ -110,7 +170,7 @@ async function buildContext(): Promise<string> {
 === AKTORZY (${(artists ?? []).length}) ===
 ${artistList || 'brak'}
 
-=== PRODUKCJE ===
+=== PRODUKCJE Z OBSADĄ ===
 ${prodList || 'brak'}
 
 === REPERTUAR / KALENDARZ (najbliższe 2 miesiące) ===
@@ -119,8 +179,14 @@ ${eventList || 'brak'}
 === ODPOWIEDZI AKTORÓW (ostatnie) ===
 ${confList || 'brak'}
 
-=== DOSTĘPNOŚĆ AKTORÓW (od dziś) ===
-${statusList || 'brak'}`
+=== DOSTĘPNOŚĆ AKTORÓW — statusy dzienne (od dziś) ===
+${statusList || 'brak'}
+
+=== DOSTĘPNOŚĆ AKTORÓW — bloki czasowe ===
+${availList || 'brak'}
+
+=== ZASTĘPSTWA ===
+${subList || 'brak'}`
 }
 
 // ── Route handler ────────────────────────────────────────────────────────────

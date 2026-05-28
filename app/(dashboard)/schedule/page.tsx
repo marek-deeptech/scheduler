@@ -28,7 +28,7 @@ export default function SchedulePage() {
     setLoading(true)
     const [{ data: prodData }, { data: artistData }] = await Promise.all([
       supabase.from('productions').select('*').order('start_date'),
-      supabase.from('artists').select('*, teams(*)').order('name'),
+      supabase.from('artists').select('*, teams!inner(name)').eq('teams.name', 'Cast').order('name'),
     ])
     setProductions(prodData ?? [])
     setArtists(artistData ?? [])
@@ -147,11 +147,14 @@ export default function SchedulePage() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">{t.schedule.title}</h2>
+      <div className="flex items-center justify-between px-8 py-5 -mx-8 -mt-8 mb-6" style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
+        <h2 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>{t.schedule.title}</h2>
         <button
           onClick={() => setShowProductionForm(!showProductionForm)}
-          className="px-4 py-2 bg-black text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors"
+          className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
+          style={{ background: '#c8102e', color: '#fff' }}
+          onMouseOver={e => (e.currentTarget.style.background = '#9e0c24')}
+          onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
         >
           {showProductionForm ? t.schedule.cancel : `+ ${t.schedule.newProduction}`}
         </button>
@@ -167,7 +170,7 @@ export default function SchedulePage() {
                 required
                 value={productionForm.title}
                 onChange={(e) => setProductionForm({ ...productionForm, title: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
                 placeholder={t.schedule.productionTitlePlaceholder}
               />
             </div>
@@ -177,7 +180,7 @@ export default function SchedulePage() {
                 type="date"
                 value={productionForm.start_date}
                 onChange={(e) => setProductionForm({ ...productionForm, start_date: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
               />
             </div>
             <div>
@@ -186,14 +189,15 @@ export default function SchedulePage() {
                 type="date"
                 value={productionForm.end_date}
                 onChange={(e) => setProductionForm({ ...productionForm, end_date: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
               />
             </div>
           </div>
           <button
             type="submit"
             disabled={saving}
-            className="px-4 py-2 bg-black text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+            className="px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+            style={{ background: '#1a1410', color: '#fff' }}
           >
             {saving ? t.schedule.saving : t.schedule.createProduction}
           </button>
@@ -210,12 +214,13 @@ export default function SchedulePage() {
       ) : (
         <div className="flex gap-6">
           <div className="w-48 shrink-0 space-y-1">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{t.schedule.productions}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#b8b0a4' }}>{t.schedule.productions}</p>
             {productions.map((p) => (
               <button
                 key={p.id}
                 onClick={() => handleSelectProduction(p.id)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${selectedProduction === p.id ? 'bg-black text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${selectedProduction === p.id ? '' : 'text-gray-700 hover:bg-[#faf8f5]'}`}
+                style={selectedProduction === p.id ? { background: '#1a1410', color: '#fff' } : {}}
               >
                 {p.title}
               </button>
@@ -226,7 +231,7 @@ export default function SchedulePage() {
             {currentProduction && (
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">{currentProduction.title}</h3>
+                  <h3 className="text-lg font-semibold" style={{ color: '#1a1410' }}>{currentProduction.title}</h3>
                   {currentProduction.start_date && (
                     <p className="text-sm text-gray-500">
                       {new Date(currentProduction.start_date).toLocaleDateString()} — {currentProduction.end_date ? new Date(currentProduction.end_date).toLocaleDateString() : '?'}
@@ -252,7 +257,7 @@ export default function SchedulePage() {
                       required
                       value={eventForm.title}
                       onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
                       placeholder={t.schedule.eventTitlePlaceholder}
                     />
                   </div>
@@ -263,7 +268,7 @@ export default function SchedulePage() {
                       type="datetime-local"
                       value={eventForm.start_time}
                       onChange={(e) => setEventForm({ ...eventForm, start_time: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
                     />
                   </div>
                   <div>
@@ -273,7 +278,7 @@ export default function SchedulePage() {
                       type="datetime-local"
                       value={eventForm.end_time}
                       onChange={(e) => setEventForm({ ...eventForm, end_time: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
                     />
                   </div>
                   <div className="col-span-2">
@@ -281,7 +286,7 @@ export default function SchedulePage() {
                     <input
                       value={eventForm.location}
                       onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
                       placeholder={t.schedule.locationPlaceholder}
                     />
                   </div>
@@ -296,9 +301,10 @@ export default function SchedulePage() {
                         onClick={() => toggleArtist(a.id)}
                         className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                           eventForm.artist_ids.includes(a.id)
-                            ? 'bg-black text-white border-black'
+                            ? 'border-[#1a1410]'
                             : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
                         }`}
+                        style={eventForm.artist_ids.includes(a.id) ? { background: '#1a1410', color: '#fff', borderColor: '#1a1410' } : {}}
                       >
                         {a.name}
                         {a.teams && <span className="ml-1 opacity-60">· {a.teams.name}</span>}
@@ -309,7 +315,8 @@ export default function SchedulePage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-4 py-2 bg-black text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                  className="px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+                  style={{ background: '#1a1410', color: '#fff' }}
                 >
                   {saving ? t.schedule.saving : t.schedule.saveEvent}
                 </button>
