@@ -1,9 +1,19 @@
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-const FROM   = 'Koordynacja Teatru <onboarding@resend.dev>'
+const FROM = 'Koordynacja Teatru <onboarding@resend.dev>'
+
+function getResend() {
+  const key = process.env.RESEND_API_KEY
+  if (!key || key.startsWith('re_placeholder')) return null
+  return new Resend(key)
+}
 
 export async function sendEmail(to: string | string[], subject: string, html: string) {
+  const resend = getResend()
+  if (!resend) {
+    console.warn('Resend not configured — email skipped')
+    return false
+  }
   const { error } = await resend.emails.send({ from: FROM, to, subject, html })
   if (error) console.error('Resend error:', error)
   return !error
