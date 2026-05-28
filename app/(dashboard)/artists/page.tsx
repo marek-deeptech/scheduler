@@ -994,7 +994,7 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
                       style={isActive
                         ? { background: '#fef2f2', border: '1px solid #fecaca' }
                         : { background: '#fff', border: '1px solid #e4ddd4' }}>
-                      <IconHeart size={16} className="shrink-0 mt-0.5" style={{ color: '#a89e92' } as any} />
+                      <span className="shrink-0 mt-0.5" style={{ color: '#a89e92' }}><IconHeart size={16} /></span>
                       <div className="min-w-0">
                         <p className="text-xs font-medium" style={{ color: '#3e3830' }}>
                           {fmtDate(s.start_time)} – {fmtDate(s.end_time)}
@@ -1304,7 +1304,7 @@ export default function ArtistsPage() {
               <div className="flex items-center justify-center h-40 text-sm" style={{ color: '#a89e92' }}>{ta.loading}</div>
             ) : filtered.length === 0 ? (
               <div className="text-center py-20">
-                <div className="flex justify-center mb-3"><IconTheatre size={48} className="mx-auto" style={{ color: '#cec5b8' } as any} /></div>
+                <div className="flex justify-center mb-3"><span style={{ color: '#cec5b8' }}><IconTheatre size={48} className="mx-auto" /></span></div>
                 <p className="text-sm font-medium" style={{ color: '#7a7068' }}>{ta.empty}</p>
                 {search && <p className="text-xs mt-1" style={{ color: '#a89e92' }}>{ta.emptyHint}</p>}
               </div>
