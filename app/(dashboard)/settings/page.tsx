@@ -298,8 +298,9 @@ export default function SettingsPage() {
   const [theatres,   setTheatres]   = useState<Theatre[]>([])
   const [rooms,      setRooms]      = useState<Room[]>([])
   const [teams,      setTeams]      = useState<Team[]>([])
-  const [eventTypes, setEventTypes] = useState<EventType[]>([])
-  const [loading,    setLoading]    = useState(true)
+  const [eventTypes,    setEventTypes]    = useState<EventType[]>([])
+  const [etTableError,  setEtTableError]  = useState(false)
+  const [loading,       setLoading]       = useState(true)
   const [activeTab, setActiveTab] = useState<'general' | 'notifications'>('general')
 
   // Add-form state
@@ -314,7 +315,7 @@ export default function SettingsPage() {
 
   async function load() {
     setLoading(true)
-    const [{ data: th }, { data: rm }, { data: tm }, { data: et }] = await Promise.all([
+    const [{ data: th }, { data: rm }, { data: tm }, { data: et, error: etErr }] = await Promise.all([
       supabase.from('theatres').select('id, name').order('name'),
       supabase.from('rooms').select('id, name, theatre_id').order('name'),
       supabase.from('teams').select('id, name').order('name'),
@@ -323,7 +324,13 @@ export default function SettingsPage() {
     setTheatres(th ?? [])
     setRooms(rm ?? [])
     setTeams(tm ?? [])
-    setEventTypes(et ?? [])
+    if (etErr) {
+      console.error('event_types error:', etErr)
+      setEtTableError(true)
+    } else {
+      setEtTableError(false)
+      setEventTypes(et ?? [])
+    }
     if (!newRoomTh && th && th.length > 0) setNewRoomTh(th[0].id)
     setLoading(false)
   }
@@ -412,14 +419,20 @@ export default function SettingsPage() {
     const name = newEventType.trim()
     if (!name) return
     setSaving('eventType')
-    await supabase.from('event_types').insert({ name })
-    setNewEventType('')
+    const { error } = await supabase.from('event_types').insert({ name })
+    if (error) {
+      console.error('addEventType error:', error)
+      alert(`Błąd zapisu: ${error.message}`)
+    } else {
+      setNewEventType('')
+    }
     setSaving(null)
     load()
   }
 
   async function renameEventType(id: string, name: string) {
-    await supabase.from('event_types').update({ name }).eq('id', id)
+    const { error } = await supabase.from('event_types').update({ name }).eq('id', id)
+    if (error) console.error('renameEventType error:', error)
     load()
   }
 
@@ -594,33 +607,55 @@ export default function SettingsPage() {
 
           {/* ── Typy Wydarzeń ────────────────────────────────────────────────── */}
           <Section title="Typy Wydarzeń" description="Kategorie używane w zakładce Wydarzenia (niepowiązane z tytułami)">
-            <div className="py-2">
-              {eventTypes.length === 0 && (
-                <p className="text-xs text-gray-500 px-4 py-3 italic">Brak typów — dodaj pierwszy poniżej</p>
-              )}
-              {eventTypes.map(et => (
-                <EditableRow
-                  key={et.id}
-                  name={et.name}
-                  onSave={name => renameEventType(et.id, name)}
-                  onDelete={() => deleteEventType(et.id, et.name)}
-                />
-              ))}
-            </div>
-            <div className="border-t border-gray-100 px-4 py-3">
-              <form onSubmit={addEventType} className="flex gap-2">
-                <input
-                  value={newEventType}
-                  onChange={e => setNewEventType(e.target.value)}
-                  placeholder="Np. Wynajem przestrzeni…"
-                  className={inputCls}
-                />
-                <button type="submit" disabled={!newEventType.trim() || saving === 'eventType'}
-                  className={addBtnCls('eventType')}>
-                  + Dodaj
+            {etTableError ? (
+              <div className="px-5 py-4 m-4 rounded-xl text-sm" style={{ background: '#fdf0f2', border: '1px solid #f5c6cd', color: '#9e0c24' }}>
+                <p className="font-semibold mb-1">Tabela nie istnieje w bazie danych</p>
+                <p className="text-xs mb-3" style={{ color: '#7a3040' }}>Uruchom poniższy SQL w Supabase → SQL Editor, a następnie odśwież stronę:</p>
+                <pre className="text-[11px] p-3 rounded-lg overflow-x-auto" style={{ background: '#fff8f9', border: '1px solid #f5c6cd', color: '#5a1020' }}>{`CREATE TABLE IF NOT EXISTS event_types (
+  id         uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  name       text NOT NULL UNIQUE,
+  created_at timestamptz DEFAULT now()
+);
+INSERT INTO event_types (name) VALUES
+  ('Sesja'), ('Próba chóru'),
+  ('Wynajem przestrzeni'), ('Konferencja'),
+  ('Urodziny'), ('Inne')
+ON CONFLICT (name) DO NOTHING;`}</pre>
+                <button onClick={() => load()} className="mt-3 text-xs px-3 py-1.5 rounded-lg" style={{ background: '#9e0c24', color: '#fff' }}>
+                  Odśwież
                 </button>
-              </form>
-            </div>
+              </div>
+            ) : (
+              <>
+                <div className="py-2">
+                  {eventTypes.length === 0 && (
+                    <p className="text-xs text-gray-500 px-4 py-3 italic">Brak typów — dodaj pierwszy poniżej</p>
+                  )}
+                  {eventTypes.map(et => (
+                    <EditableRow
+                      key={et.id}
+                      name={et.name}
+                      onSave={name => renameEventType(et.id, name)}
+                      onDelete={() => deleteEventType(et.id, et.name)}
+                    />
+                  ))}
+                </div>
+                <div className="border-t border-gray-100 px-4 py-3">
+                  <form onSubmit={addEventType} className="flex gap-2">
+                    <input
+                      value={newEventType}
+                      onChange={e => setNewEventType(e.target.value)}
+                      placeholder="Np. Wynajem przestrzeni…"
+                      className={inputCls}
+                    />
+                    <button type="submit" disabled={!newEventType.trim() || saving === 'eventType'}
+                      className={addBtnCls('eventType')}>
+                      + Dodaj
+                    </button>
+                  </form>
+                </div>
+              </>
+            )}
           </Section>
         </>
       )}
