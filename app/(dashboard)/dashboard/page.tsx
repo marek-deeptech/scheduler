@@ -235,6 +235,8 @@ export default function DashboardPage() {
       .gte('end_time', `${today}T00:00:00`)
       .order('start_time')
 
+    const tomorrow = localDate(addDays(now, 1))
+
     const [
       { data: artistData },
       { data: prodsData },
@@ -249,7 +251,7 @@ export default function DashboardPage() {
       { data: avData },
       { data: showsNMData },
       { data: showsM2Data },
-      { data: unconfData },
+      { data: tomorrowDsData },
       { data: vacNMData },
     ] = await Promise.all([
       // artist_productions included so we can scope artists to the selected theatre
@@ -262,11 +264,10 @@ export default function DashboardPage() {
       availQ,
       showsNMQ,
       showsM2Q,
-      // Pending event confirmations for upcoming events
-      supabase.from('event_confirmations')
-        .select('artist_id, events!inner(start_time)')
-        .eq('status', 'pending')
-        .gte('events.start_time', `${today}T00:00:00`),
+      // Actor day status for tomorrow — who hasn't confirmed availability
+      supabase.from('actor_day_status')
+        .select('artist_id')
+        .eq('date', tomorrow),
       // Actor vacation days in next month
       supabase.from('actor_day_status')
         .select('artist_id')
@@ -349,11 +350,16 @@ export default function DashboardPage() {
     setShowsM2Count(m2Shows.length)
     setShowsM2List(m2Shows)
 
-    // Not confirmed: unique artists with pending confirmations for upcoming events
-    const unconfArtistIds = [...new Set((unconfData ?? []).map((r: any) => r.artist_id))]
+    // Not confirmed: Cast members who have NO actor_day_status entry for tomorrow
     const allArtistsMap = new Map(allArtistsRaw.map((a: any) => [a.id, a.name as string]))
-    setNotConfirmedCount(unconfArtistIds.length)
-    setNotConfirmedNames(unconfArtistIds.map(id => allArtistsMap.get(id) ?? id).filter(Boolean))
+    const castArtists = allArtistsRaw.filter((a: any) => {
+      const teams = Array.isArray(a.teams) ? a.teams : (a.teams ? [a.teams] : [])
+      return teams.some((t: any) => t?.name === 'Cast')
+    })
+    const tomorrowConfirmedIds = new Set((tomorrowDsData ?? []).map((r: any) => r.artist_id))
+    const notConfTomorrow = castArtists.filter((a: any) => !tomorrowConfirmedIds.has(a.id))
+    setNotConfirmedCount(notConfTomorrow.length)
+    setNotConfirmedNames(notConfTomorrow.map((a: any) => a.name as string))
 
     // Vacations next month: unique artists
     const vacArtistIds = [...new Set((vacNMData ?? []).map((r: any) => r.artist_id))]
@@ -544,14 +550,37 @@ export default function DashboardPage() {
   /* ── Tooltip content for new tiles ── */
   const notConfirmedTip = (
     <>
-      <TipHeader>Nie potwierdzili</TipHeader>
+      <TipHeader>Brak statusu na jutro</TipHeader>
       {notConfirmedNames.length === 0
-        ? <TipEmpty text="Wszyscy potwierdzili" />
+        ? <TipEmpty text="Wszyscy podali status" />
         : notConfirmedNames.map(name => <TipRow key={name} label={name} dot="bg-orange-400" />)
       }
       <span className="block pb-1" />
     </>
   )
+
+  function repertuarMonthTip(list: EventRow[], label: string) {
+    const byTitle = new Map<string, EventRow[]>()
+    for (const e of list) {
+      const key = e.production_title ?? e.title
+      if (!byTitle.has(key)) byTitle.set(key, [])
+      byTitle.get(key)!.push(e)
+    }
+    return (
+      <>
+        <TipHeader>Repertuar – {label}</TipHeader>
+        {byTitle.size === 0
+          ? <TipEmpty text="Brak spektakli" />
+          : Array.from(byTitle.entries()).map(([title, evs]) => (
+              <span key={title} className="block">
+                <TipRow label={title} sub={`${evs.length} spektakl${evs.length === 1 ? '' : evs.length < 5 ? 'e' : 'i'}`} dot="bg-gray-400" />
+              </span>
+            ))
+        }
+        <span className="block pb-1" />
+      </>
+    )
+  }
 
   function showsMonthTip(list: EventRow[], label: string) {
     return (
@@ -583,19 +612,20 @@ export default function DashboardPage() {
   )
 
   /* ── Stat cards config ── */
+  const titlesNMCount = new Set(showsNMList.filter(e => e.production_title).map(e => e.production_title)).size
+
   const statCards = [
     {
-      label: 'Nie potwierdzili', value: notConfirmedCount,
-      sub: notConfirmedCount > 0 ? 'oczekuje na odpowiedź' : 'wszyscy potwierdzili',
+      label: 'Nie potwierdzili na jutro', value: notConfirmedCount,
+      sub: notConfirmedCount > 0 ? `${notConfirmedCount} bez statusu` : 'wszyscy podali status',
       warn: notConfirmedCount > 0,
       tip: notConfirmedTip, tipAlign: 'left' as const,
     },
     {
-      label: `Spektakle – ${nmMonthLabel}`, value: showsNMCount,
-      sub: showsNMConflicts > 0 ? `${showsNMConflicts} ${plKonflikt(showsNMConflicts)}` : showsNMCount > 0 ? `${showsNMCount} spektakli` : 'brak',
-      warn: showsNMConflicts > 0,
-      tip: showsMonthTip(showsNMList, nmMonthLabel), tipAlign: 'left' as const,
-      onClick: showsNMConflicts > 0 ? () => setShowConflictPanel(true) : undefined,
+      label: `Repertuar – ${nmMonthLabel}`, value: showsNMCount,
+      sub: titlesNMCount > 0 ? `${titlesNMCount} tytuł${titlesNMCount === 1 ? '' : titlesNMCount < 5 ? 'y' : 'ów'}` : 'brak spektakli',
+      warn: false,
+      tip: repertuarMonthTip(showsNMList, nmMonthLabel), tipAlign: 'left' as const,
     },
     {
       label: `Spektakle – ${m2MonthLabel}`, value: showsM2Count,
