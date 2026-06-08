@@ -1209,7 +1209,7 @@ export default function ArtistsPage() {
       const q = search.toLowerCase()
       list = list.filter(a => a.name.toLowerCase().includes(q) || (a.role ?? '').toLowerCase().includes(q))
     }
-    return list
+    return [...list].sort((a, b) => a.name.localeCompare(b.name, 'pl'))
   }, [artists, statusFilter, search])
 
   const selectedArtist = artists.find(a => a.id === selectedId) ?? null
