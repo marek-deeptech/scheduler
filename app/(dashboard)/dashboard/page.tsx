@@ -585,13 +585,6 @@ export default function DashboardPage() {
   /* ── Stat cards config ── */
   const statCards = [
     {
-      label: td.statConflicts, value: conflictPairs.length,
-      sub: conflictPairs.length > 0 ? td.statConflictsClickHint : td.statConflictsNone,
-      warn: conflictPairs.length > 0,
-      tip: conflictTip, tipAlign: 'left' as const,
-      onClick: conflictPairs.length > 0 ? () => setShowConflictPanel(true) : undefined,
-    },
-    {
       label: 'Nie potwierdzili', value: notConfirmedCount,
       sub: notConfirmedCount > 0 ? 'oczekuje na odpowiedź' : 'wszyscy potwierdzili',
       warn: notConfirmedCount > 0,
@@ -649,7 +642,7 @@ export default function DashboardPage() {
     <div className="max-w-7xl mx-auto space-y-5">
 
       {/* ── Stat cards ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {statCards.map(s => (
           <div
             key={s.label}
@@ -669,8 +662,8 @@ export default function DashboardPage() {
       </div>
 
 
-      {/* ── 3-column body ──────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_280px] gap-5 items-start">
+      {/* ── 2-column body ──────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5 items-start">
 
         {/* LEFT — Today ─────────────────────────────────────────── */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
@@ -793,110 +786,6 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* RIGHT ──────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-4">
-
-          {/* Alerty */}
-          {(alertArtists.length > 0 || conflictPairs.length > 0) && (
-            <div className="bg-white border border-gray-200 rounded-2xl px-4 py-4">
-              <h3 className="text-sm font-semibold mb-3" style={{ color: '#1a1410' }}>{td.alertsSection}</h3>
-              <div className="space-y-2">
-
-                {conflictPairs.length > 0 && (
-                  <Tooltip tip={conflictTip} align="right">
-                    <span
-                      className="flex items-start gap-2.5 px-3 py-2.5 bg-red-50 rounded-xl border border-red-100 cursor-pointer hover:bg-red-100 transition-colors w-full"
-                      onClick={() => setShowConflictPanel(true)}
-                    >
-                      <span className="shrink-0"><IconWarning size={16} className="text-red-500" /></span>
-                      <span>
-                        <p className="text-xs font-semibold text-red-700">{td.statConflicts}</p>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {(['artist', 'room', 'tech_venue'] as const)
-                            .map(r => ({ r, count: conflictPairs.filter(p => p.reasons.includes(r)).length }))
-                            .filter(({ count }) => count > 0)
-                            .map(({ r, count }) => (
-                              <span key={r} className="text-[10px] font-semibold text-red-600 underline decoration-dotted underline-offset-2">
-                                {CONFLICT_ICON[r]} {count} × {CONFLICT_LABEL[r]}
-                              </span>
-                            ))
-                          }
-                        </div>
-                        <button
-                          onClick={e => { e.stopPropagation(); handleSendConflictAlert() }}
-                          disabled={conflictAlertSent}
-                          className="mt-1.5 text-[10px] text-red-500 hover:text-red-700 underline decoration-dotted underline-offset-2 transition-colors disabled:text-green-600 disabled:no-underline"
-                        >
-                          {conflictAlertSent ? td.conflictAlertSent : td.sendConflictAlert}
-                        </button>
-                      </span>
-                    </span>
-                  </Tooltip>
-                )}
-
-                {(['Na urlopie','Choroba','Niedyspozyjny'] as const).map(status => {
-                  const group = alertArtists.filter(a => a.status === status)
-                  if (!group.length) return null
-                  const label = STATUS_LABEL[status]
-                  return (
-                    <Tooltip key={status} tip={alertTip(status)} align="right">
-                      <span className="flex items-start gap-2.5 px-3 py-2.5 bg-gray-50 rounded-xl border border-gray-200 cursor-help w-full">
-                        <span className="shrink-0 text-gray-500">{status === 'Na urlopie' ? <IconSun size={14} /> : status === 'Choroba' ? <IconHeart size={14} /> : <IconXCircle size={14} />}</span>
-                        <span>
-                          <p className="text-xs font-semibold text-gray-700">{label}</p>
-                          <p className="text-xs text-gray-500 mt-0.5 underline decoration-dotted underline-offset-2">
-                            {group.map(a => a.name.split(' ')[0]).join(', ')}
-                          </p>
-                        </span>
-                      </span>
-                    </Tooltip>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Dostępność */}
-          <div className="bg-white border border-gray-200 rounded-2xl px-4 py-4">
-            <h3 className="text-sm font-semibold mb-3" style={{ color: '#1a1410' }}>{td.teamAvailSection}</h3>
-            <div className="flex h-2 rounded-full overflow-hidden mb-3 gap-0.5">
-              {pctD > 0 && <div className="bg-green-400 rounded-full" style={{ width: `${pctD}%` }} />}
-              {pctU > 0 && <div className="bg-amber-400 rounded-full" style={{ width: `${pctU}%` }} />}
-              {pctN > 0 && <div className="bg-red-400 rounded-full" style={{ width: `${pctN}%` }} />}
-            </div>
-            <div className="space-y-2">
-              {[
-                { labelKey: td.availAvailable,   count: availCounts.dostepni,    color: 'bg-green-400', dot: 'bg-green-400', list: dostepniList  },
-                { labelKey: td.availVacation,     count: availCounts.urlop,       color: 'bg-amber-400', dot: 'bg-amber-400', list: urlopList     },
-                { labelKey: td.availUnavailable,  count: availCounts.niedostepni, color: 'bg-red-400',   dot: 'bg-red-400',   list: niedostList   },
-              ].map(r => {
-                const tip = (
-                  <>
-                    <TipHeader>{r.labelKey}</TipHeader>
-                    {r.list.length === 0
-                      ? <TipEmpty text={td.noMembers} />
-                      : r.list.map(a => <TipRow key={a.id} label={a.name} sub={a.role ?? undefined} dot={r.dot} />)
-                    }
-                    <span className="block pb-1" />
-                  </>
-                )
-                return (
-                  <div key={r.labelKey} className="flex items-center justify-between">
-                    <Tooltip tip={tip} align="right">
-                      <span className="flex items-center gap-2 cursor-help">
-                        <span className={`w-2 h-2 rounded-full ${r.color} shrink-0`} />
-                        <span className="text-xs text-gray-600 underline decoration-dotted underline-offset-2 decoration-gray-300">{r.labelKey}</span>
-                      </span>
-                    </Tooltip>
-                    <span className="text-xs font-semibold text-gray-800">{r.count}</span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-
-        </div>
       </div>
     </div>
     </>
