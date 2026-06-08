@@ -634,12 +634,6 @@ export default function DashboardPage() {
       tip: showsMonthTip(showsM2List, m2MonthLabel), tipAlign: 'right' as const,
       onClick: showsM2Conflicts > 0 ? () => setShowConflictPanel(true) : undefined,
     },
-    {
-      label: `Urlopy – ${nmMonthLabel}`, value: vacNextCount,
-      sub: vacNextCount > 0 ? `${vacNextCount} aktorów` : 'brak urlopów',
-      warn: false,
-      tip: vacNextTip, tipAlign: 'right' as const,
-    },
   ]
 
   if (loading) {
@@ -672,7 +666,7 @@ export default function DashboardPage() {
     <div className="max-w-7xl mx-auto space-y-5">
 
       {/* ── Stat cards ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {statCards.map(s => (
           <div
             key={s.label}
