@@ -575,7 +575,7 @@ export default function ProductionsPage() {
           <div className="flex items-center justify-between px-8 py-5 shrink-0 bg-white" style={{ borderBottom: '1px solid #e4ddd4' }}>
             <div>
               <h2 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>{t.productions.title}</h2>
-              <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>{productions.length} produkcji</p>
+              <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>{productions.length} tytułów</p>
             </div>
             <button
               onClick={() => setModal(null)}

@@ -71,6 +71,11 @@ const icons = {
       <circle cx="12" cy="9" r="2" fill="currentColor" stroke="none"/>
     </svg>
   ),
+  events: (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/>
+    </svg>
+  ),
 }
 
 // ── Profile switcher ────────────────────────────────────────────────────────
@@ -258,6 +263,7 @@ function Sidebar() {
                 <Link href="/planning"    className={lnk('/planning')}   >{icons.planning}Planowanie</Link>
                 <Link href="/artists"     className={lnk('/artists')}    >{icons.user}    {t.nav.artists}</Link>
                 <Link href="/productions" className={lnk('/productions')}>{icons.film}    {t.nav.productions}</Link>
+                <Link href="/events"      className={lnk('/events')}     >{icons.events}  {t.nav.events}</Link>
               </div>
             </div>
             <div>
