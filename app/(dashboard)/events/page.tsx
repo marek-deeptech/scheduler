@@ -14,6 +14,11 @@ interface EventRow {
   event_artists: { artists: { id: string; name: string } | null }[]
 }
 
+interface EventType {
+  id: string
+  name: string
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string) {
@@ -26,53 +31,76 @@ function formatTime(iso: string) {
 }
 
 function dayKey(iso: string) {
-  return iso.slice(0, 10) // YYYY-MM-DD
+  return iso.slice(0, 10)
 }
 
-function eventTypePill(type: string | null) {
-  if (!type) return { bg: '#f2ede6', color: '#7a7068', border: '#e4ddd4' }
-  if (type.startsWith('Spektakl') || type.startsWith('Premiera'))
-    return { bg: '#fdf0f2', color: '#9e0c24', border: '#f5c6cd' }
-  if (type.startsWith('Próba'))
-    return { bg: '#f2ede6', color: '#5a524a', border: '#e4ddd4' }
-  if (type === 'Przymiarki kostiumowe')
-    return { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' }
-  return { bg: '#f2ede6', color: '#7a7068', border: '#e4ddd4' }
+// Colour map for known types — DB types get assigned colours by name
+const TYPE_COLOURS: Record<string, { bg: string; color: string; border: string }> = {
+  'Sesja':               { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
+  'Próba chóru':         { bg: '#f2ede6', color: '#5a524a', border: '#e4ddd4' },
+  'Wynajem przestrzeni': { bg: '#f0fdfa', color: '#0f766e', border: '#99f6e4' },
+  'Konferencja':         { bg: '#faf5ff', color: '#7e22ce', border: '#e9d5ff' },
+  'Urodziny':            { bg: '#fdf2f8', color: '#9d174d', border: '#fbcfe8' },
+  'Inne':                { bg: '#f9fafb', color: '#4b5563', border: '#e5e7eb' },
+  // legacy production event types kept for any cross-over data
+  'Spektakl':            { bg: '#fdf0f2', color: '#9e0c24', border: '#f5c6cd' },
+  'Premiera':            { bg: '#fdf0f2', color: '#9e0c24', border: '#f5c6cd' },
+  'Próba':               { bg: '#f2ede6', color: '#5a524a', border: '#e4ddd4' },
+  'Przymiarki':          { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' },
 }
 
-const TYPE_OPTIONS = [
-  'Wszystkie',
-  'Próba',
-  'Spektakl',
-  'Premiera',
-  'Przymiarki kostiumowe',
-  'Inne',
+// Palette cycle for unknown types
+const EXTRA_PALETTES = [
+  { bg: '#fff7ed', color: '#c2410c', border: '#fed7aa' },
+  { bg: '#fefce8', color: '#a16207', border: '#fef08a' },
+  { bg: '#f0f9ff', color: '#0369a1', border: '#bae6fd' },
+  { bg: '#f7fee7', color: '#3f6212', border: '#d9f99d' },
 ]
+
+function eventTypePill(type: string | null, extraIndex = 0) {
+  if (!type) return { bg: '#f2ede6', color: '#7a7068', border: '#e4ddd4' }
+  // exact match first
+  if (TYPE_COLOURS[type]) return TYPE_COLOURS[type]
+  // prefix match (e.g. "Próba generalna" → Próba)
+  const prefix = Object.keys(TYPE_COLOURS).find(k => type.startsWith(k))
+  if (prefix) return TYPE_COLOURS[prefix]
+  // unknown type — cycle through extra palette
+  return EXTRA_PALETTES[extraIndex % EXTRA_PALETTES.length]
+}
 
 // ── component ─────────────────────────────────────────────────────────────────
 
 export default function EventsPage() {
-  const [events,  setEvents]  = useState<EventRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [period,  setPeriod]  = useState<'upcoming' | 'all' | 'past'>('upcoming')
+  const [events,     setEvents]     = useState<EventRow[]>([])
+  const [eventTypes, setEventTypes] = useState<EventType[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [period,     setPeriod]     = useState<'upcoming' | 'all' | 'past'>('upcoming')
   const [typeFilter, setTypeFilter] = useState('Wszystkie')
 
-  useEffect(() => { fetchEvents() }, [])
+  useEffect(() => { fetchAll() }, [])
 
-  async function fetchEvents() {
+  async function fetchAll() {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('events')
-      .select('id, title, type, start_time, end_time, location, rooms(name), event_artists(artists(id, name))')
-      .is('production_id', null)
-      .order('start_time', { ascending: true })
-
-    if (error) console.error('events fetch error:', error)
-    setEvents((data ?? []) as any[])
+    const [{ data: evData }, { data: typesData }] = await Promise.all([
+      supabase
+        .from('events')
+        .select('id, title, type, start_time, end_time, location, rooms(name), event_artists(artists(id, name))')
+        .is('production_id', null)
+        .order('start_time', { ascending: true }),
+      supabase
+        .from('event_types')
+        .select('id, name')
+        .order('name'),
+    ])
+    setEvents((evData ?? []) as any[])
+    setEventTypes(typesData ?? [])
     setLoading(false)
   }
 
   const now = new Date()
+
+  // All filter options: "Wszystkie" + DB types
+  const filterOptions = useMemo(() => ['Wszystkie', ...eventTypes.map(t => t.name)], [eventTypes])
 
   const filtered = useMemo(() => {
     let list = events
@@ -81,14 +109,23 @@ export default function EventsPage() {
     if (period === 'past')     list = list.filter(e => new Date(e.end_time) < now)
 
     if (typeFilter !== 'Wszystkie') {
-      list = list.filter(e => {
-        if (typeFilter === 'Inne') return !TYPE_OPTIONS.slice(1, -1).some(t => e.type?.startsWith(t))
-        return e.type?.startsWith(typeFilter)
-      })
+      list = list.filter(e => e.type === typeFilter)
     }
 
     return list
   }, [events, period, typeFilter, now.toDateString()])
+
+  // Map type name → extra palette index for consistent colouring of unknown types
+  const extraIndexMap = useMemo(() => {
+    const map = new Map<string, number>()
+    let idx = 0
+    for (const t of eventTypes) {
+      if (!TYPE_COLOURS[t.name] && !Object.keys(TYPE_COLOURS).some(k => t.name.startsWith(k))) {
+        map.set(t.name, idx++)
+      }
+    }
+    return map
+  }, [eventTypes])
 
   // Group by day
   const grouped = useMemo(() => {
@@ -133,9 +170,9 @@ export default function EventsPage() {
           </div>
         </div>
 
-        {/* Type filter chips */}
+        {/* Type filter chips — loaded from DB */}
         <div className="flex flex-wrap gap-2 mt-4">
-          {TYPE_OPTIONS.map(t => (
+          {filterOptions.map(t => (
             <button
               key={t}
               onClick={() => setTypeFilter(t)}
@@ -147,6 +184,11 @@ export default function EventsPage() {
               {t}
             </button>
           ))}
+          {!loading && eventTypes.length === 0 && (
+            <span className="text-xs italic" style={{ color: '#a89e92' }}>
+              Dodaj typy w Ustawienia → Typy Wydarzeń
+            </span>
+          )}
         </div>
       </div>
 
@@ -190,7 +232,8 @@ export default function EventsPage() {
                 {/* Events for this day */}
                 <div className="space-y-2">
                   {dayEvents.map(ev => {
-                    const pill = eventTypePill(ev.type)
+                    const extraIdx = extraIndexMap.get(ev.type ?? '') ?? 0
+                    const pill = eventTypePill(ev.type, extraIdx)
                     const actors = (ev.event_artists ?? [])
                       .map((ea: any) => ea.artists?.name)
                       .filter(Boolean) as string[]

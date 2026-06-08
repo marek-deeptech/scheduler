@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
-interface Theatre { id: string; name: string }
-interface Room    { id: string; name: string; theatre_id: string }
-interface Team    { id: string; name: string }
+interface Theatre   { id: string; name: string }
+interface Room      { id: string; name: string; theatre_id: string }
+interface Team      { id: string; name: string }
+interface EventType { id: string; name: string }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -294,31 +295,35 @@ function NotificationsTab() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const [theatres, setTheatres] = useState<Theatre[]>([])
-  const [rooms,    setRooms]    = useState<Room[]>([])
-  const [teams,    setTeams]    = useState<Team[]>([])
-  const [loading,  setLoading]  = useState(true)
+  const [theatres,   setTheatres]   = useState<Theatre[]>([])
+  const [rooms,      setRooms]      = useState<Room[]>([])
+  const [teams,      setTeams]      = useState<Team[]>([])
+  const [eventTypes, setEventTypes] = useState<EventType[]>([])
+  const [loading,    setLoading]    = useState(true)
   const [activeTab, setActiveTab] = useState<'general' | 'notifications'>('general')
 
   // Add-form state
-  const [newTheatre, setNewTheatre] = useState('')
-  const [newRoom,    setNewRoom]    = useState('')
-  const [newRoomTh,  setNewRoomTh]  = useState('')
-  const [newTeam,    setNewTeam]    = useState('')
-  const [saving,     setSaving]     = useState<string | null>(null)
+  const [newTheatre,   setNewTheatre]   = useState('')
+  const [newRoom,      setNewRoom]      = useState('')
+  const [newRoomTh,    setNewRoomTh]    = useState('')
+  const [newTeam,      setNewTeam]      = useState('')
+  const [newEventType, setNewEventType] = useState('')
+  const [saving,       setSaving]       = useState<string | null>(null)
 
   useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true)
-    const [{ data: th }, { data: rm }, { data: tm }] = await Promise.all([
+    const [{ data: th }, { data: rm }, { data: tm }, { data: et }] = await Promise.all([
       supabase.from('theatres').select('id, name').order('name'),
       supabase.from('rooms').select('id, name, theatre_id').order('name'),
       supabase.from('teams').select('id, name').order('name'),
+      supabase.from('event_types').select('id, name').order('name'),
     ])
     setTheatres(th ?? [])
     setRooms(rm ?? [])
     setTeams(tm ?? [])
+    setEventTypes(et ?? [])
     if (!newRoomTh && th && th.length > 0) setNewRoomTh(th[0].id)
     setLoading(false)
   }
@@ -397,6 +402,30 @@ export default function SettingsPage() {
   async function deleteTeam(id: string, name: string) {
     if (!confirm(`Usunąć zespół "${name}"? Osoby przypisane do tego zespołu stracą przynależność.`)) return
     await supabase.from('teams').delete().eq('id', id)
+    load()
+  }
+
+  // ── Event Types ──────────────────────────────────────────────────────────────
+
+  async function addEventType(e: React.FormEvent) {
+    e.preventDefault()
+    const name = newEventType.trim()
+    if (!name) return
+    setSaving('eventType')
+    await supabase.from('event_types').insert({ name })
+    setNewEventType('')
+    setSaving(null)
+    load()
+  }
+
+  async function renameEventType(id: string, name: string) {
+    await supabase.from('event_types').update({ name }).eq('id', id)
+    load()
+  }
+
+  async function deleteEventType(id: string, name: string) {
+    if (!confirm(`Usunąć typ "${name}"?`)) return
+    await supabase.from('event_types').delete().eq('id', id)
     load()
   }
 
@@ -557,6 +586,37 @@ export default function SettingsPage() {
                 />
                 <button type="submit" disabled={!newTeam.trim() || saving === 'team'}
                   className={addBtnCls('team')}>
+                  + Dodaj
+                </button>
+              </form>
+            </div>
+          </Section>
+
+          {/* ── Typy Wydarzeń ────────────────────────────────────────────────── */}
+          <Section title="Typy Wydarzeń" description="Kategorie używane w zakładce Wydarzenia (niepowiązane z tytułami)">
+            <div className="py-2">
+              {eventTypes.length === 0 && (
+                <p className="text-xs text-gray-500 px-4 py-3 italic">Brak typów — dodaj pierwszy poniżej</p>
+              )}
+              {eventTypes.map(et => (
+                <EditableRow
+                  key={et.id}
+                  name={et.name}
+                  onSave={name => renameEventType(et.id, name)}
+                  onDelete={() => deleteEventType(et.id, et.name)}
+                />
+              ))}
+            </div>
+            <div className="border-t border-gray-100 px-4 py-3">
+              <form onSubmit={addEventType} className="flex gap-2">
+                <input
+                  value={newEventType}
+                  onChange={e => setNewEventType(e.target.value)}
+                  placeholder="Np. Wynajem przestrzeni…"
+                  className={inputCls}
+                />
+                <button type="submit" disabled={!newEventType.trim() || saving === 'eventType'}
+                  className={addBtnCls('eventType')}>
                   + Dodaj
                 </button>
               </form>
