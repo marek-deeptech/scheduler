@@ -44,23 +44,48 @@ function prodColor(title: string, allTitles: string[]): string {
   return PROD_PALETTE[idx % PROD_PALETTE.length]
 }
 
+// ── Room normalisation ────────────────────────────────────────────────────────
+// Ensures there are always two rooms: "Duża scena" and "Mała scena".
+// If no "Mała scena" events exist, every other show (sorted by date+time) is
+// reassigned to "Mała scena" and the remaining ones to "Duża scena".
+
+function normalizeRooms(events: ProposalEvent[]): ProposalEvent[] {
+  const hasSmall = events.some(e => {
+    const r = (e.room_name ?? '').toLowerCase()
+    return r.includes('mała') || r.includes('mala') || r.includes('small') || r.includes('kameralna')
+  })
+  if (hasSmall) return events
+
+  // Sort chronologically so the split is deterministic
+  const sorted = [...events].sort((a, b) =>
+    `${a.date}${a.start_time ?? ''}`.localeCompare(`${b.date}${b.start_time ?? ''}`)
+  )
+  return sorted.map((e, i) => ({
+    ...e,
+    room_name: i % 2 === 0 ? 'Duża scena' : 'Mała scena',
+  }))
+}
+
 // ── Vertical month table ───────────────────────────────────────────────────────
 
 function MonthTable({ month, events }: { month: string; events: ProposalEvent[] }) {
   const [y, m] = month.split('-').map(Number)
   const daysInMonth = new Date(y, m, 0).getDate()
 
+  // Apply room normalisation
+  const normEvents = normalizeRooms(events)
+
   // Unique rooms → columns (sorted)
   const rooms = [...new Set(
-    events.map(e => e.room_name?.trim() || 'Scena')
+    normEvents.map(e => e.room_name?.trim() || 'Scena')
   )].sort()
 
   // Unique titles for color mapping
-  const allTitles = [...new Set(events.map(e => e.production_title))]
+  const allTitles = [...new Set(normEvents.map(e => e.production_title))]
 
   // Build lookup: dateStr → room → events[]
   const byDateRoom: Record<string, Record<string, ProposalEvent[]>> = {}
-  for (const e of events) {
+  for (const e of normEvents) {
     const room = e.room_name?.trim() || 'Scena'
     byDateRoom[e.date] ??= {}
     byDateRoom[e.date][room] ??= []
