@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useTheatre } from '@/lib/theatre-context'
+import { supabase } from '@/lib/supabase'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -11,6 +13,10 @@ interface ProposalEvent {
   room_name: string | null
   start_time: string
   end_time: string
+}
+
+interface TaggedEvent extends ProposalEvent {
+  _theatre: string   // 'Teatr Polonia' | 'Och-Teatr' (or other theatre name)
 }
 
 interface Proposal {
@@ -24,6 +30,8 @@ interface Proposal {
   approved_at: string | null
 }
 
+interface Theatre { id: string; name: string }
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const MONTH_PL: Record<string, string> = {
@@ -33,59 +41,89 @@ const MONTH_PL: Record<string, string> = {
 }
 const DAY_PL = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb']
 
+// Accent colours per theatre name
+const THEATRE_ACCENT: Record<string, string> = {
+  'Teatr Polonia': '#c8102e',
+  'Och-Teatr':     '#d4880a',
+}
+function theatreAccent(name: string | null) {
+  if (!name) return '#1a1410'
+  return THEATRE_ACCENT[name] ?? '#1a1410'
+}
+
 // Warm palette cycling for production titles
 const PROD_PALETTE = [
   '#7a1f1f', '#1f4d7a', '#1f6b3e', '#6b4a1a', '#4a1a6b', '#6b1a4a',
   '#8B3A1A', '#1A5C5C', '#3A5C1A', '#5C1A3A',
 ]
-
 function prodColor(title: string, allTitles: string[]): string {
   const idx = allTitles.indexOf(title)
   return PROD_PALETTE[idx % PROD_PALETTE.length]
 }
 
-// ── Room normalisation ────────────────────────────────────────────────────────
-// Ensures there are always two rooms: "Duża scena" and "Mała scena".
-// If no "Mała scena" events exist, every other show (sorted by date+time) is
-// reassigned to "Mała scena" and the remaining ones to "Duża scena".
+// ── Theatre + room tagging ────────────────────────────────────────────────────
+// Assigns every event a _theatre and normalised room_name.
+// Cycle: TP/Duża → TP/Mała → Och/Duża → Och/Mała (repeating).
+// If room_name already encodes theatre info (contains "och" / "polonia") the
+// existing data is respected instead.
 
-function normalizeRooms(events: ProposalEvent[]): ProposalEvent[] {
-  const hasSmall = events.some(e => {
-    const r = (e.room_name ?? '').toLowerCase()
-    return r.includes('mała') || r.includes('mala') || r.includes('small') || r.includes('kameralna')
-  })
-  if (hasSmall) return events
+const THEATRE_CYCLE = ['Teatr Polonia', 'Teatr Polonia', 'Och-Teatr',    'Och-Teatr']
+const ROOM_CYCLE    = ['Duża scena',    'Mała scena',    'Duża scena',    'Mała scena']
 
-  // Sort chronologically so the split is deterministic
+function tagEvents(events: ProposalEvent[], allTheatreNames: string[]): TaggedEvent[] {
+  // Sort chronologically for deterministic assignment
   const sorted = [...events].sort((a, b) =>
     `${a.date}${a.start_time ?? ''}`.localeCompare(`${b.date}${b.start_time ?? ''}`)
   )
+
+  // Check if raw data already carries theatre hints in room_name
+  const hasHints = sorted.some(e => {
+    const r = (e.room_name ?? '').toLowerCase()
+    return r.includes('och') || r.includes('polonia')
+  })
+
+  if (hasHints) {
+    return sorted.map(e => {
+      const r    = (e.room_name ?? '').toLowerCase()
+      const th   = r.includes('och') ? 'Och-Teatr' : 'Teatr Polonia'
+      const room = (r.includes('mała') || r.includes('mala')) ? 'Mała scena' : 'Duża scena'
+      return { ...e, room_name: room, _theatre: th }
+    })
+  }
+
+  // Use the known theatre names if available (from Supabase), fall back to defaults
+  const tp  = allTheatreNames.find(n => n.toLowerCase().includes('polonia')) ?? 'Teatr Polonia'
+  const och = allTheatreNames.find(n => n.toLowerCase().includes('och'))     ?? 'Och-Teatr'
+  const tCycle = [tp, tp, och, och]
+
   return sorted.map((e, i) => ({
     ...e,
-    room_name: i % 2 === 0 ? 'Duża scena' : 'Mała scena',
+    room_name: ROOM_CYCLE[i % 4],
+    _theatre:  tCycle[i % 4],
   }))
 }
 
 // ── Vertical month table ───────────────────────────────────────────────────────
 
-function MonthTable({ month, events }: { month: string; events: ProposalEvent[] }) {
+function MonthTable({ month, events, accentColor }: {
+  month: string
+  events: TaggedEvent[]      // already filtered & tagged
+  accentColor: string
+}) {
   const [y, m] = month.split('-').map(Number)
   const daysInMonth = new Date(y, m, 0).getDate()
 
-  // Apply room normalisation
-  const normEvents = normalizeRooms(events)
-
   // Unique rooms → columns (sorted)
   const rooms = [...new Set(
-    normEvents.map(e => e.room_name?.trim() || 'Scena')
+    events.map(e => e.room_name?.trim() || 'Scena')
   )].sort()
 
   // Unique titles for color mapping
-  const allTitles = [...new Set(normEvents.map(e => e.production_title))]
+  const allTitles = [...new Set(events.map(e => e.production_title))]
 
   // Build lookup: dateStr → room → events[]
-  const byDateRoom: Record<string, Record<string, ProposalEvent[]>> = {}
-  for (const e of normEvents) {
+  const byDateRoom: Record<string, Record<string, TaggedEvent[]>> = {}
+  for (const e of events) {
     const room = e.room_name?.trim() || 'Scena'
     byDateRoom[e.date] ??= {}
     byDateRoom[e.date][room] ??= []
@@ -132,10 +170,14 @@ function MonthTable({ month, events }: { month: string; events: ProposalEvent[] 
                   borderRight: ri < rooms.length - 1 ? '1px solid #2e2820' : undefined,
                 }}
               >
-                <span className="block text-xs font-bold uppercase tracking-[0.12em]"
-                      style={{ color: '#e4ddd4' }}>
+                <span className="block text-[10px] font-bold uppercase tracking-[0.18em]"
+                      style={{ color: '#7a7068' }}>
                   {room}
                 </span>
+                <span
+                  className="block mt-0.5 h-0.5 w-8 rounded"
+                  style={{ background: accentColor, opacity: 0.6 }}
+                />
               </th>
             ))}
           </tr>
@@ -175,7 +217,7 @@ function MonthTable({ month, events }: { month: string; events: ProposalEvent[] 
 
                 {/* Room cells */}
                 {rooms.map((room, ri) => {
-                  const roomEvents = (byDateRoom[dateStr]?.[room] ?? [])
+                  const roomEvents: TaggedEvent[] = (byDateRoom[dateStr]?.[room] ?? [])
                     .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
 
                   return (
@@ -239,21 +281,33 @@ function MonthTable({ month, events }: { month: string; events: ProposalEvent[] 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function RepertuarPage() {
+  const { selectedTheatreId } = useTheatre()
+
   const [proposals,   setProposals]   = useState<Proposal[]>([])
+  const [theatres,    setTheatres]    = useState<Theatre[]>([])
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState<string | null>(null)
   const [activeMonth, setActiveMonth] = useState<string | null>(null)
+
+  // Resolve selected theatre name from id
+  const selectedTheatre = theatres.find(t => t.id === selectedTheatreId) ?? null
+  const accent = theatreAccent(selectedTheatre?.name ?? null)
 
   useEffect(() => {
     async function load() {
       setLoading(true)
       setError(null)
       try {
-        const r    = await fetch('/api/planning/generate?status=approved')
-        const json = await r.json()
+        const [propRes, thRes] = await Promise.all([
+          fetch('/api/planning/generate?status=approved'),
+          supabase.from('theatres').select('id, name').order('name'),
+        ])
+        const json  = await propRes.json()
         if (json.error) throw new Error(json.error)
         const props: Proposal[] = json.proposals ?? []
+        const ths: Theatre[]    = thRes.data ?? []
         setProposals(props)
+        setTheatres(ths)
         // Auto-select nearest upcoming (or first) month
         const now    = new Date().toISOString().slice(0, 7)
         const sorted = [...props].sort((a, b) => a.month.localeCompare(b.month))
@@ -278,15 +332,28 @@ export default function RepertuarPage() {
 
   const active = months.find(p => p.month === activeMonth)
 
-  // Stats for active month
-  const activeEvents = active
-    ? [...(active.proposal_data ?? [])].sort((a, b) => a.date.localeCompare(b.date))
+  // Tag all events with theatre + room, then optionally filter
+  const theatreNames = theatres.map(t => t.name)
+  const allTagged: TaggedEvent[] = active
+    ? tagEvents(
+        [...(active.proposal_data ?? [])].sort((a, b) => a.date.localeCompare(b.date)),
+        theatreNames,
+      )
     : []
-  const activeByProd = active?.stats?.by_production ?? {}
-  const weekendShows = activeEvents.filter(e => {
+
+  const visibleEvents: TaggedEvent[] = selectedTheatre
+    ? allTagged.filter(e => e._theatre === selectedTheatre.name)
+    : allTagged
+
+  // Stats derived from visible events
+  const weekendShows = visibleEvents.filter(e => {
     const d = new Date(e.date + 'T12:00:00').getDay()
     return d === 0 || d === 6
   }).length
+  const byProdVisible = visibleEvents.reduce<Record<string, number>>((acc, e) => {
+    acc[e.production_title] = (acc[e.production_title] ?? 0) + 1
+    return acc
+  }, {})
 
   return (
     <div>
@@ -305,8 +372,20 @@ export default function RepertuarPage() {
             }}
           >
             Repertuar
+            {selectedTheatre && (
+              <span
+                className="ml-3 text-base font-normal"
+                style={{ color: accent }}
+              >
+                — {selectedTheatre.name}
+              </span>
+            )}
           </h1>
-          <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>Zatwierdzone miesiące</p>
+          <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>
+            {selectedTheatre
+              ? `Zatwierdzone miesiące · ${selectedTheatre.name}`
+              : 'Zatwierdzone miesiące · wszystkie teatry'}
+          </p>
         </div>
         <Link
           href="/planning"
@@ -369,7 +448,7 @@ export default function RepertuarPage() {
                     color:        isActive ? '#1a1410' : '#a89e92',
                     background:   'transparent',
                     border:       'none',
-                    borderBottom: isActive ? '2px solid #1a1410' : '2px solid transparent',
+                    borderBottom: isActive ? `2px solid ${accent}` : '2px solid transparent',
                     marginBottom: '-1px',
                     fontSize:     isActive ? '0.8rem' : '0.75rem',
                     fontWeight:   isActive ? 700 : 600,
@@ -398,19 +477,19 @@ export default function RepertuarPage() {
           className="-mx-8 px-8 py-3 flex items-center gap-6 flex-wrap"
           style={{ background: '#faf8f5', borderBottom: '1px solid #e4ddd4' }}
         >
-          <StatBit icon="🎭" value={activeEvents.length} label="spektakli" />
-          <StatBit icon="📅" value={weekendShows}        label="w weekendy" />
-          <StatBit icon="🎬" value={Object.keys(activeByProd).length} label="tytułów" />
+          <StatBit icon="🎭" value={visibleEvents.length} label="spektakli" />
+          <StatBit icon="📅" value={weekendShows}         label="w weekendy" />
+          <StatBit icon="🎬" value={Object.keys(byProdVisible).length} label="tytułów" />
           <div className="flex gap-2 flex-wrap">
-            {Object.entries(activeByProd)
-              .sort((a, b) => (b[1] as number) - (a[1] as number))
+            {Object.entries(byProdVisible)
+              .sort((a, b) => b[1] - a[1])
               .map(([title, n]) => (
                 <span
                   key={title}
                   className="text-[11px] font-medium px-2 py-0.5 rounded-md"
                   style={{ background: '#e8e0d6', color: '#5a524a' }}
                 >
-                  <b>{n as number}×</b>{' '}
+                  <b>{n}×</b>{' '}
                   {title.length > 24 ? title.slice(0, 23) + '…' : title}
                 </span>
               ))}
@@ -429,7 +508,11 @@ export default function RepertuarPage() {
       {/* ── Vertical table ── */}
       {!loading && active && (
         <div className="-mx-8">
-          <MonthTable month={active.month} events={activeEvents} />
+          <MonthTable
+            month={active.month}
+            events={visibleEvents}
+            accentColor={accent}
+          />
         </div>
       )}
 
