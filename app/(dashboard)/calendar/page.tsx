@@ -31,104 +31,182 @@ const MONTH_PL: Record<string, string> = {
   '05': 'Maj',      '06': 'Czerwiec',   '07': 'Lipiec',     '08': 'Sierpień',
   '09': 'Wrzesień', '10': 'Październik','11': 'Listopad',   '12': 'Grudzień',
 }
-const DOW = ['Pn','Wt','Śr','Cz','Pt','Sb','Nd']
+const DAY_PL = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb']
 
-function monthLabel(month: string) {
-  const [y, m] = month.split('-')
-  return { name: MONTH_PL[m] ?? m, year: y }
+// Warm palette cycling for production titles
+const PROD_PALETTE = [
+  '#7a1f1f', '#1f4d7a', '#1f6b3e', '#6b4a1a', '#4a1a6b', '#6b1a4a',
+  '#8B3A1A', '#1A5C5C', '#3A5C1A', '#5C1A3A',
+]
+
+function prodColor(title: string, allTitles: string[]): string {
+  const idx = allTitles.indexOf(title)
+  return PROD_PALETTE[idx % PROD_PALETTE.length]
 }
 
-// ── Full calendar ─────────────────────────────────────────────────────────────
+// ── Vertical month table ───────────────────────────────────────────────────────
 
-function MonthCalendar({ month, events }: { month: string; events: ProposalEvent[] }) {
-  const [y, m]      = month.split('-').map(Number)
+function MonthTable({ month, events }: { month: string; events: ProposalEvent[] }) {
+  const [y, m] = month.split('-').map(Number)
   const daysInMonth = new Date(y, m, 0).getDate()
-  const firstDow    = new Date(y, m - 1, 1).getDay()
-  const startPad    = firstDow === 0 ? 6 : firstDow - 1
 
-  // Build lookup: date → events
-  const byDate: Record<string, ProposalEvent[]> = {}
+  // Unique rooms → columns (sorted)
+  const rooms = [...new Set(
+    events.map(e => e.room_name?.trim() || 'Scena')
+  )].sort()
+
+  // Unique titles for color mapping
+  const allTitles = [...new Set(events.map(e => e.production_title))]
+
+  // Build lookup: dateStr → room → events[]
+  const byDateRoom: Record<string, Record<string, ProposalEvent[]>> = {}
   for (const e of events) {
-    byDate[e.date] ??= []
-    byDate[e.date].push(e)
+    const room = e.room_name?.trim() || 'Scena'
+    byDateRoom[e.date] ??= {}
+    byDateRoom[e.date][room] ??= []
+    byDateRoom[e.date][room].push(e)
   }
 
-  const cells: (number | null)[] = [
-    ...Array(startPad).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ]
-  while (cells.length % 7 !== 0) cells.push(null)
+  // Days that have at least one show
+  const activeDays = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+    .filter(day => !!byDateRoom[`${month}-${String(day).padStart(2, '0')}`])
+
+  if (activeDays.length === 0) {
+    return (
+      <div className="py-16 text-center text-sm" style={{ color: '#a89e92' }}>
+        Brak spektakli w tym miesiącu
+      </div>
+    )
+  }
 
   return (
-    <div>
-      {/* Day-of-week headers */}
-      <div className="grid grid-cols-7 gap-px mb-1">
-        {DOW.map(d => (
-          <div key={d} className="text-[9px] font-bold uppercase tracking-widest text-center pb-1.5"
-            style={{ color: d === 'Sb' || d === 'Nd' ? '#a89e92' : '#cec5b8' }}>
-            {d}
-          </div>
-        ))}
-      </div>
+    <div className="overflow-x-auto">
+      <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
 
-      {/* Grid */}
-      <div className="grid grid-cols-7 gap-px" style={{ background: '#e4ddd4' }}>
-        {cells.map((day, i) => {
-          if (day === null) return (
-            <div key={i} className="min-h-[72px]" style={{ background: '#fff' }} />
-          )
+        {/* ── Column widths ── */}
+        <colgroup>
+          <col style={{ width: '110px' }} />
+          {rooms.map(r => <col key={r} />)}
+        </colgroup>
 
-          const dateStr   = `${month}-${String(day).padStart(2, '0')}`
-          const dow       = new Date(dateStr + 'T12:00:00').getDay()
-          const isWeekend = dow === 0 || dow === 6
-          const dayEvents = byDate[dateStr] ?? []
-          const hasShow   = dayEvents.length > 0
-
-          // Unique production titles
-          const titles = [...new Set(dayEvents.map(e => e.production_title))]
-
-          return (
-            <div
-              key={i}
-              className="min-h-[72px] p-1.5 flex flex-col gap-1 select-none"
-              style={{
-                background: '#fff',
-              }}
+        {/* ── Header ── */}
+        <thead>
+          <tr>
+            <th
+              className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-[0.18em]"
+              style={{ background: '#1a1410', color: '#7a7068', borderRight: '1px solid #2e2820' }}
             >
-              {/* Day number */}
-              <span className="text-[11px] font-bold leading-none" style={{
-                color: hasShow
-                  ? (isWeekend ? '#1a1410' : '#3e3830')
-                  : (isWeekend ? '#cec5b8' : '#e4ddd4')
-              }}>
-                {day}
-              </span>
+              Data
+            </th>
+            {rooms.map((room, ri) => (
+              <th
+                key={room}
+                className="text-left px-6 py-4"
+                style={{
+                  background: '#1a1410',
+                  borderRight: ri < rooms.length - 1 ? '1px solid #2e2820' : undefined,
+                }}
+              >
+                <span className="block text-xs font-bold uppercase tracking-[0.12em]"
+                      style={{ color: '#e4ddd4' }}>
+                  {room}
+                </span>
+              </th>
+            ))}
+          </tr>
+        </thead>
 
-              {/* Show pills */}
-              {titles.map((title, ti) => (
-                <span
-                  key={ti}
-                  title={title}
-                  className="block text-[9px] font-semibold leading-tight px-1 py-0.5 rounded truncate"
-                  style={{
-                    background: isWeekend ? '#1a1410' : '#e8e0d6',
-                    color:      isWeekend ? '#f5ede0' : '#5a524a',
-                  }}
+        {/* ── Rows ── */}
+        <tbody>
+          {activeDays.map((day) => {
+            const dateStr = `${month}-${String(day).padStart(2, '0')}`
+            const dow = new Date(dateStr + 'T12:00:00').getDay()
+            const isWeekend = dow === 0 || dow === 6
+
+            return (
+              <tr key={day} style={{ borderBottom: '2px solid #e4ddd4' }}>
+
+                {/* Date cell */}
+                <td
+                  className="px-6 py-5 align-top"
+                  style={{ background: '#faf8f5', borderRight: '1px solid #e4ddd4', verticalAlign: 'top' }}
                 >
-                  {title.length > 18 ? title.slice(0, 17) + '…' : title}
-                </span>
-              ))}
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-playfair), Georgia, serif',
+                      fontSize: '2.4rem', fontWeight: 700, lineHeight: 1,
+                      color: isWeekend ? '#7a2e1a' : '#1a1410',
+                    }}
+                  >
+                    {day}
+                  </div>
+                  <div
+                    className="mt-1 text-[10px] font-bold uppercase tracking-widest"
+                    style={{ color: isWeekend ? '#b84a28' : '#a89e92' }}
+                  >
+                    {DAY_PL[dow]}
+                  </div>
+                </td>
 
-              {/* Room count if >1 show */}
-              {dayEvents.length > 1 && (
-                <span className="text-[8px] leading-none mt-auto" style={{ color: '#a89e92' }}>
-                  {dayEvents.length} sale
-                </span>
-              )}
-            </div>
-          )
-        })}
-      </div>
+                {/* Room cells */}
+                {rooms.map((room, ri) => {
+                  const roomEvents = (byDateRoom[dateStr]?.[room] ?? [])
+                    .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
+
+                  return (
+                    <td
+                      key={room}
+                      className="px-6 py-5 align-top"
+                      style={{
+                        background: '#fff',
+                        borderRight: ri < rooms.length - 1 ? '1px solid #e4ddd4' : undefined,
+                        verticalAlign: 'top',
+                      }}
+                    >
+                      {roomEvents.length === 0 ? (
+                        <span style={{ color: '#e4ddd4', fontSize: '1.2rem' }}>—</span>
+                      ) : (
+                        roomEvents.map((e, ei) => (
+                          <div
+                            key={ei}
+                            className={ei > 0 ? 'mt-4 pt-4' : ''}
+                            style={ei > 0 ? { borderTop: '1px dashed #e4ddd4' } : {}}
+                          >
+                            {/* Time badge */}
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <span
+                                className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded"
+                                style={{ background: '#f2ede6', color: '#7a7068' }}
+                              >
+                                {e.start_time?.slice(0, 5) || '—'}
+                              </span>
+                              {e.end_time && (
+                                <span className="text-[11px]" style={{ color: '#cec5b8' }}>
+                                  → {e.end_time.slice(0, 5)}
+                                </span>
+                              )}
+                            </div>
+                            {/* Production title */}
+                            <div
+                              className="text-sm font-semibold leading-snug"
+                              style={{
+                                fontFamily: 'var(--font-playfair), Georgia, serif',
+                                color: prodColor(e.production_title, allTitles),
+                              }}
+                            >
+                              {e.production_title}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -136,9 +214,10 @@ function MonthCalendar({ month, events }: { month: string; events: ProposalEvent
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function RepertuarPage() {
-  const [proposals, setProposals] = useState<Proposal[]>([])
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState<string | null>(null)
+  const [proposals,   setProposals]   = useState<Proposal[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [error,       setError]       = useState<string | null>(null)
+  const [activeMonth, setActiveMonth] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -148,7 +227,13 @@ export default function RepertuarPage() {
         const r    = await fetch('/api/planning/generate?status=approved')
         const json = await r.json()
         if (json.error) throw new Error(json.error)
-        setProposals(json.proposals ?? [])
+        const props: Proposal[] = json.proposals ?? []
+        setProposals(props)
+        // Auto-select nearest upcoming (or first) month
+        const now    = new Date().toISOString().slice(0, 7)
+        const sorted = [...props].sort((a, b) => a.month.localeCompare(b.month))
+        const target = sorted.find(p => p.month >= now) ?? sorted[0]
+        setActiveMonth(target?.month ?? null)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Błąd ładowania')
       } finally {
@@ -158,21 +243,44 @@ export default function RepertuarPage() {
     load()
   }, [])
 
+  // Deduplicate – keep first proposal per month, sorted ascending
   const months: Proposal[] = Object.values(
-    (proposals as Proposal[]).reduce<Record<string, Proposal>>((acc, p) => {
+    proposals.reduce<Record<string, Proposal>>((acc, p) => {
       if (!acc[p.month]) acc[p.month] = p
       return acc
     }, {})
   ).sort((a, b) => a.month.localeCompare(b.month))
 
-  return (
-    <div className="space-y-8">
+  const active = months.find(p => p.month === activeMonth)
 
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4 px-8 py-5 -mx-8 -mt-8 mb-2"
-        style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
+  // Stats for active month
+  const activeEvents = active
+    ? [...(active.proposal_data ?? [])].sort((a, b) => a.date.localeCompare(b.date))
+    : []
+  const activeByProd = active?.stats?.by_production ?? {}
+  const weekendShows = activeEvents.filter(e => {
+    const d = new Date(e.date + 'T12:00:00').getDay()
+    return d === 0 || d === 6
+  }).length
+
+  return (
+    <div>
+
+      {/* ── Page header ── */}
+      <div
+        className="flex items-center justify-between gap-4 px-8 py-5 -mx-8 -mt-8"
+        style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}
+      >
         <div>
-          <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>Repertuar</h1>
+          <h1
+            style={{
+              fontFamily: 'var(--font-playfair), Georgia, serif',
+              fontSize: '1.75rem', fontWeight: 700, color: '#1a1410',
+              letterSpacing: '-0.015em', lineHeight: 1.2,
+            }}
+          >
+            Repertuar
+          </h1>
           <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>Zatwierdzone miesiące</p>
         </div>
         <Link
@@ -188,107 +296,125 @@ export default function RepertuarPage() {
         </Link>
       </div>
 
-      {/* Error */}
+      {/* ── Alerts ── */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="mt-4 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
       )}
-
-      {/* Loading */}
       {loading && (
-        <div className="flex items-center justify-center h-48 text-sm" style={{ color: '#cec5b8' }}>Ładowanie…</div>
+        <div className="flex items-center justify-center h-48 text-sm" style={{ color: '#cec5b8' }}>
+          Ładowanie…
+        </div>
       )}
 
-      {/* Empty */}
+      {/* ── Empty state ── */}
       {!loading && !error && months.length === 0 && (
         <div className="flex flex-col items-center justify-center h-56 text-center">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" className="mb-3" style={{ color: '#e4ddd4' }}>
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"
+               className="mb-3" style={{ color: '#e4ddd4' }}>
             <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
           </svg>
           <p className="text-sm font-semibold" style={{ color: '#a89e92' }}>Brak zatwierdzonych miesięcy</p>
           <p className="text-xs mt-1" style={{ color: '#b8b0a4' }}>
-            Przejdź do <Link href="/planning" className="underline">Planowania</Link>, wygeneruj i zatwierdź repertuar
+            Przejdź do{' '}
+            <Link href="/planning" className="underline">Planowania</Link>
+            , wygeneruj i zatwierdź repertuar
           </p>
         </div>
       )}
 
-      {/* Month cards — full width, stacked */}
-      {!loading && months.map(p => {
-        const events  = [...(p.proposal_data ?? [])].sort((a, b) => a.date.localeCompare(b.date))
-        const byProd  = p.stats?.by_production ?? {}
-        const { name, year } = monthLabel(p.month)
-
-        // Count weekend shows vs weekday shows
-        const weekendShows = events.filter(e => {
-          const d = new Date(e.date + 'T12:00:00').getDay()
-          return d === 0 || d === 6
-        }).length
-        const uniqueProds = Object.keys(byProd).length
-
-        return (
-          <div key={p.id} className="rounded-2xl overflow-hidden" style={{ background: '#fff', border: '1px solid #e4ddd4', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-
-            {/* Card header */}
-            <div className="px-6 py-5 flex items-start justify-between gap-6 flex-wrap" style={{ borderBottom: '1px solid #e4ddd4' }}>
-
-              {/* Month title */}
-              <div className="flex items-baseline gap-3">
-                <h2 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.01em', color: '#1a1410' }}>
+      {/* ── Month navigation tabs ── */}
+      {!loading && months.length > 0 && (
+        <div
+          className="-mx-8 px-8"
+          style={{ background: '#faf8f5', borderBottom: '1px solid #e4ddd4' }}
+        >
+          <div className="flex items-end overflow-x-auto gap-0" style={{ scrollbarWidth: 'none' }}>
+            {months.map(p => {
+              const [y, mo] = p.month.split('-')
+              const name    = MONTH_PL[mo] ?? mo
+              const isActive = p.month === activeMonth
+              return (
+                <button
+                  key={p.month}
+                  onClick={() => setActiveMonth(p.month)}
+                  className="relative shrink-0 px-6 py-4 whitespace-nowrap transition-all"
+                  style={{
+                    color:        isActive ? '#1a1410' : '#a89e92',
+                    background:   'transparent',
+                    border:       'none',
+                    borderBottom: isActive ? '2px solid #1a1410' : '2px solid transparent',
+                    marginBottom: '-1px',
+                    fontSize:     isActive ? '0.8rem' : '0.75rem',
+                    fontWeight:   isActive ? 700 : 600,
+                    letterSpacing: '0.12em',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                  }}
+                >
                   {name}
-                </h2>
-                <span className="text-lg font-light" style={{ color: '#cec5b8' }}>{year}</span>
-                <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ml-1"
-                  style={{ background: '#e8f5e9', color: '#2e7d32' }}>
-                  ✓ Zatwierdzony
-                </span>
-              </div>
-
-              {/* Actions */}
-              <Link
-                href={`/planning/${p.id}`}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl transition-colors shrink-0"
-                style={{ background: '#f2ede6', color: '#5a524a', border: '1px solid #e4ddd4' }}
-              >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                </svg>
-                Harmonogram
-              </Link>
-            </div>
-
-            {/* Stats row */}
-            <div className="px-6 py-3 flex items-center gap-6 flex-wrap" style={{ borderBottom: '1px solid #f2ede6', background: '#faf8f5' }}>
-              <Stat icon="🎭" value={events.length} label="spektakli" />
-              <Stat icon="📅" value={weekendShows} label="w weekendy" />
-              <Stat icon="🎬" value={uniqueProds} label={uniqueProds === 1 ? 'produkcja' : 'produkcje'} />
-              <div className="flex gap-2 flex-wrap ml-2">
-                {Object.entries(byProd).sort((a, b) => (b[1] as number) - (a[1] as number)).map(([title, n]) => (
-                  <span key={title} className="text-[11px] font-medium px-2 py-0.5 rounded-md"
-                    style={{ background: '#e8e0d6', color: '#5a524a' }}>
-                    <span className="font-bold">{n as number}×</span> {title.length > 22 ? title.slice(0, 21) + '…' : title}
+                  <span
+                    className="ml-1.5 text-[10px] font-normal"
+                    style={{ color: isActive ? '#7a7068' : '#cec5b8' }}
+                  >
+                    {y}
                   </span>
-                ))}
-              </div>
-              {p.approved_at && (
-                <span className="ml-auto text-[11px] shrink-0" style={{ color: '#cec5b8' }}>
-                  Zatwierdzono {new Date(p.approved_at).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' })}
-                </span>
-              )}
-            </div>
-
-            {/* Calendar */}
-            <div className="p-6">
-              <MonthCalendar month={p.month} events={events} />
-            </div>
-
+                </button>
+              )
+            })}
           </div>
-        )
-      })}
+        </div>
+      )}
+
+      {/* ── Stats bar ── */}
+      {!loading && active && (
+        <div
+          className="-mx-8 px-8 py-3 flex items-center gap-6 flex-wrap"
+          style={{ background: '#faf8f5', borderBottom: '1px solid #e4ddd4' }}
+        >
+          <StatBit icon="🎭" value={activeEvents.length} label="spektakli" />
+          <StatBit icon="📅" value={weekendShows}        label="w weekendy" />
+          <StatBit icon="🎬" value={Object.keys(activeByProd).length} label="tytułów" />
+          <div className="flex gap-2 flex-wrap">
+            {Object.entries(activeByProd)
+              .sort((a, b) => (b[1] as number) - (a[1] as number))
+              .map(([title, n]) => (
+                <span
+                  key={title}
+                  className="text-[11px] font-medium px-2 py-0.5 rounded-md"
+                  style={{ background: '#e8e0d6', color: '#5a524a' }}
+                >
+                  <b>{n as number}×</b>{' '}
+                  {title.length > 24 ? title.slice(0, 23) + '…' : title}
+                </span>
+              ))}
+          </div>
+          {active.approved_at && (
+            <span className="ml-auto text-[11px] shrink-0" style={{ color: '#cec5b8' }}>
+              Zatwierdzono{' '}
+              {new Date(active.approved_at).toLocaleDateString('pl-PL', {
+                day: 'numeric', month: 'long',
+              })}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* ── Vertical table ── */}
+      {!loading && active && (
+        <div className="-mx-8">
+          <MonthTable month={active.month} events={activeEvents} />
+        </div>
+      )}
 
     </div>
   )
 }
 
-function Stat({ icon, value, label }: { icon: string; value: number; label: string }) {
+// ── Helper ────────────────────────────────────────────────────────────────────
+
+function StatBit({ icon, value, label }: { icon: string; value: number; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
       <span className="text-sm">{icon}</span>
