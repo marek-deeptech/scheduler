@@ -36,14 +36,12 @@ interface ArtistRecord { id: string; name: string; role: string | null; teams?: 
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STATUS_OPTIONS = ['Koncepcja', 'W produkcji', 'Na afiszu', 'Zawieszony', 'Zdjęty']
+const STATUS_OPTIONS = ['Bieżące', 'Planowane', 'Archiwalne']
 
 const STATUS_STYLE: Record<string, { badge: string; dot: string }> = {
-  'Koncepcja':   { badge: 'bg-slate-100 text-slate-600',  dot: 'bg-slate-400'  },
-  'W produkcji': { badge: 'bg-amber-100 text-amber-700',  dot: 'bg-amber-400'  },
-  'Na afiszu':   { badge: 'bg-green-100 text-green-700',  dot: 'bg-green-400'  },
-  'Zawieszony':  { badge: 'bg-amber-100 text-amber-700',  dot: 'bg-amber-400'  },
-  'Zdjęty':      { badge: 'bg-red-100 text-red-500',      dot: 'bg-red-400'    },
+  'Bieżące':   { badge: 'bg-green-100 text-green-700',  dot: 'bg-green-400'  },
+  'Planowane': { badge: 'bg-amber-100 text-amber-700',  dot: 'bg-amber-400'  },
+  'Archiwalne':{ badge: 'bg-slate-100 text-slate-500',  dot: 'bg-slate-300'  },
 }
 
 const THEATRE_BAR: Record<string, string> = {
@@ -111,7 +109,7 @@ function ProductionCard({ prod, isSelected, onClick, onEdit }: {
 }) {
   const now      = new Date()
   const upcoming = prod.events.filter(e => new Date(e.start_time) >= now).slice(0, 1)[0]
-  const style    = STATUS_STYLE[prod.status] ?? STATUS_STYLE['Koncepcja']
+  const style    = STATUS_STYLE[prod.status] ?? STATUS_STYLE['Bieżące']
   const barColor = prod.theatreName ? (THEATRE_BAR[prod.theatreName] ?? 'bg-gray-300') : 'bg-gray-300'
   const castPreview = prod.cast.slice(0, 5)
   const extraCast   = Math.max(0, prod.cast.length - 5)
@@ -205,7 +203,7 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
   const now = new Date()
   const upcoming = prod.events.filter(e => new Date(e.start_time) >= now)
   const past     = prod.events.filter(e => new Date(e.start_time) < now)
-  const style    = STATUS_STYLE[prod.status] ?? STATUS_STYLE['Koncepcja']
+  const style    = STATUS_STYLE[prod.status] ?? STATUS_STYLE['Bieżące']
   const [changingStatus, setChangingStatus] = useState(false)
   const [msgOpen,    setMsgOpen]    = useState(false)
   const [msgSubject, setMsgSubject] = useState('')
@@ -514,7 +512,7 @@ export default function ProductionsPage() {
         end_date:      p.end_date ?? null,
         theatre_id:    p.theatre_id ?? null,
         theatreName:   th?.name ?? null,
-        status:        p.status ?? 'Koncepcja',
+        status:        p.status ?? 'Bieżące',
         comment:       p.comment ?? null,
         cast,
         events,

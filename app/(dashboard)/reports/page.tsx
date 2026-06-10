@@ -318,7 +318,7 @@ export default function ReportsPage() {
     }
 
     return Object.values(map)
-      .filter(p => p.status !== 'Zdjęty') // exclude archived
+      .filter(p => p.status !== 'Archiwalne') // exclude archived
       .sort((a, b) => (b.rehearsals + b.shows) - (a.rehearsals + a.shows))
   }, [events, productions, today])
 
@@ -473,10 +473,9 @@ export default function ReportsPage() {
             <tbody className="divide-y divide-gray-50">
               {productionTable.map(p => {
                 const statusColors: Record<string, string> = {
-                  'Na afiszu':   'bg-green-100 text-green-700',
-                  'W produkcji': 'bg-amber-100 text-amber-700',
-                  'Koncepcja':   'bg-slate-100 text-slate-600',
-                  'Zawieszony':  'bg-amber-100 text-amber-700',
+                  'Bieżące':    'bg-green-100 text-green-700',
+                  'Planowane':  'bg-amber-100 text-amber-700',
+                  'Archiwalne': 'bg-slate-100 text-slate-500',
                 }
                 const sc = statusColors[p.status ?? ''] ?? 'bg-gray-100 text-gray-500'
                 const nextDate = p.nextEvent

@@ -301,8 +301,8 @@ export default function DashboardPage() {
 
     setArtistCount(artists.length)
     setUnavailList(unavail)
-    setActiveProd(prods.filter(p => p.status === 'Na afiszu').length)
-    setInPrepList(prods.filter(p => ['W produkcji', 'Koncepcja'].includes(p.status)))
+    setActiveProd(prods.filter(p => p.status === 'Bieżące').length)
+    setInPrepList(prods.filter(p => p.status === 'Planowane'))
 
     setAllRooms(roomsData ?? [])
     setAllTheatres(theatresData ?? [])
@@ -465,7 +465,7 @@ export default function DashboardPage() {
         : inPrepList.map(p => (
             <TipRow key={p.id} label={p.title}
               sub={p.status}
-              dot={p.status === 'W produkcji' ? 'bg-amber-400' : 'bg-slate-300'} />
+              dot="bg-amber-400" />
           ))
       }
       <span className="block pb-1" />
