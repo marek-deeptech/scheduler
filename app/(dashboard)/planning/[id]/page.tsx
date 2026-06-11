@@ -149,6 +149,7 @@ export default function ProposalDetailPage() {
   const [approving,    setApproving]    = useState(false)
   const [error,        setError]        = useState<string | null>(null)
   const [openDropdown, setOpenDropdown] = useState<string | null>(null) // "date||prodId"
+  const [favouriteSet, setFavouriteSet] = useState<Set<string>>(new Set())
 
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -187,7 +188,7 @@ export default function ProposalDetailPage() {
           { data: theatres },
           { data: statuses },
         ] = await Promise.all([
-          supabase.from('productions').select('id, title, theatre_id').order('title'),
+          supabase.from('productions').select('id, title, theatre_id, is_favourite').order('title'),
           supabase.from('artist_productions').select('artist_id, production_id'),
           supabase.from('artists').select('id, name, teams!inner(name)').eq('teams.name', 'Cast').order('name'),
           supabase.from('theatres').select('id, name'),
@@ -230,6 +231,12 @@ export default function ProposalDetailPage() {
         }
 
         setAvailData({ theatreByProdId, theatreNameByProdId, castByProdId, blockedByDate, prodsByTheatreId })
+
+        const favs = new Set<string>()
+        for (const pr of (prods ?? []) as any[]) {
+          if (pr.is_favourite) favs.add(pr.title)
+        }
+        setFavouriteSet(favs)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Błąd')
       } finally {
@@ -450,7 +457,12 @@ export default function ProposalDetailPage() {
                               {theatreName && (
                                 <TheatreBadge name={theatreName} />
                               )}
-                              <span className={`text-sm font-semibold truncate ${hasConflict ? 'text-red-700' : 'text-gray-900'}`}>
+                              <span className={`text-sm font-semibold truncate flex items-center gap-1 ${hasConflict ? 'text-red-700' : 'text-gray-900'}`}>
+                                {favouriteSet.has(show.production_title) && (
+                                  <svg viewBox="0 0 24 24" width="13" height="13" style={{ flexShrink: 0 }} fill="#ef4444" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+                                  </svg>
+                                )}
                                 {show.production_title}
                               </span>
                               {/* Conflict icon */}

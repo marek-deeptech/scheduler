@@ -71,7 +71,7 @@ export default function PlanningPage() {
   useEffect(() => {
     Promise.all([
       fetch('/api/planning/generate?status=approved').then(r => r.json()),
-      supabase.from('productions').select('title, artist_productions(artists(id, name))'),
+      supabase.from('productions').select('title, is_favourite, artist_productions(artists(id, name))'),
     ]).then(([json, castRes]) => {
       // Approved months
       const approved = new Set<string>((json.proposals ?? []).map((p: Proposal) => p.month))
@@ -81,6 +81,7 @@ export default function PlanningPage() {
       // Build cast maps from Supabase
       const castMap  = new Map<string, string[]>()
       const nameMap  = new Map<string, string>()
+      const favSet   = new Set<string>()
       for (const p of castRes.data ?? []) {
         const ids: string[] = []
         for (const ap of p.artist_productions ?? []) {
@@ -88,9 +89,11 @@ export default function PlanningPage() {
           if (a?.id) { ids.push(a.id); nameMap.set(a.id, a.name) }
         }
         castMap.set(p.title, ids)
+        if ((p as any).is_favourite) favSet.add(p.title)
       }
       setProductionCastMap(castMap)
       setArtistNamesMap(nameMap)
+      setFavouriteSet(favSet)
     }).catch(() => setMonthsReady(true))
   }, [])
 
@@ -108,6 +111,7 @@ export default function PlanningPage() {
   // Cast data for real conflict detection
   const [productionCastMap, setProductionCastMap] = useState<Map<string, string[]>>(new Map())
   const [artistNamesMap,    setArtistNamesMap]     = useState<Map<string, string>>(new Map())
+  const [favouriteSet,      setFavouriteSet]       = useState<Set<string>>(new Set())
 
   // Set default selected month once approved list is known
   useEffect(() => {
@@ -293,6 +297,7 @@ export default function PlanningPage() {
               actionLoading={actionLoading}
               productionCastMap={productionCastMap}
               artistNamesMap={artistNamesMap}
+              favouriteSet={favouriteSet}
             />
           ))}
         </div>
@@ -321,7 +326,7 @@ function EmptyState() {
 
 function ProposalCard({
   proposal, expanded, onToggle, onApprove, onReject, actionLoading,
-  productionCastMap, artistNamesMap,
+  productionCastMap, artistNamesMap, favouriteSet,
 }: {
   proposal: Proposal
   expanded: boolean
@@ -331,6 +336,7 @@ function ProposalCard({
   actionLoading: string | null
   productionCastMap: Map<string, string[]>
   artistNamesMap:    Map<string, string>
+  favouriteSet:      Set<string>
 }) {
   const cfg    = STATUS_CFG[proposal.status] ?? STATUS_CFG.draft
   const events = [...(proposal.proposal_data ?? [])].sort((a, b) => a.date.localeCompare(b.date))
@@ -419,9 +425,15 @@ function ProposalCard({
                   <span className="w-16 shrink-0 text-[11px] font-semibold" style={{ color: isWeekend ? '#1a1410' : '#a89e92' }}>
                     {DAY_PL[dow]} {d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })}
                   </span>
-                  <span className="flex-1 min-w-0 text-xs font-medium truncate"
+                  <span className="flex-1 min-w-0 text-xs font-medium truncate flex items-center gap-1"
                         style={{ color: hasConflict ? '#c8102e' : '#3e3830', fontWeight: hasConflict ? 600 : 400 }}>
-                    {hasConflict && '⚠ '}{e.production_title}
+                    {hasConflict && '⚠ '}
+                    {favouriteSet.has(e.production_title) && (
+                      <svg viewBox="0 0 24 24" width="11" height="11" style={{ flexShrink: 0 }} fill="#ef4444" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+                      </svg>
+                    )}
+                    {e.production_title}
                   </span>
                   {partnerConflict && (
                     <span className="text-[10px] shrink-0 font-medium" style={{ color: '#c8102e' }}

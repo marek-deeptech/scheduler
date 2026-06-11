@@ -46,6 +46,7 @@ interface ProdInfo {
   castIds:     string[]        // actor IDs (for conflict detection)
   poster_url:  string | null
   perf_count:  number          // total historical events
+  is_favourite: boolean
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -389,12 +390,17 @@ function MonthTable({ month, events, accentColor, prodMap, propConflicts }: {
                               {/* Production title + conflict badge */}
                               <div className="flex items-start gap-1.5 mb-2">
                                 <div
-                                  className="text-sm font-bold leading-snug"
+                                  className="text-sm font-bold leading-snug flex items-center gap-1"
                                   style={{
                                     fontFamily: 'var(--font-playfair), Georgia, serif',
                                     color: '#3a3a3a',
                                   }}
                                 >
+                                  {prodMap.get(e.production_title)?.is_favourite && (
+                                    <svg viewBox="0 0 24 24" width="13" height="13" style={{ flexShrink: 0, marginTop: '1px' }} fill="#ef4444" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+                                    </svg>
+                                  )}
                                   {e.production_title}
                                 </div>
                                 {(() => {
@@ -479,7 +485,7 @@ export default function RepertuarPage() {
           supabase.from('theatres').select('id, name').order('name'),
           // Fetch productions with cast (artist_productions join)
           supabase.from('productions').select(
-            'id, title, director, poster_url, artist_productions(artists(id, name))'
+            'id, title, director, poster_url, is_favourite, artist_productions(artists(id, name))'
           ),
           // Count past events per production for "Grany po raz"
           supabase.from('events').select('production_id').not('production_id', 'is', null),
@@ -509,12 +515,13 @@ export default function RepertuarPage() {
             .filter(Boolean) as Array<{ id: string; name: string }>
 
           map.set(p.title, {
-            title:      p.title,
-            director:   p.director ?? null,
-            cast:       castEntries.map(c => c.name),
-            castIds:    castEntries.map(c => c.id),
-            poster_url: (p as any).poster_url ?? null,
-            perf_count: perfCounts[p.id] ?? 0,
+            title:        p.title,
+            director:     p.director ?? null,
+            cast:         castEntries.map(c => c.name),
+            castIds:      castEntries.map(c => c.id),
+            poster_url:   (p as any).poster_url ?? null,
+            perf_count:   perfCounts[p.id] ?? 0,
+            is_favourite: (p as any).is_favourite ?? false,
           })
         }
 
