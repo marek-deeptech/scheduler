@@ -51,7 +51,7 @@ interface Props {
   onSaved: () => void
 }
 
-const STATUS_OPTIONS = ['Koncepcja', 'W produkcji', 'Na afiszu', 'Zawieszony', 'Zdjęty']
+const STATUS_OPTIONS = ['Bieżące', 'Planowane', 'Archiwalne']
 
 const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white'
 const labelCls = 'block text-sm font-medium text-gray-500 mb-1.5'
@@ -97,7 +97,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
     title:         production?.title         ?? '',
     director:      production?.director      ?? '',
     theatre_id:    production?.theatre_id    ?? '',
-    status:        production?.status        ?? 'Koncepcja',
+    status:        production?.status        ?? 'Bieżące',
     location_type: production?.location_type ?? 'Na miejscu',
     premiere_date: production?.premiere_date ?? '',
     start_date:    production?.start_date    ?? '',
