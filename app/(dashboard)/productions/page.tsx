@@ -27,6 +27,7 @@ interface ProductionRow {
   theatreName: string | null
   status: string
   comment: string | null
+  is_favourite: boolean
   cast: CastMember[]
   events: EventRow[]
   hasConflict: boolean
@@ -136,7 +137,16 @@ function ProductionCard({ prod, isSelected, onClick, onEdit }: {
 
         {/* Title + director */}
         <div>
-          <h3 className="text-lg font-bold leading-tight" style={{ color: '#1a1410' }}>{prod.title}</h3>
+          <div className="flex items-start gap-2">
+            <h3 className="text-lg font-bold leading-tight flex-1" style={{ color: '#1a1410' }}>{prod.title}</h3>
+            {prod.is_favourite && (
+              <span title="Favourite" className="shrink-0 mt-0.5">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#ef4444" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+                </svg>
+              </span>
+            )}
+          </div>
           {prod.director && <p className="text-xs text-gray-500 mt-0.5">reż. {prod.director}</p>}
         </div>
 
@@ -460,7 +470,7 @@ export default function ProductionsPage() {
     setLoading(true)
 
     let query = supabase.from('productions').select(`
-      id, title, director, premiere_date, start_date, end_date, theatre_id, status, comment,
+      id, title, director, premiere_date, start_date, end_date, theatre_id, status, comment, is_favourite,
       theatres(name),
       artist_productions(artists(id, name, role, avatar_url)),
       events(id, title, type, start_time, end_time, room_id, rooms(name), event_artists(artist_id))
@@ -514,6 +524,7 @@ export default function ProductionsPage() {
         theatreName:   th?.name ?? null,
         status:        p.status ?? 'Bieżące',
         comment:       p.comment ?? null,
+        is_favourite:  p.is_favourite ?? false,
         cast,
         events,
         hasConflict:   detectConflict(rawEvs),

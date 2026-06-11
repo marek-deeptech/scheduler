@@ -26,6 +26,7 @@ interface ProductionRecord {
   status: string | null
   location_type?: string | null
   comment?: string | null
+  is_favourite?: boolean | null
 }
 
 interface EventRecord {
@@ -102,6 +103,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
     start_date:    production?.start_date    ?? '',
     end_date:      production?.end_date      ?? '',
     comment:       production?.comment       ?? '',
+    is_favourite:  production?.is_favourite  ?? false,
   })
   const [assignedIds, setAssignedIds] = useState<string[]>([])
   const [events,      setEvents]      = useState<EventRecord[]>([])
@@ -158,6 +160,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
       start_date:    form.start_date    || null,
       end_date:      form.end_date      || null,
       comment:       form.comment       || null,
+      is_favourite:  form.is_favourite,
     }
 
     let productionId = production?.id ?? null
@@ -234,13 +237,35 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className={labelCls}>Tytuł *</label>
-              <input
-                required
-                value={form.title}
-                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                className={inputCls}
-                placeholder="np. Hamlet"
-              />
+              <div className="flex gap-2">
+                <input
+                  required
+                  value={form.title}
+                  onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                  className={inputCls}
+                  placeholder="np. Hamlet"
+                />
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, is_favourite: !f.is_favourite }))}
+                  title={form.is_favourite ? 'Usuń z ulubionych' : 'Oznacz jako Favourite'}
+                  className="shrink-0 w-11 h-11 flex items-center justify-center rounded-xl border transition-all"
+                  style={{
+                    border: form.is_favourite ? '1.5px solid #fca5a5' : '1px solid #e5e7eb',
+                    background: form.is_favourite ? '#fff1f2' : '#f9fafb',
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill={form.is_favourite ? '#ef4444' : 'none'} stroke={form.is_favourite ? '#ef4444' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+                  </svg>
+                </button>
+              </div>
+              {form.is_favourite && (
+                <p className="mt-1.5 text-xs font-medium flex items-center gap-1" style={{ color: '#ef4444' }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="#ef4444" stroke="none"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+                  Favourite — tytuł priorytetowy przy planowaniu repertuaru
+                </p>
+              )}
             </div>
             <div>
               <label className={labelCls}>Reżyser</label>
