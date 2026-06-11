@@ -67,15 +67,6 @@ function theatreAccent(name: string | null) {
   return THEATRE_ACCENT[name] ?? '#1a1410'
 }
 
-// Warm palette cycling for production titles
-const PROD_PALETTE = [
-  '#7a1f1f', '#1f4d7a', '#1f6b3e', '#6b4a1a', '#4a1a6b', '#6b1a4a',
-  '#8B3A1A', '#1A5C5C', '#3A5C1A', '#5C1A3A',
-]
-function prodColor(title: string, allTitles: string[]): string {
-  const idx = allTitles.indexOf(title)
-  return PROD_PALETTE[idx % PROD_PALETTE.length]
-}
 
 // ── Theatre + room tagging ────────────────────────────────────────────────────
 // Assigns every event a _theatre and normalised room_name.
@@ -254,7 +245,6 @@ function MonthTable({ month, events, accentColor, prodMap, propConflicts }: {
   )].sort()
 
   // Unique titles for color mapping
-  const allTitles = [...new Set(events.map(e => e.production_title))]
 
   // Build lookup: dateStr → room → events[]
   const byDateRoom: Record<string, Record<string, TaggedEvent[]>> = {}
@@ -402,7 +392,7 @@ function MonthTable({ month, events, accentColor, prodMap, propConflicts }: {
                                   className="text-sm font-bold leading-snug"
                                   style={{
                                     fontFamily: 'var(--font-playfair), Georgia, serif',
-                                    color: prodColor(e.production_title, allTitles),
+                                    color: '#3a3a3a',
                                   }}
                                 >
                                   {e.production_title}
@@ -436,10 +426,10 @@ function MonthTable({ month, events, accentColor, prodMap, propConflicts }: {
                                 style={{
                                   border: conflictTitleSet.has(e.production_title)
                                     ? '1px solid #c8102e'
-                                    : `1px solid ${prodColor(e.production_title, allTitles)}`,
+                                    : '1px solid #b0aba3',
                                   color: conflictTitleSet.has(e.production_title)
                                     ? '#c8102e'
-                                    : prodColor(e.production_title, allTitles),
+                                    : '#6b6660',
                                   background: 'transparent',
                                   cursor: 'default',
                                   letterSpacing: '0.1em',
