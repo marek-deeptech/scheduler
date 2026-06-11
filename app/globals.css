@@ -137,3 +137,37 @@ a:hover { text-decoration: none; }
 .fade-up-2 { animation: fadeUp 0.3s 0.10s ease both; }
 .fade-up-3 { animation: fadeUp 0.3s 0.15s ease both; }
 .fade-up-4 { animation: fadeUp 0.3s 0.20s ease both; }
+
+/* ── Print ─────────────────────────────────────────────────────── */
+@media print {
+  /* Hide app chrome: sidebar nav + anything explicitly marked */
+  aside,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Let the main content fill the printed page */
+  main {
+    overflow: visible !important;
+  }
+  main > div {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  /* Print background colours (weekend rows, badges, headers) */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Avoid splitting a single day across two pages */
+  .divide-y > div {
+    break-inside: avoid;
+  }
+
+  /* Trim page margins */
+  @page {
+    margin: 1.2cm;
+  }
+}

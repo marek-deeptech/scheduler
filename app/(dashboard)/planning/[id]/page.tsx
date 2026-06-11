@@ -367,7 +367,7 @@ export default function ProposalDetailPage() {
 
       {/* Back + header */}
       <div>
-        <Link href="/planning" className="inline-flex items-center gap-1.5 text-xs transition-colors mb-3" style={{ color: '#a89e92' }} onMouseOver={e => (e.currentTarget.style.color = '#3e3830')} onMouseOut={e => (e.currentTarget.style.color = '#a89e92')}>
+        <Link href="/planning" className="no-print inline-flex items-center gap-1.5 text-xs transition-colors mb-3" style={{ color: '#a89e92' }} onMouseOver={e => (e.currentTarget.style.color = '#3e3830')} onMouseOut={e => (e.currentTarget.style.color = '#a89e92')}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
@@ -403,8 +403,21 @@ export default function ProposalDetailPage() {
 
       {/* Approve bar */}
       {isDraft && (
-        <div className="flex items-center gap-3 bg-white rounded-2xl px-5 py-3" style={{ border: '1px solid #e4ddd4' }}>
+        <div className="no-print flex items-center gap-3 bg-white rounded-2xl px-5 py-3" style={{ border: '1px solid #e4ddd4' }}>
           <p className="flex-1 text-sm text-gray-500">Ta propozycja czeka na zatwierdzenie. Możesz edytować spektakle przed zatwierdzeniem.</p>
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
+            style={{ background: '#1a1410', color: '#fff' }}
+            onMouseOver={e => (e.currentTarget.style.background = '#000')}
+            onMouseOut={e => (e.currentTarget.style.background = '#1a1410')}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+              <rect x="6" y="14" width="12" height="8"/>
+            </svg>
+            Drukuj
+          </button>
           <button
             onClick={handleApprove}
             disabled={approving}
@@ -418,8 +431,23 @@ export default function ProposalDetailPage() {
         </div>
       )}
       {proposal.status === 'approved' && (
-        <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-3 text-sm text-green-800 font-medium">
-          ✓ Zatwierdzono{proposal.approved_at ? ` ${new Date(proposal.approved_at).toLocaleDateString('pl-PL', { day:'numeric', month:'long', year:'numeric' })}` : ''} — spektakle dodane do kalendarza
+        <div className="no-print flex items-center gap-3 bg-green-50 border border-green-200 rounded-2xl px-5 py-3">
+          <p className="flex-1 text-sm text-green-800 font-medium">
+            ✓ Zatwierdzono{proposal.approved_at ? ` ${new Date(proposal.approved_at).toLocaleDateString('pl-PL', { day:'numeric', month:'long', year:'numeric' })}` : ''} — spektakle dodane do kalendarza
+          </p>
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
+            style={{ background: '#1a1410', color: '#fff' }}
+            onMouseOver={e => (e.currentTarget.style.background = '#000')}
+            onMouseOut={e => (e.currentTarget.style.background = '#1a1410')}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+              <rect x="6" y="14" width="12" height="8"/>
+            </svg>
+            Drukuj
+          </button>
         </div>
       )}
 
@@ -556,7 +584,7 @@ export default function ProposalDetailPage() {
                                 <span className="text-[11px] font-medium text-gray-400 mr-1">{DOW_FULL[dow]}</span>
                               )}
                               {isDraft && (
-                                <>
+                                <span className="no-print flex items-center gap-1.5">
                                   <button
                                     onClick={() => setOpenDropdown(isOpen ? null : dropKey)}
                                     className={`flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-lg border transition-colors ${isOpen ? 'border-[#1a1410]' : 'border-[#e4ddd4] hover:border-[#cec5b8]'}`}
@@ -573,7 +601,7 @@ export default function ProposalDetailPage() {
                                   >
                                     Usuń
                                   </button>
-                                </>
+                                </span>
                               )}
                             </div>
                           </div>
