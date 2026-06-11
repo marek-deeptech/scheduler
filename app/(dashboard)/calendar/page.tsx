@@ -407,15 +407,21 @@ function MonthTable({ month, events, accentColor, prodMap, propConflicts }: {
                                 >
                                   {e.production_title}
                                 </div>
-                                {conflictTitleSet.has(e.production_title) && (
-                                  <span
-                                    title="Konflikt obsady – aktor gra jednocześnie w innym spektaklu"
-                                    className="shrink-0 mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-md"
-                                    style={{ background: '#fff0f0', color: '#c8102e', border: '1px solid #fecaca' }}
-                                  >
-                                    ⚠ konflikt
-                                  </span>
-                                )}
+                                {(() => {
+                                  const titleConflicts = propConflicts.filter(c =>
+                                    c.productions.some(p => p.title === e.production_title)
+                                  )
+                                  if (titleConflicts.length === 0) return null
+                                  const names = [...new Set(titleConflicts.flatMap(c => c.artistNames))]
+                                  return (
+                                    <span
+                                      className="shrink-0 mt-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md leading-snug"
+                                      style={{ background: '#fff0f0', color: '#c8102e', border: '1px solid #fecaca' }}
+                                    >
+                                      ⚠ {names.join(', ')}
+                                    </span>
+                                  )
+                                })()}
                               </div>
 
                               {/* OBSADA button */}
