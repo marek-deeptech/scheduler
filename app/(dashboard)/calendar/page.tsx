@@ -628,10 +628,6 @@ export default function RepertuarPage() {
     : []
 
   // Stats derived from visible events
-  const weekendShows = visibleEvents.filter(e => {
-    const d = new Date(e.date + 'T12:00:00').getDay()
-    return d === 0 || d === 6
-  }).length
   const byProdVisible = visibleEvents.reduce<Record<string, number>>((acc, e) => {
     acc[e.production_title] = (acc[e.production_title] ?? 0) + 1
     return acc
@@ -771,9 +767,8 @@ export default function RepertuarPage() {
           className="-mx-8 px-8 py-3 flex items-center gap-6 flex-wrap"
           style={{ background: '#faf8f5', borderBottom: '1px solid #e4ddd4' }}
         >
-          <StatBit icon="🎭" value={visibleEvents.length} label="spektakli" />
-          <StatBit icon="📅" value={weekendShows}         label="w weekendy" />
           <StatBit icon="🎬" value={Object.keys(byProdVisible).length} label="tytułów" />
+          <StatBit icon="🎭" value={visibleEvents.length} label="spektakli" />
           {propConflicts.length > 0 && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
                  style={{ background: '#fff0f0', border: '1px solid #fecaca' }}>
