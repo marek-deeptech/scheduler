@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useTheatre } from '@/lib/theatre-context'
 import { supabase } from '@/lib/supabase'
@@ -16,7 +16,7 @@ interface ProposalEvent {
 }
 
 interface TaggedEvent extends ProposalEvent {
-  _theatre: string   // 'Teatr Polonia' | 'Och-Teatr' (or other theatre name)
+  _theatre: string
 }
 
 interface Proposal {
@@ -31,6 +31,15 @@ interface Proposal {
 }
 
 interface Theatre { id: string; name: string }
+
+// Production info for the cast popup
+interface ProdInfo {
+  title:       string
+  director:    string | null
+  cast:        string[]        // actor names
+  poster_url:  string | null
+  perf_count:  number          // total historical events
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -103,15 +112,105 @@ function tagEvents(events: ProposalEvent[], allTheatreNames: string[]): TaggedEv
   }))
 }
 
+// ── Cast popup ────────────────────────────────────────────────────────────────
+
+const PLACEHOLDER_POSTER = 'https://placehold.co/160x220/1a1410/e4ddd4?text=Plakat'
+
+interface PopupState { info: ProdInfo; x: number; y: number; accentColor: string }
+
+function CastPopup({ popup, onClose }: { popup: PopupState; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Clamp so popup stays within viewport
+  const vpW = typeof window !== 'undefined' ? window.innerWidth  : 1200
+  const vpH = typeof window !== 'undefined' ? window.innerHeight : 900
+  const W   = 340
+  const H   = 220 // rough estimate
+  const left = Math.min(popup.x, vpW - W - 16)
+  const top  = popup.y + H > vpH ? popup.y - H - 12 : popup.y + 8
+
+  return (
+    <div
+      ref={ref}
+      onMouseLeave={onClose}
+      className="fixed z-[9999] rounded-2xl shadow-2xl overflow-hidden"
+      style={{
+        left, top,
+        width: W,
+        background: '#fff',
+        border: '1px solid #e4ddd4',
+        pointerEvents: 'auto',
+      }}
+    >
+      <div className="flex gap-3 p-4">
+        {/* Text */}
+        <div className="flex-1 min-w-0">
+          <div
+            className="font-bold text-sm leading-tight mb-2"
+            style={{
+              fontFamily: 'var(--font-playfair), Georgia, serif',
+              color: '#1a1410',
+              fontSize: '0.9rem',
+            }}
+          >
+            {popup.info.title.toUpperCase()}
+          </div>
+
+          {popup.info.director && (
+            <div className="text-xs mb-1.5" style={{ color: '#3e3830' }}>
+              <span className="font-bold">Reżyseria</span>{' '}
+              <span style={{ color: '#7a7068' }}>{popup.info.director}</span>
+            </div>
+          )}
+
+          {popup.info.cast.length > 0 && (
+            <div className="text-xs mb-2" style={{ color: '#3e3830' }}>
+              <span className="font-bold">Występują:</span>{' '}
+              <span style={{ color: '#7a7068' }}>
+                {popup.info.cast.slice(0, 6).join(', ')}
+                {popup.info.cast.length > 6 ? ` i ${popup.info.cast.length - 6} innych` : ''}
+              </span>
+            </div>
+          )}
+
+          {popup.info.perf_count > 0 && (
+            <div className="text-xs mt-auto" style={{ color: '#a89e92' }}>
+              Grany po raz:{' '}
+              <span className="font-bold" style={{ color: '#3e3830' }}>{popup.info.perf_count}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Poster */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={popup.info.poster_url || PLACEHOLDER_POSTER}
+          alt={popup.info.title}
+          className="rounded-lg object-cover shrink-0"
+          style={{ width: 72, height: 100 }}
+          onError={(e) => { (e.target as HTMLImageElement).src = PLACEHOLDER_POSTER }}
+        />
+      </div>
+
+      {/* Bottom accent bar */}
+      <div className="h-0.5 w-full" style={{ background: popup.accentColor }} />
+    </div>
+  )
+}
+
 // ── Vertical month table ───────────────────────────────────────────────────────
 
-function MonthTable({ month, events, accentColor }: {
-  month: string
-  events: TaggedEvent[]      // already filtered & tagged
+function MonthTable({ month, events, accentColor, prodMap }: {
+  month:       string
+  events:      TaggedEvent[]
   accentColor: string
+  prodMap:     Map<string, ProdInfo>
 }) {
   const [y, m] = month.split('-').map(Number)
   const daysInMonth = new Date(y, m, 0).getDate()
+
+  // Popup state (position fixed → no overflow clipping)
+  const [popup, setPopup] = useState<PopupState | null>(null)
 
   // Unique rooms → columns (sorted)
   const rooms = [...new Set(
@@ -142,139 +241,163 @@ function MonthTable({ month, events, accentColor }: {
     )
   }
 
+  function openPopup(e: React.MouseEvent, title: string) {
+    const info = prodMap.get(title)
+    if (!info) return
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    setPopup({ info, x: rect.left, y: rect.bottom + 6, accentColor })
+  }
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+    <>
+      {popup && <CastPopup popup={popup} onClose={() => setPopup(null)} />}
 
-        {/* ── Column widths ── */}
-        <colgroup>
-          <col style={{ width: '110px' }} />
-          {rooms.map(r => <col key={r} />)}
-        </colgroup>
+      <div className="overflow-x-auto">
+        <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
 
-        {/* ── Header ── */}
-        <thead>
-          <tr>
-            <th
-              className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-[0.18em]"
-              style={{ background: '#1a1410', color: '#7a7068', borderRight: '1px solid #2e2820' }}
-            >
-              Data
-            </th>
-            {rooms.map((room, ri) => (
+          {/* ── Column widths ── */}
+          <colgroup>
+            <col style={{ width: '110px' }} />
+            {rooms.map(r => <col key={r} />)}
+          </colgroup>
+
+          {/* ── Header ── */}
+          <thead>
+            <tr>
               <th
-                key={room}
-                className="text-left px-6 py-4"
-                style={{
-                  background: '#1a1410',
-                  borderRight: ri < rooms.length - 1 ? '1px solid #2e2820' : undefined,
-                }}
+                className="text-left px-6 py-4 text-[10px] font-bold uppercase tracking-[0.18em]"
+                style={{ background: '#1a1410', color: '#7a7068', borderRight: '1px solid #2e2820' }}
               >
-                <span className="block text-[10px] font-bold uppercase tracking-[0.18em]"
-                      style={{ color: '#7a7068' }}>
-                  {room}
-                </span>
-                <span
-                  className="block mt-0.5 h-0.5 w-8 rounded"
-                  style={{ background: accentColor, opacity: 0.6 }}
-                />
+                Data
               </th>
-            ))}
-          </tr>
-        </thead>
-
-        {/* ── Rows ── */}
-        <tbody>
-          {activeDays.map((day) => {
-            const dateStr = `${month}-${String(day).padStart(2, '0')}`
-            const dow = new Date(dateStr + 'T12:00:00').getDay()
-            const isWeekend = dow === 0 || dow === 6
-
-            return (
-              <tr key={day} style={{ borderBottom: '2px solid #e4ddd4' }}>
-
-                {/* Date cell */}
-                <td
-                  className="px-6 py-5 align-top"
-                  style={{ background: '#faf8f5', borderRight: '1px solid #e4ddd4', verticalAlign: 'top' }}
+              {rooms.map((room, ri) => (
+                <th
+                  key={room}
+                  className="text-left px-6 py-4"
+                  style={{
+                    background: '#1a1410',
+                    borderRight: ri < rooms.length - 1 ? '1px solid #2e2820' : undefined,
+                  }}
                 >
-                  <div
-                    style={{
-                      fontFamily: 'var(--font-playfair), Georgia, serif',
-                      fontSize: '2.4rem', fontWeight: 700, lineHeight: 1,
-                      color: isWeekend ? '#7a2e1a' : '#1a1410',
-                    }}
-                  >
-                    {day}
-                  </div>
-                  <div
-                    className="mt-1 text-[10px] font-bold uppercase tracking-widest"
-                    style={{ color: isWeekend ? '#b84a28' : '#a89e92' }}
-                  >
-                    {DAY_PL[dow]}
-                  </div>
-                </td>
+                  <span className="block text-[10px] font-bold uppercase tracking-[0.18em]"
+                        style={{ color: '#7a7068' }}>
+                    {room}
+                  </span>
+                  <span
+                    className="block mt-0.5 h-0.5 w-8 rounded"
+                    style={{ background: accentColor, opacity: 0.6 }}
+                  />
+                </th>
+              ))}
+            </tr>
+          </thead>
 
-                {/* Room cells */}
-                {rooms.map((room, ri) => {
-                  const roomEvents: TaggedEvent[] = (byDateRoom[dateStr]?.[room] ?? [])
-                    .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
+          {/* ── Rows ── */}
+          <tbody>
+            {activeDays.map((day) => {
+              const dateStr = `${month}-${String(day).padStart(2, '0')}`
+              const dow = new Date(dateStr + 'T12:00:00').getDay()
+              const isWeekend = dow === 0 || dow === 6
 
-                  return (
-                    <td
-                      key={room}
-                      className="px-6 py-5 align-top"
+              return (
+                <tr key={day} style={{ borderBottom: '2px solid #e4ddd4' }}>
+
+                  {/* Date cell */}
+                  <td
+                    className="px-6 py-5 align-top"
+                    style={{ background: '#faf8f5', borderRight: '1px solid #e4ddd4', verticalAlign: 'top' }}
+                  >
+                    <div
                       style={{
-                        background: '#fff',
-                        borderRight: ri < rooms.length - 1 ? '1px solid #e4ddd4' : undefined,
-                        verticalAlign: 'top',
+                        fontFamily: 'var(--font-playfair), Georgia, serif',
+                        fontSize: '2.4rem', fontWeight: 700, lineHeight: 1,
+                        color: isWeekend ? '#7a2e1a' : '#1a1410',
                       }}
                     >
-                      {roomEvents.length === 0 ? (
-                        <span style={{ color: '#e4ddd4', fontSize: '1.2rem' }}>—</span>
-                      ) : (
-                        roomEvents.map((e, ei) => (
-                          <div
-                            key={ei}
-                            className={ei > 0 ? 'mt-4 pt-4' : ''}
-                            style={ei > 0 ? { borderTop: '1px dashed #e4ddd4' } : {}}
-                          >
-                            {/* Time badge */}
-                            <div className="flex items-center gap-2 mb-1.5">
-                              <span
-                                className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded"
-                                style={{ background: '#f2ede6', color: '#7a7068' }}
-                              >
-                                {e.start_time?.slice(0, 5) || '—'}
-                              </span>
-                              {e.end_time && (
-                                <span className="text-[11px]" style={{ color: '#cec5b8' }}>
-                                  → {e.end_time.slice(0, 5)}
-                                </span>
-                              )}
-                            </div>
-                            {/* Production title */}
+                      {day}
+                    </div>
+                    <div
+                      className="mt-1 text-[10px] font-bold uppercase tracking-widest"
+                      style={{ color: isWeekend ? '#b84a28' : '#a89e92' }}
+                    >
+                      {DAY_PL[dow]}
+                    </div>
+                  </td>
+
+                  {/* Room cells */}
+                  {rooms.map((room, ri) => {
+                    const roomEvents: TaggedEvent[] = (byDateRoom[dateStr]?.[room] ?? [])
+                      .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
+
+                    return (
+                      <td
+                        key={room}
+                        className="px-6 py-5 align-top"
+                        style={{
+                          background: '#fff',
+                          borderRight: ri < rooms.length - 1 ? '1px solid #e4ddd4' : undefined,
+                          verticalAlign: 'top',
+                        }}
+                      >
+                        {roomEvents.length === 0 ? (
+                          <span style={{ color: '#e4ddd4', fontSize: '1.2rem' }}>—</span>
+                        ) : (
+                          roomEvents.map((e, ei) => (
                             <div
-                              className="text-sm font-semibold leading-snug"
-                              style={{
-                                fontFamily: 'var(--font-playfair), Georgia, serif',
-                                color: prodColor(e.production_title, allTitles),
-                              }}
+                              key={ei}
+                              className={ei > 0 ? 'mt-4 pt-4' : ''}
+                              style={ei > 0 ? { borderTop: '1px dashed #e4ddd4' } : {}}
                             >
-                              {e.production_title}
+                              {/* Time + room label */}
+                              <div className="text-[10px] font-bold uppercase tracking-wider mb-1"
+                                   style={{ color: '#a89e92' }}>
+                                {e.start_time?.slice(0, 5) || '—'} | {room.toUpperCase()}
+                              </div>
+
+                              {/* Production title */}
+                              <div
+                                className="text-sm font-bold leading-snug mb-2"
+                                style={{
+                                  fontFamily: 'var(--font-playfair), Georgia, serif',
+                                  color: prodColor(e.production_title, allTitles),
+                                }}
+                              >
+                                {e.production_title}
+                              </div>
+
+                              {/* OBSADA button */}
+                              <button
+                                onMouseEnter={(ev) => openPopup(ev, e.production_title)}
+                                onMouseLeave={() => {
+                                  // small delay so user can move mouse into popup
+                                  setTimeout(() => setPopup(p =>
+                                    p?.info.title === e.production_title ? null : p
+                                  ), 120)
+                                }}
+                                className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded transition-colors"
+                                style={{
+                                  border: `1px solid ${prodColor(e.production_title, allTitles)}`,
+                                  color:  prodColor(e.production_title, allTitles),
+                                  background: 'transparent',
+                                  cursor: 'default',
+                                  letterSpacing: '0.1em',
+                                }}
+                              >
+                                obsada
+                              </button>
                             </div>
-                          </div>
-                        ))
-                      )}
-                    </td>
-                  )
-                })}
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
+                          ))
+                        )}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   )
 }
 
@@ -285,6 +408,7 @@ export default function RepertuarPage() {
 
   const [proposals,   setProposals]   = useState<Proposal[]>([])
   const [theatres,    setTheatres]    = useState<Theatre[]>([])
+  const [prodMap,     setProdMap]     = useState<Map<string, ProdInfo>>(new Map())
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState<string | null>(null)
   const [activeMonth, setActiveMonth] = useState<string | null>(null)
@@ -298,16 +422,53 @@ export default function RepertuarPage() {
       setLoading(true)
       setError(null)
       try {
-        const [propRes, thRes] = await Promise.all([
+        const [propRes, thRes, prodRes, evCountRes] = await Promise.all([
           fetch('/api/planning/generate?status=approved'),
           supabase.from('theatres').select('id, name').order('name'),
+          // Fetch productions with cast (artist_productions join)
+          supabase.from('productions').select(
+            'id, title, director, poster_url, artist_productions(artists(id, name))'
+          ),
+          // Count past events per production for "Grany po raz"
+          supabase.from('events').select('production_id').not('production_id', 'is', null),
         ])
+
         const json  = await propRes.json()
         if (json.error) throw new Error(json.error)
+
         const props: Proposal[] = json.proposals ?? []
         const ths: Theatre[]    = thRes.data ?? []
+
+        // Build performance count map
+        const perfCounts: Record<string, number> = {}
+        for (const ev of evCountRes.data ?? []) {
+          const pid = (ev as any).production_id as string
+          perfCounts[pid] = (perfCounts[pid] ?? 0) + 1
+        }
+
+        // Build prodMap: title → ProdInfo
+        const map = new Map<string, ProdInfo>()
+        for (const p of prodRes.data ?? []) {
+          const castNames: string[] = (p.artist_productions ?? [])
+            .map((ap: any) => {
+              const a = Array.isArray(ap.artists) ? ap.artists[0] : ap.artists
+              return a?.name as string | undefined
+            })
+            .filter(Boolean) as string[]
+
+          map.set(p.title, {
+            title:      p.title,
+            director:   p.director ?? null,
+            cast:       castNames,
+            poster_url: (p as any).poster_url ?? null,
+            perf_count: perfCounts[p.id] ?? 0,
+          })
+        }
+
         setProposals(props)
         setTheatres(ths)
+        setProdMap(map)
+
         // Auto-select nearest upcoming (or first) month
         const now    = new Date().toISOString().slice(0, 7)
         const sorted = [...props].sort((a, b) => a.month.localeCompare(b.month))
@@ -512,6 +673,7 @@ export default function RepertuarPage() {
             month={active.month}
             events={visibleEvents}
             accentColor={accent}
+            prodMap={prodMap}
           />
         </div>
       )}
