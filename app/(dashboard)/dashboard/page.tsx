@@ -682,6 +682,7 @@ export default function DashboardPage() {
       sub: notConfirmedCount > 0 ? `${notConfirmedCount} bez statusu` : 'wszyscy podali status',
       warn: notConfirmedCount > 0,
       tip: notConfirmedTip, tipAlign: 'left' as const,
+      cta: notConfirmedCount > 0 ? { label: 'Wyślij przypomnienie', href: '/messages' } : undefined,
     },
     {
       label: `Repertuar – ${nmMonthLabel}`, value: showsNMCount,
@@ -695,6 +696,7 @@ export default function DashboardPage() {
       warn: showsM2Conflicts > 0,
       tip: showsMonthTip(showsM2List, m2MonthLabel), tipAlign: 'center' as const,
       onClick: showsM2Conflicts > 0 ? () => setShowConflictPanel(true) : undefined,
+      cta: showsM2Count === 0 ? { label: `Zaplanuj ${m2MonthLabel}`, href: '/planning' } : undefined,
     },
     {
       label: 'Konflikty obsady', value: castConflicts.length,
@@ -704,6 +706,7 @@ export default function DashboardPage() {
       warn: castConflicts.length > 0,
       tip: castConflictTip, tipAlign: 'right' as const,
       onClick: castConflicts.length > 0 ? () => window.location.assign('/calendar') : undefined,
+      cta: castConflicts.length > 0 ? { label: 'Rozwiąż konflikty', href: '/calendar' } : undefined,
     },
   ]
 
@@ -742,6 +745,7 @@ export default function DashboardPage() {
           <div
             key={s.label}
             className={`bg-white border border-[#e4ddd4] rounded-2xl px-5 py-4 flex flex-col gap-1 transition-shadow ${s.onClick ? 'cursor-pointer hover:shadow-md hover:border-[#cec5b8]' : ''}`}
+            style={{ minHeight: 120 }}
             onClick={s.onClick}
           >
             <p className="text-xs font-medium" style={{ color: '#7a7068' }}>{s.label}</p>
@@ -752,6 +756,27 @@ export default function DashboardPage() {
                 {s.sub}
               </span>
             </Tooltip>
+            {s.cta && (
+              <div className="mt-auto pt-3" onClick={e => e.stopPropagation()}>
+                <Link
+                  href={s.cta.href}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                  style={{
+                    background: s.warn ? '#fef2f2' : '#f2ede6',
+                    color: s.warn ? '#c8102e' : '#1a1410',
+                    border: `1px solid ${s.warn ? '#fecaca' : '#e4ddd4'}`,
+                    textDecoration: 'none',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = s.warn ? '#fee2e2' : '#e4ddd4')}
+                  onMouseLeave={e => (e.currentTarget.style.background = s.warn ? '#fef2f2' : '#f2ede6')}
+                >
+                  {s.cta.label}
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                  </svg>
+                </Link>
+              </div>
+            )}
           </div>
         ))}
       </div>
