@@ -36,6 +36,7 @@ interface AvailRow  { artist_id: string; type: string; start_time: string; end_t
 function localDate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
+function dayKey(iso: string) { return iso.slice(0, 10) }
 function addDays(d: Date, n: number) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n) }
 function fmtTime(iso: string, localeStr: string) { return new Date(iso).toLocaleTimeString(localeStr, { hour: '2-digit', minute: '2-digit' }) }
 function eventDateParam(iso: string) {
@@ -144,7 +145,8 @@ export default function DashboardPage() {
   const [allRooms,          setAllRooms]          = useState<SimpleRecord[]>([])
   const [allTheatres,       setAllTheatres]       = useState<SimpleRecord[]>([])
   const [allArtistList,     setAllArtistList]     = useState<SimpleRecord[]>([])
-  const [todayEvents,   setTodayEvents]   = useState<EventRow[]>([])
+  const [slidingEvents, setSlidingEvents] = useState<EventRow[]>([])
+  const [dayOffset,     setDayOffset]     = useState(0)
   const [upcoming,      setUpcoming]      = useState<EventRow[]>([])
   const [alertArtists,  setAlertArtists]  = useState<ArtistRow[]>([])
   const [artistAvails,  setArtistAvails]  = useState<AvailRow[]>([])
@@ -191,7 +193,7 @@ export default function DashboardPage() {
 
     // All event queries filtered by theatre when selected
     let todayQ = supabase.from('events').select(evSel)
-      .gte('start_time', `${today}T00:00:00`).lte('start_time', `${today}T23:59:59`).order('start_time')
+      .gte('start_time', `${today}T00:00:00`).lt('start_time', `${localDate(addDays(now, 7))}T00:00:00`).order('start_time')
     let weekQ = supabase.from('events').select(evSel)
       .gte('start_time', `${today}T00:00:00`).lt('start_time', `${weekEnd}T00:00:00`).order('start_time')
     let upcomQ = supabase.from('events').select(evSel)
@@ -330,7 +332,7 @@ export default function DashboardPage() {
     setShowsM2Conflicts(conflictsM2)
 
     const todayMapped = (todayEvData ?? []).map(mapEvent)
-    setTodayEvents(todayMapped)
+    setSlidingEvents(todayMapped)
     setUpcoming((upcomData ?? []).map(mapEvent))
     setNextPremiere(premiereData?.[0] ? mapEvent(premiereData[0]) : null)
 
@@ -373,7 +375,7 @@ export default function DashboardPage() {
         .from('artists').select('id, name, role, status').eq('team_id', techTeam.id).order('name')
       setTechToday((techArtists ?? []).map(a => ({
         id: a.id, name: a.name, role: a.role, status: a.status,
-        eventCount: todayMapped.filter(e => e.artist_ids.includes(a.id)).length,
+        eventCount: todayMapped.filter(e => e.artist_ids.includes(a.id) && dayKey(e.start_time) === today).length,
       })))
     }
 
@@ -435,6 +437,21 @@ export default function DashboardPage() {
 
   /* ── Derived ── */
   const now      = new Date()
+
+  // Sliding day view
+  const slidingDay      = addDays(now, dayOffset)
+  const slidingDayKey   = localDate(slidingDay)
+  const displayDayEvents = slidingEvents.filter(e => dayKey(e.start_time) === slidingDayKey)
+  const isToday          = dayOffset === 0
+  const slidingDayLabel  = isToday
+    ? `Dziś, ${now.getDate()} ${td.months[now.getMonth()]}`
+    : dayOffset === 1
+    ? `Jutro, ${slidingDay.getDate()} ${td.months[slidingDay.getMonth()]}`
+    : `${td.daysShort[slidingDay.getDay()]}. ${slidingDay.getDate()} ${td.months[slidingDay.getMonth()]}`
+
+  // Upcoming shows only
+  const upcomingShows = upcoming.filter(e => SHOW_TYPES.has(e.type ?? ''))
+
   const STATUS_LABEL: Record<string, string> = {
     'Na urlopie':    td.statusVacation,
     'Choroba':       td.statusSick,
@@ -783,32 +800,84 @@ export default function DashboardPage() {
 
 
       {/* ── 2-column body ──────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
 
-        {/* LEFT — Today ─────────────────────────────────────────── */}
+        {/* LEFT — Sliding day view ──────────────────────────────── */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>{td.todaySection(dayLabel)}</h3>
-            {todayEvents.length > 0 && (
-              <span className="text-[11px] font-medium rounded-full px-2 py-0.5" style={{ background: '#e4ddd4', color: '#7a7068' }}>
-                {td.eventCount(todayEvents.length)}
-              </span>
-            )}
+          {/* Header z nawigacją */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+            <button
+              onClick={() => setDayOffset(o => Math.max(0, o - 1))}
+              disabled={dayOffset === 0}
+              className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30"
+              style={{ background: '#f2ede6', color: '#7a7068', border: '1px solid #e4ddd4', flexShrink: 0 }}
+              onMouseEnter={e => { if (dayOffset > 0) e.currentTarget.style.background = '#e4ddd4' }}
+              onMouseLeave={e => (e.currentTarget.style.background = '#f2ede6')}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+
+            <div className="flex-1 text-center">
+              <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>{slidingDayLabel}</h3>
+            </div>
+
+            <div className="flex items-center gap-1.5" style={{ flexShrink: 0 }}>
+              {displayDayEvents.length > 0 && (
+                <span className="text-[11px] font-medium rounded-full px-2 py-0.5" style={{ background: '#e4ddd4', color: '#7a7068' }}>
+                  {td.eventCount(displayDayEvents.length)}
+                </span>
+              )}
+              <button
+                onClick={() => setDayOffset(o => Math.min(6, o + 1))}
+                disabled={dayOffset === 6}
+                className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30"
+                style={{ background: '#f2ede6', color: '#7a7068', border: '1px solid #e4ddd4' }}
+                onMouseEnter={e => { if (dayOffset < 6) e.currentTarget.style.background = '#e4ddd4' }}
+                onMouseLeave={e => (e.currentTarget.style.background = '#f2ede6')}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+              </button>
+            </div>
           </div>
 
-          {todayEvents.length === 0 ? (
+          {/* Dzienna nawigacja — mini paginacja dni */}
+          <div className="flex border-b border-gray-50" style={{ background: '#faf8f5' }}>
+            {Array.from({ length: 7 }, (_, i) => {
+              const d    = addDays(now, i)
+              const isSelected = i === dayOffset
+              const hasBadge   = slidingEvents.some(e => dayKey(e.start_time) === localDate(d))
+              return (
+                <button key={i} onClick={() => setDayOffset(i)}
+                  className="flex-1 flex flex-col items-center py-2 transition-colors"
+                  style={{ background: isSelected ? '#1a1410' : 'transparent', borderRadius: isSelected ? 6 : 0 }}>
+                  <span className="text-[10px] font-medium" style={{ color: isSelected ? 'rgba(255,255,255,0.7)' : '#b8b0a4' }}>
+                    {td.daysShort[d.getDay()]}
+                  </span>
+                  <span className="text-xs font-bold mt-0.5" style={{ color: isSelected ? '#fff' : '#3e3830' }}>
+                    {d.getDate()}
+                  </span>
+                  {hasBadge && (
+                    <span className="w-1.5 h-1.5 rounded-full mt-1" style={{ background: isSelected ? 'rgba(255,255,255,0.6)' : '#e4ddd4' }} />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Lista wydarzeń */}
+          {displayDayEvents.length === 0 ? (
             <div className="text-center py-10" style={{ color: '#a89e92' }}>
               <div className="flex justify-center mb-2"><span style={{ color: '#a89e92' }}><IconInbox size={28} /></span></div>
-              <p className="text-xs">{td.noTodayEvents}</p>
+              <p className="text-xs">{isToday ? td.noTodayEvents : 'Brak wydarzeń tego dnia'}</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
-              {todayEvents.map(ev => (
+              {displayDayEvents.map(ev => (
                 <div key={ev.id} className="flex gap-3 px-4 py-3">
                   <div className="text-xs font-semibold text-gray-500 w-10 shrink-0 pt-0.5 tabular-nums">
                     {fmtTime(ev.start_time, localeStr)}
                   </div>
-                  <div className="border-l-2 pl-3 flex-1 min-w-0" style={{ borderLeftColor: '#e4ddd4' }}>
+                  <div className="border-l-2 pl-3 flex-1 min-w-0" style={{ borderLeftColor: SHOW_TYPES.has(ev.type ?? '') ? '#c8102e' : '#e4ddd4' }}>
                     <Link href={`/calendar?date=${eventDateParam(ev.start_time)}`}
                       className="text-sm font-semibold text-gray-900 hover:text-gray-600 transition-colors truncate block">
                       {ev.title}
@@ -820,6 +889,12 @@ export default function DashboardPage() {
                       {(() => { const th = theatreLabel(ev, allTheatres, selectedTheatreId); return th ? (
                         <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{th}</span>
                       ) : null })()}
+                      {ev.type && (
+                        <span className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+                          style={{ background: SHOW_TYPES.has(ev.type) ? '#fdf0f2' : '#f2ede6', color: SHOW_TYPES.has(ev.type) ? '#9e0c24' : '#5a524a' }}>
+                          {ev.type}
+                        </span>
+                      )}
                       {ev.production_title && (
                         <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                           {ev.production_title}
@@ -836,33 +911,30 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* MIDDLE — Upcoming ──────────────────────────────────────── */}
+        {/* RIGHT — Nadchodzące spektakle ────────────────────────── */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>{td.upcomingSection}</h3>
+            <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>Nadchodzące spektakle</h3>
             <span className="text-xs text-gray-500">{td.upcomingDays}</span>
           </div>
 
-          {upcoming.length === 0 ? (
+          {upcomingShows.length === 0 ? (
             <div className="text-center py-12" style={{ color: '#a89e92' }}>
               <div className="flex justify-center mb-2"><span style={{ color: '#a89e92' }}><IconCalendar size={28} /></span></div>
-              <p className="text-xs">{td.noUpcomingEvents}</p>
+              <p className="text-xs">Brak nadchodzących spektakli</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
-              {upcoming.map((ev, idx) => {
+              {upcomingShows.map((ev, idx) => {
                 const d      = new Date(ev.start_time)
-                const isPrem = ev.type === 'Premiera'
-                const isShow = SHOW_TYPES.has(ev.type ?? '')
-                const prevD  = idx > 0 ? new Date(upcoming[idx-1].start_time) : null
+                const prevD  = idx > 0 ? new Date(upcomingShows[idx-1].start_time) : null
                 const newDay = !prevD || d.toDateString() !== prevD.toDateString()
-
                 return (
                   <div key={ev.id}>
                     {newDay && (
                       <div className="flex items-center gap-3 px-5 pt-3 pb-1">
                         <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#b8b0a4' }}>
-                          {DAYS_SHORT[d.getDay()]} {d.getDate()} {locale === 'pl' ? MONTHS_PL[d.getMonth()].substring(0,3) : MONTHS_PL[d.getMonth()].substring(0,3)}
+                          {DAYS_SHORT[d.getDay()]} {d.getDate()} {MONTHS_PL[d.getMonth()].substring(0,3)}
                         </span>
                         <div className="flex-1 h-px bg-gray-100" />
                       </div>
@@ -873,10 +945,11 @@ export default function DashboardPage() {
                           {fmtTime(ev.start_time, localeStr)}
                         </span>
                       </div>
-                      <div className="flex-1 min-w-0">
+                      <div className="border-l-2 pl-3 flex-1 min-w-0" style={{ borderLeftColor: '#f5c6cd' }}>
                         <Link href={`/calendar?date=${eventDateParam(ev.start_time)}`}
-                          className="text-sm font-semibold leading-snug hover:underline underline-offset-2 block text-gray-900 decoration-gray-400">
-                          {ev.title}
+                          className="text-sm font-semibold leading-snug hover:underline underline-offset-2 block decoration-gray-400"
+                          style={{ color: '#1a1410' }}>
+                          {ev.production_title ?? ev.title}
                         </Link>
                         <p className="text-xs text-gray-500 mt-0.5">
                           {fmtTime(ev.start_time, localeStr)}–{fmtTime(ev.end_time, localeStr)}
@@ -887,13 +960,9 @@ export default function DashboardPage() {
                             <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{th}</span>
                           ) : null })()}
                           {ev.type && (
-                            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+                              style={{ background: '#fdf0f2', color: '#9e0c24' }}>
                               {ev.type}
-                            </span>
-                          )}
-                          {ev.production_title && (
-                            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                              {ev.production_title}
                             </span>
                           )}
                         </div>
