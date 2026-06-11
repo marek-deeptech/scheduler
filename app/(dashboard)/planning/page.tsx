@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
+import {
+  detectProposalConflicts,
+  conflictedTitles,
+  type ProposalConflict,
+} from '@/lib/conflicts'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -61,16 +67,31 @@ export default function PlanningPage() {
   const [approvedMonths, setApprovedMonths] = useState<Set<string>>(new Set())
   const [monthsReady,    setMonthsReady]    = useState(false)
 
-  // Fetch approved months once on mount so we can exclude them from picker
+  // Fetch approved months + production cast data on mount
   useEffect(() => {
-    fetch('/api/planning/generate?status=approved')
-      .then(r => r.json())
-      .then(json => {
-        const approved = new Set<string>((json.proposals ?? []).map((p: Proposal) => p.month))
-        setApprovedMonths(approved)
-        setMonthsReady(true)
-      })
-      .catch(() => setMonthsReady(true))
+    Promise.all([
+      fetch('/api/planning/generate?status=approved').then(r => r.json()),
+      supabase.from('productions').select('title, artist_productions(artists(id, name))'),
+    ]).then(([json, castRes]) => {
+      // Approved months
+      const approved = new Set<string>((json.proposals ?? []).map((p: Proposal) => p.month))
+      setApprovedMonths(approved)
+      setMonthsReady(true)
+
+      // Build cast maps from Supabase
+      const castMap  = new Map<string, string[]>()
+      const nameMap  = new Map<string, string>()
+      for (const p of castRes.data ?? []) {
+        const ids: string[] = []
+        for (const ap of p.artist_productions ?? []) {
+          const a = Array.isArray(ap.artists) ? ap.artists[0] : ap.artists
+          if (a?.id) { ids.push(a.id); nameMap.set(a.id, a.name) }
+        }
+        castMap.set(p.title, ids)
+      }
+      setProductionCastMap(castMap)
+      setArtistNamesMap(nameMap)
+    }).catch(() => setMonthsReady(true))
   }, [])
 
   const months = allMonths.filter(mo => !approvedMonths.has(mo.value))
@@ -83,6 +104,10 @@ export default function PlanningPage() {
   const [expandedId,    setExpandedId]    = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [error,         setError]         = useState<string | null>(null)
+
+  // Cast data for real conflict detection
+  const [productionCastMap, setProductionCastMap] = useState<Map<string, string[]>>(new Map())
+  const [artistNamesMap,    setArtistNamesMap]     = useState<Map<string, string>>(new Map())
 
   // Set default selected month once approved list is known
   useEffect(() => {
@@ -266,6 +291,8 @@ export default function PlanningPage() {
               onApprove={() => handleAction(p.id, 'approve')}
               onReject={() => handleAction(p.id, 'reject')}
               actionLoading={actionLoading}
+              productionCastMap={productionCastMap}
+              artistNamesMap={artistNamesMap}
             />
           ))}
         </div>
@@ -294,6 +321,7 @@ function EmptyState() {
 
 function ProposalCard({
   proposal, expanded, onToggle, onApprove, onReject, actionLoading,
+  productionCastMap, artistNamesMap,
 }: {
   proposal: Proposal
   expanded: boolean
@@ -301,10 +329,18 @@ function ProposalCard({
   onApprove: () => void
   onReject: () => void
   actionLoading: string | null
+  productionCastMap: Map<string, string[]>
+  artistNamesMap:    Map<string, string>
 }) {
   const cfg    = STATUS_CFG[proposal.status] ?? STATUS_CFG.draft
   const events = [...(proposal.proposal_data ?? [])].sort((a, b) => a.date.localeCompare(b.date))
   const stats  = proposal.stats ?? {} as ProposalStats
+
+  // Real conflict detection
+  const realConflicts: ProposalConflict[] = productionCastMap.size > 0
+    ? detectProposalConflicts(events, productionCastMap, artistNamesMap)
+    : []
+  const conflictTitleSet = conflictedTitles(realConflicts)
 
   const isApproving = actionLoading === proposal.id + 'approve'
   const isRejecting = actionLoading === proposal.id + 'reject'
@@ -335,8 +371,8 @@ function ProposalCard({
         {/* Stats chips */}
         <div className="flex flex-wrap gap-1.5 mt-3">
           <Chip value={stats.total ?? events.length} label="spektakli" />
-          {(stats.conflicts ?? 0) > 0 && (
-            <Chip value={stats.conflicts} label="konfliktów" warn />
+          {realConflicts.length > 0 && (
+            <Chip value={realConflicts.length} label="konfliktów obsady" warn />
           )}
           {stats.by_production && Object.entries(stats.by_production as Record<string, number>)
             .slice(0, 4)
@@ -367,14 +403,34 @@ function ProposalCard({
             {events.map((e, i) => {
               const d   = new Date(e.date + 'T00:00:00')
               const dow = d.getDay()
-              const isWeekend = dow === 0 || dow === 5 || dow === 6
+              const isWeekend    = dow === 0 || dow === 5 || dow === 6
+              const hasConflict  = conflictTitleSet.has(e.production_title)
+              // Find conflicting partner on the same day/time
+              const partnerConflict = realConflicts.find(c =>
+                c.date === e.date &&
+                c.productions.some(p => p.title === e.production_title)
+              )
               return (
-                <div key={i} className="flex items-center gap-2 py-2">
+                <div
+                  key={i}
+                  className="flex items-center gap-2 py-2 rounded-lg px-1 -mx-1"
+                  style={hasConflict ? { background: '#fff5f5' } : undefined}
+                >
                   <span className="w-16 shrink-0 text-[11px] font-semibold" style={{ color: isWeekend ? '#1a1410' : '#a89e92' }}>
                     {DAY_PL[dow]} {d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })}
                   </span>
-                  <span className="flex-1 min-w-0 text-xs font-medium truncate" style={{ color: '#3e3830' }}>{e.production_title}</span>
-                  {e.room_name && (
+                  <span className="flex-1 min-w-0 text-xs font-medium truncate"
+                        style={{ color: hasConflict ? '#c8102e' : '#3e3830', fontWeight: hasConflict ? 600 : 400 }}>
+                    {hasConflict && '⚠ '}{e.production_title}
+                  </span>
+                  {partnerConflict && (
+                    <span className="text-[10px] shrink-0 font-medium" style={{ color: '#c8102e' }}
+                          title={`Konflikt z: ${partnerConflict.productions.find(p => p.title !== e.production_title)?.title}`}>
+                      {partnerConflict.artistNames.slice(0,2).join(', ')}
+                      {partnerConflict.artistNames.length > 2 ? ` +${partnerConflict.artistNames.length-2}` : ''}
+                    </span>
+                  )}
+                  {e.room_name && !partnerConflict && (
                     <span className="text-[10px] shrink-0" style={{ color: '#a89e92' }}>{e.room_name}</span>
                   )}
                 </div>

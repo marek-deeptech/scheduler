@@ -80,3 +80,77 @@ export const CONFLICT_ICON: Record<ConflictReason, string> = {
   room:       '🏠',
   tech_venue: '🔀',
 }
+
+// ── Proposal-level conflict detection ─────────────────────────────────────────
+// Detects cast conflicts in planning proposals: same artist in two productions
+// scheduled on the same date with overlapping start/end times.
+
+export interface ProposalConflict {
+  date:        string
+  productions: Array<{ title: string; room: string | null; start_time: string }>
+  artistIds:   string[]
+  artistNames: string[]
+}
+
+export function detectProposalConflicts(
+  events: Array<{
+    date:             string
+    production_title: string
+    room_name:        string | null
+    start_time:       string
+    end_time:         string
+  }>,
+  productionCast: Map<string, string[]>,   // production title → artist IDs
+  artistNames:    Map<string, string>       // artist ID → display name
+): ProposalConflict[] {
+  const results: ProposalConflict[] = []
+
+  for (let i = 0; i < events.length; i++) {
+    for (let j = i + 1; j < events.length; j++) {
+      const a = events[i]
+      const b = events[j]
+      if (a.date !== b.date) continue
+      if (a.production_title === b.production_title) continue
+      // Time overlap (HH:MM string compare is safe for same-day events)
+      if (a.start_time >= b.end_time || b.start_time >= a.end_time) continue
+
+      const aCast  = productionCast.get(a.production_title) ?? []
+      const bCast  = productionCast.get(b.production_title) ?? []
+      const shared = aCast.filter(id => bCast.includes(id))
+      if (shared.length === 0) continue
+
+      results.push({
+        date: a.date,
+        productions: [
+          { title: a.production_title, room: a.room_name, start_time: a.start_time },
+          { title: b.production_title, room: b.room_name, start_time: b.start_time },
+        ],
+        artistIds:   shared,
+        artistNames: shared.map(id => artistNames.get(id) ?? id),
+      })
+    }
+  }
+
+  return results
+}
+
+/** Titles of all productions that participate in at least one conflict */
+export function conflictedTitles(conflicts: ProposalConflict[]): Set<string> {
+  const s = new Set<string>()
+  for (const c of conflicts) c.productions.forEach(p => s.add(p.title))
+  return s
+}
+
+/** Artist IDs involved in conflicts for a given production title */
+export function conflictArtistIds(
+  conflicts:   ProposalConflict[],
+  prodTitle:   string
+): Set<string> {
+  const s = new Set<string>()
+  for (const c of conflicts) {
+    if (c.productions.some(p => p.title === prodTitle)) {
+      c.artistIds.forEach(id => s.add(id))
+    }
+  }
+  return s
+}

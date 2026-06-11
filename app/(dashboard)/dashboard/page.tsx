@@ -165,6 +165,8 @@ export default function DashboardPage() {
   const [showsM2List,       setShowsM2List]       = useState<EventRow[]>([])
   const [vacNextCount,      setVacNextCount]      = useState(0)
   const [vacNextNames,      setVacNextNames]      = useState<string[]>([])
+  // Proposal-level cast conflicts
+  const [castConflicts,     setCastConflicts]     = useState<import('@/lib/conflicts').ProposalConflict[]>([])
 
   useEffect(() => { fetchAll() }, [selectedTheatreId])
 
@@ -374,6 +376,40 @@ export default function DashboardPage() {
         eventCount: todayMapped.filter(e => e.artist_ids.includes(a.id)).length,
       })))
     }
+
+    // ── Proposal-level cast conflicts ─────────────────────────────────────
+    try {
+      const { detectProposalConflicts } = await import('@/lib/conflicts')
+      const [propJson, castRes] = await Promise.all([
+        fetch('/api/planning/generate?status=approved').then(r => r.json()),
+        supabase.from('productions').select('title, artist_productions(artists(id, name))'),
+      ])
+      // Build maps
+      const pCastMap = new Map<string, string[]>()
+      const aNameMap = new Map<string, string>()
+      for (const p of castRes.data ?? []) {
+        const ids: string[] = []
+        for (const ap of (p as any).artist_productions ?? []) {
+          const a = Array.isArray(ap.artists) ? ap.artists[0] : ap.artists
+          if (a?.id) { ids.push(a.id); aNameMap.set(a.id, a.name) }
+        }
+        pCastMap.set((p as any).title, ids)
+      }
+      // Collect all events from approved proposals
+      const proposalEvents = (propJson.proposals ?? []).flatMap((pr: any) =>
+        (pr.proposal_data ?? []).map((e: any) => ({
+          date:             e.date,
+          production_title: e.production_title,
+          room_name:        e.room_name ?? null,
+          start_time:       e.start_time ?? '19:00',
+          end_time:         e.end_time   ?? '22:00',
+        }))
+      )
+      const allCastConflicts = pCastMap.size > 0
+        ? detectProposalConflicts(proposalEvents, pCastMap, aNameMap)
+        : []
+      setCastConflicts(allCastConflicts)
+    } catch { /* non-critical */ }
 
     setLoading(false)
   }
@@ -614,6 +650,32 @@ export default function DashboardPage() {
   /* ── Stat cards config ── */
   const titlesNMCount = new Set(showsNMList.filter(e => e.production_title).map(e => e.production_title)).size
 
+  // Cast-conflict tooltip
+  const castConflictTip = (
+    <>
+      <TipHeader>Konflikty obsady – repertuar</TipHeader>
+      {castConflicts.length === 0
+        ? <TipEmpty text="Brak konfliktów" />
+        : castConflicts.slice(0, 8).map((c, i) => (
+            <span key={i} className="block px-3 py-2 text-xs border-b last:border-0" style={{ borderColor: '#f2ede6' }}>
+              <span className="font-semibold" style={{ color: '#c8102e' }}>
+                {c.productions[0].title} ↔ {c.productions[1].title}
+              </span>
+              <span className="block text-[10px] mt-0.5" style={{ color: '#a89e92' }}>
+                {c.date} · {c.artistNames.join(', ')}
+              </span>
+            </span>
+          ))
+      }
+      {castConflicts.length > 8 && (
+        <span className="block px-3 py-1.5 text-[11px]" style={{ color: '#a89e92' }}>
+          +{castConflicts.length - 8} więcej
+        </span>
+      )}
+      <span className="block pb-1" />
+    </>
+  )
+
   const statCards = [
     {
       label: 'Nie potwierdzili na jutro', value: notConfirmedCount,
@@ -631,8 +693,17 @@ export default function DashboardPage() {
       label: `Spektakle – ${m2MonthLabel}`, value: showsM2Count,
       sub: showsM2Conflicts > 0 ? `${showsM2Conflicts} ${plKonflikt(showsM2Conflicts)}` : showsM2Count > 0 ? `${showsM2Count} spektakli` : 'brak',
       warn: showsM2Conflicts > 0,
-      tip: showsMonthTip(showsM2List, m2MonthLabel), tipAlign: 'right' as const,
+      tip: showsMonthTip(showsM2List, m2MonthLabel), tipAlign: 'center' as const,
       onClick: showsM2Conflicts > 0 ? () => setShowConflictPanel(true) : undefined,
+    },
+    {
+      label: 'Konflikty obsady', value: castConflicts.length,
+      sub: castConflicts.length > 0
+        ? `${[...new Set(castConflicts.flatMap(c => c.artistNames))].slice(0, 2).join(', ')}${castConflicts.flatMap(c => c.artistNames).length > 2 ? '…' : ''}`
+        : 'brak konfliktów',
+      warn: castConflicts.length > 0,
+      tip: castConflictTip, tipAlign: 'right' as const,
+      onClick: castConflicts.length > 0 ? () => window.location.assign('/calendar') : undefined,
     },
   ]
 
@@ -666,7 +737,7 @@ export default function DashboardPage() {
     <div className="max-w-7xl mx-auto space-y-5">
 
       {/* ── Stat cards ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {statCards.map(s => (
           <div
             key={s.label}

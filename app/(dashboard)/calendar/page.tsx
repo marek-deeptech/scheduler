@@ -4,6 +4,12 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useTheatre } from '@/lib/theatre-context'
 import { supabase } from '@/lib/supabase'
+import {
+  detectProposalConflicts,
+  conflictedTitles,
+  conflictArtistIds,
+  type ProposalConflict,
+} from '@/lib/conflicts'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,11 +38,12 @@ interface Proposal {
 
 interface Theatre { id: string; name: string }
 
-// Production info for the cast popup
+// Production info for the cast popup + conflict detection
 interface ProdInfo {
   title:       string
   director:    string | null
   cast:        string[]        // actor names
+  castIds:     string[]        // actor IDs (for conflict detection)
   poster_url:  string | null
   perf_count:  number          // total historical events
 }
@@ -116,7 +123,13 @@ function tagEvents(events: ProposalEvent[], allTheatreNames: string[]): TaggedEv
 
 const PLACEHOLDER_POSTER = 'https://placehold.co/160x220/1a1410/e4ddd4?text=Plakat'
 
-interface PopupState { info: ProdInfo; x: number; y: number; accentColor: string }
+interface PopupState {
+  info:              ProdInfo
+  x:                 number
+  y:                 number
+  accentColor:       string
+  conflictArtistIds: Set<string>
+}
 
 function CastPopup({ popup, onClose }: { popup: PopupState; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -166,9 +179,28 @@ function CastPopup({ popup, onClose }: { popup: PopupState; onClose: () => void 
           {popup.info.cast.length > 0 && (
             <div className="text-xs mb-2" style={{ color: '#3e3830' }}>
               <span className="font-bold">Występują:</span>{' '}
-              <span style={{ color: '#7a7068' }}>
-                {popup.info.cast.slice(0, 6).join(', ')}
-                {popup.info.cast.length > 6 ? ` i ${popup.info.cast.length - 6} innych` : ''}
+              <span>
+                {popup.info.cast.slice(0, 6).map((name, ni) => {
+                  const id = popup.info.castIds[ni]
+                  const isConflict = id && popup.conflictArtistIds.has(id)
+                  return (
+                    <span key={ni}>
+                      {ni > 0 && <span style={{ color: '#cec5b8' }}>, </span>}
+                      <span
+                        style={{
+                          color:      isConflict ? '#c8102e' : '#7a7068',
+                          fontWeight: isConflict ? 700 : 400,
+                        }}
+                        title={isConflict ? 'Konflikt obsady – ten aktor gra jednocześnie w innym spektaklu' : undefined}
+                      >
+                        {isConflict && '⚠ '}{name}
+                      </span>
+                    </span>
+                  )
+                })}
+                {popup.info.cast.length > 6
+                  ? <span style={{ color: '#a89e92' }}> i {popup.info.cast.length - 6} innych</span>
+                  : null}
               </span>
             </div>
           )}
@@ -200,17 +232,21 @@ function CastPopup({ popup, onClose }: { popup: PopupState; onClose: () => void 
 
 // ── Vertical month table ───────────────────────────────────────────────────────
 
-function MonthTable({ month, events, accentColor, prodMap }: {
-  month:       string
-  events:      TaggedEvent[]
-  accentColor: string
-  prodMap:     Map<string, ProdInfo>
+function MonthTable({ month, events, accentColor, prodMap, propConflicts }: {
+  month:         string
+  events:        TaggedEvent[]
+  accentColor:   string
+  prodMap:       Map<string, ProdInfo>
+  propConflicts: ProposalConflict[]
 }) {
   const [y, m] = month.split('-').map(Number)
   const daysInMonth = new Date(y, m, 0).getDate()
 
   // Popup state (position fixed → no overflow clipping)
   const [popup, setPopup] = useState<PopupState | null>(null)
+
+  // Pre-compute conflict title set for fast lookup
+  const conflictTitleSet = conflictedTitles(propConflicts)
 
   // Unique rooms → columns (sorted)
   const rooms = [...new Set(
@@ -245,7 +281,13 @@ function MonthTable({ month, events, accentColor, prodMap }: {
     const info = prodMap.get(title)
     if (!info) return
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    setPopup({ info, x: rect.left, y: rect.bottom + 6, accentColor })
+    setPopup({
+      info,
+      x:                 rect.left,
+      y:                 rect.bottom + 6,
+      accentColor,
+      conflictArtistIds: conflictArtistIds(propConflicts, title),
+    })
   }
 
   return (
@@ -354,30 +396,44 @@ function MonthTable({ month, events, accentColor, prodMap }: {
                                 {e.start_time?.slice(0, 5) || '—'} | {room.toUpperCase()}
                               </div>
 
-                              {/* Production title */}
-                              <div
-                                className="text-sm font-bold leading-snug mb-2"
-                                style={{
-                                  fontFamily: 'var(--font-playfair), Georgia, serif',
-                                  color: prodColor(e.production_title, allTitles),
-                                }}
-                              >
-                                {e.production_title}
+                              {/* Production title + conflict badge */}
+                              <div className="flex items-start gap-1.5 mb-2">
+                                <div
+                                  className="text-sm font-bold leading-snug"
+                                  style={{
+                                    fontFamily: 'var(--font-playfair), Georgia, serif',
+                                    color: prodColor(e.production_title, allTitles),
+                                  }}
+                                >
+                                  {e.production_title}
+                                </div>
+                                {conflictTitleSet.has(e.production_title) && (
+                                  <span
+                                    title="Konflikt obsady – aktor gra jednocześnie w innym spektaklu"
+                                    className="shrink-0 mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-md"
+                                    style={{ background: '#fff0f0', color: '#c8102e', border: '1px solid #fecaca' }}
+                                  >
+                                    ⚠ konflikt
+                                  </span>
+                                )}
                               </div>
 
                               {/* OBSADA button */}
                               <button
                                 onMouseEnter={(ev) => openPopup(ev, e.production_title)}
                                 onMouseLeave={() => {
-                                  // small delay so user can move mouse into popup
                                   setTimeout(() => setPopup(p =>
                                     p?.info.title === e.production_title ? null : p
                                   ), 120)
                                 }}
                                 className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded transition-colors"
                                 style={{
-                                  border: `1px solid ${prodColor(e.production_title, allTitles)}`,
-                                  color:  prodColor(e.production_title, allTitles),
+                                  border: conflictTitleSet.has(e.production_title)
+                                    ? '1px solid #c8102e'
+                                    : `1px solid ${prodColor(e.production_title, allTitles)}`,
+                                  color: conflictTitleSet.has(e.production_title)
+                                    ? '#c8102e'
+                                    : prodColor(e.production_title, allTitles),
                                   background: 'transparent',
                                   cursor: 'default',
                                   letterSpacing: '0.1em',
@@ -446,20 +502,21 @@ export default function RepertuarPage() {
           perfCounts[pid] = (perfCounts[pid] ?? 0) + 1
         }
 
-        // Build prodMap: title → ProdInfo
+        // Build prodMap: title → ProdInfo (including castIds for conflict detection)
         const map = new Map<string, ProdInfo>()
         for (const p of prodRes.data ?? []) {
-          const castNames: string[] = (p.artist_productions ?? [])
+          const castEntries: Array<{ id: string; name: string }> = (p.artist_productions ?? [])
             .map((ap: any) => {
               const a = Array.isArray(ap.artists) ? ap.artists[0] : ap.artists
-              return a?.name as string | undefined
+              return a ? { id: a.id as string, name: a.name as string } : null
             })
-            .filter(Boolean) as string[]
+            .filter(Boolean) as Array<{ id: string; name: string }>
 
           map.set(p.title, {
             title:      p.title,
             director:   p.director ?? null,
-            cast:       castNames,
+            cast:       castEntries.map(c => c.name),
+            castIds:    castEntries.map(c => c.id),
             poster_url: (p as any).poster_url ?? null,
             perf_count: perfCounts[p.id] ?? 0,
           })
@@ -505,6 +562,20 @@ export default function RepertuarPage() {
   const visibleEvents: TaggedEvent[] = selectedTheatre
     ? allTagged.filter(e => e._theatre === selectedTheatre.name)
     : allTagged
+
+  // Build maps needed for conflict detection
+  const productionCastMap = new Map<string, string[]>(
+    [...prodMap.entries()].map(([title, info]) => [title, info.castIds])
+  )
+  const artistNamesMap = new Map<string, string>()
+  for (const info of prodMap.values()) {
+    info.castIds.forEach((id, i) => { if (info.cast[i]) artistNamesMap.set(id, info.cast[i]) })
+  }
+
+  // Detect conflicts across ALL tagged events for the month (not just filtered by theatre)
+  const propConflicts = allTagged.length > 0
+    ? detectProposalConflicts(allTagged, productionCastMap, artistNamesMap)
+    : []
 
   // Stats derived from visible events
   const weekendShows = visibleEvents.filter(e => {
@@ -641,6 +712,16 @@ export default function RepertuarPage() {
           <StatBit icon="🎭" value={visibleEvents.length} label="spektakli" />
           <StatBit icon="📅" value={weekendShows}         label="w weekendy" />
           <StatBit icon="🎬" value={Object.keys(byProdVisible).length} label="tytułów" />
+          {propConflicts.length > 0 && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
+                 style={{ background: '#fff0f0', border: '1px solid #fecaca' }}>
+              <span className="text-sm">⚠</span>
+              <span className="text-sm font-bold" style={{ color: '#c8102e' }}>{propConflicts.length}</span>
+              <span className="text-xs font-medium" style={{ color: '#c8102e' }}>
+                {propConflicts.length === 1 ? 'konflikt obsady' : 'konflikty obsady'}
+              </span>
+            </div>
+          )}
           <div className="flex gap-2 flex-wrap">
             {Object.entries(byProdVisible)
               .sort((a, b) => b[1] - a[1])
@@ -674,6 +755,7 @@ export default function RepertuarPage() {
             events={visibleEvents}
             accentColor={accent}
             prodMap={prodMap}
+            propConflicts={propConflicts}
           />
         </div>
       )}
