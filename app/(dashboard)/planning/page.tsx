@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import {
   detectProposalConflicts,
   conflictedTitles,
@@ -113,6 +114,11 @@ export default function PlanningPage() {
   const [artistNamesMap,    setArtistNamesMap]     = useState<Map<string, string>>(new Map())
   const [favouriteSet,      setFavouriteSet]       = useState<Set<string>>(new Set())
 
+  const [conflictModal, setConflictModal] = useState<{
+    artistId: string; artistName: string; conflictDate: string;
+    conflictStart?: string; conflictEnd?: string; productions: string[]
+  } | null>(null)
+
   // Set default selected month once approved list is known
   useEffect(() => {
     if (!monthsReady) return
@@ -185,6 +191,18 @@ export default function PlanningPage() {
 
   return (
     <div className="space-y-6">
+      {/* Conflict resolution modal */}
+      {conflictModal && (
+        <ConflictResolutionModal
+          artistId={conflictModal.artistId}
+          artistName={conflictModal.artistName}
+          conflictDate={conflictModal.conflictDate}
+          conflictStart={conflictModal.conflictStart}
+          conflictEnd={conflictModal.conflictEnd}
+          productions={conflictModal.productions}
+          onClose={() => setConflictModal(null)}
+        />
+      )}
 
       {/* ── Header ── */}
       <div className="flex items-start justify-between gap-4 px-8 py-5 -mx-8 -mt-8 mb-2"
@@ -298,6 +316,7 @@ export default function PlanningPage() {
               productionCastMap={productionCastMap}
               artistNamesMap={artistNamesMap}
               favouriteSet={favouriteSet}
+              onConflictClick={setConflictModal}
             />
           ))}
         </div>
@@ -326,7 +345,7 @@ function EmptyState() {
 
 function ProposalCard({
   proposal, expanded, onToggle, onApprove, onReject, actionLoading,
-  productionCastMap, artistNamesMap, favouriteSet,
+  productionCastMap, artistNamesMap, favouriteSet, onConflictClick,
 }: {
   proposal: Proposal
   expanded: boolean
@@ -337,6 +356,10 @@ function ProposalCard({
   productionCastMap: Map<string, string[]>
   artistNamesMap:    Map<string, string>
   favouriteSet:      Set<string>
+  onConflictClick: (params: {
+    artistId: string; artistName: string; conflictDate: string;
+    conflictStart?: string; conflictEnd?: string; productions: string[]
+  }) => void
 }) {
   const cfg    = STATUS_CFG[proposal.status] ?? STATUS_CFG.draft
   const events = [...(proposal.proposal_data ?? [])].sort((a, b) => a.date.localeCompare(b.date))
@@ -436,10 +459,32 @@ function ProposalCard({
                     {e.production_title}
                   </span>
                   {partnerConflict && (
-                    <span className="text-[10px] shrink-0 font-medium" style={{ color: '#c8102e' }}
-                          title={`Konflikt z: ${partnerConflict.productions.find(p => p.title !== e.production_title)?.title}`}>
-                      {partnerConflict.artistNames.slice(0,2).join(', ')}
-                      {partnerConflict.artistNames.length > 2 ? ` +${partnerConflict.artistNames.length-2}` : ''}
+                    <span className="text-[10px] shrink-0 font-medium flex items-center gap-0.5 flex-wrap" style={{ color: '#c8102e' }}>
+                      {partnerConflict.artistNames.slice(0, 2).map((name, ni) => {
+                        const id = partnerConflict.artistIds[ni]
+                        return (
+                          <button
+                            key={ni}
+                            type="button"
+                            onClick={() => id && onConflictClick({
+                              artistId: id,
+                              artistName: name,
+                              conflictDate: partnerConflict.date,
+                              conflictStart: partnerConflict.productions[0]?.start_time,
+                              conflictEnd:   e.end_time?.slice(0,5),
+                              productions:   partnerConflict.productions.map(p => p.title),
+                            })}
+                            className={`underline underline-offset-2 ${id ? 'hover:opacity-70 cursor-pointer' : 'cursor-default'}`}
+                            title={`Konflikt: ${name} — kliknij aby rozwiązać`}
+                          >
+                            {ni > 0 && <span style={{ textDecoration: 'none' }}>, </span>}
+                            {name.split(' ').pop()}
+                          </button>
+                        )
+                      })}
+                      {partnerConflict.artistNames.length > 2 && (
+                        <span style={{ textDecoration: 'none' }}> +{partnerConflict.artistNames.length - 2}</span>
+                      )}
                     </span>
                   )}
                   {e.room_name && !partnerConflict && (

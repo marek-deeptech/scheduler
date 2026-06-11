@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useTheatre } from '@/lib/theatre-context'
 import { supabase } from '@/lib/supabase'
+import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import {
   detectProposalConflicts,
   conflictedTitles,
@@ -224,12 +225,16 @@ function CastPopup({ popup, onClose }: { popup: PopupState; onClose: () => void 
 
 // ── Vertical month table ───────────────────────────────────────────────────────
 
-function MonthTable({ month, events, accentColor, prodMap, propConflicts }: {
+function MonthTable({ month, events, accentColor, prodMap, propConflicts, onConflictClick }: {
   month:         string
   events:        TaggedEvent[]
   accentColor:   string
   prodMap:       Map<string, ProdInfo>
   propConflicts: ProposalConflict[]
+  onConflictClick: (params: {
+    artistId: string; artistName: string; conflictDate: string;
+    conflictStart?: string; conflictEnd?: string; productions: string[]
+  }) => void
 }) {
   const [y, m] = month.split('-').map(Number)
   const daysInMonth = new Date(y, m, 0).getDate()
@@ -408,13 +413,45 @@ function MonthTable({ month, events, accentColor, prodMap, propConflicts }: {
                                     c.productions.some(p => p.title === e.production_title)
                                   )
                                   if (titleConflicts.length === 0) return null
-                                  const names = [...new Set(titleConflicts.flatMap(c => c.artistNames))]
+                                  // Build unique artist id+name pairs
+                                  const artistMap = new Map<string, string>()
+                                  for (const c of titleConflicts) {
+                                    c.artistIds.forEach((id, i) => {
+                                      if (!artistMap.has(id)) artistMap.set(id, c.artistNames[i] ?? id)
+                                    })
+                                  }
                                   return (
                                     <span
-                                      className="shrink-0 mt-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md leading-snug"
+                                      className="shrink-0 mt-0.5 flex items-center flex-wrap gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md leading-snug"
                                       style={{ background: '#fff0f0', color: '#c8102e', border: '1px solid #fecaca' }}
                                     >
-                                      ⚠ {names.join(', ')}
+                                      ⚠{' '}
+                                      {[...artistMap.entries()].map(([id, name], ni) => {
+                                        const conflict = titleConflicts.find(c => c.artistIds.includes(id))
+                                        const productions = conflict?.productions.map(p => p.title) ?? []
+                                        const conflictDate = conflict?.date ?? e.date
+                                        const conflictStart = conflict?.productions[0]?.start_time
+                                        const conflictEnd = e.end_time?.slice(0, 5)
+                                        return (
+                                          <button
+                                            key={id}
+                                            type="button"
+                                            onClick={() => onConflictClick({
+                                              artistId: id,
+                                              artistName: name,
+                                              conflictDate,
+                                              conflictStart,
+                                              conflictEnd,
+                                              productions,
+                                            })}
+                                            className="underline underline-offset-2 hover:opacity-70 transition-opacity cursor-pointer"
+                                            style={{ color: '#c8102e' }}
+                                          >
+                                            {ni > 0 && <span style={{ color: '#fca5a5', textDecoration: 'none', marginRight: '2px' }}>, </span>}
+                                            {name}
+                                          </button>
+                                        )
+                                      })}
                                     </span>
                                   )
                                 })()}
@@ -470,6 +507,16 @@ export default function RepertuarPage() {
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState<string | null>(null)
   const [activeMonth, setActiveMonth] = useState<string | null>(null)
+
+  // Conflict resolution modal
+  const [conflictModal, setConflictModal] = useState<{
+    artistId:    string
+    artistName:  string
+    conflictDate: string
+    conflictStart?: string
+    conflictEnd?:   string
+    productions: string[]
+  } | null>(null)
 
   // Resolve selected theatre name from id
   const selectedTheatre = theatres.find(t => t.id === selectedTheatreId) ?? null
@@ -592,6 +639,18 @@ export default function RepertuarPage() {
 
   return (
     <div>
+      {/* Conflict resolution modal */}
+      {conflictModal && (
+        <ConflictResolutionModal
+          artistId={conflictModal.artistId}
+          artistName={conflictModal.artistName}
+          conflictDate={conflictModal.conflictDate}
+          conflictStart={conflictModal.conflictStart}
+          conflictEnd={conflictModal.conflictEnd}
+          productions={conflictModal.productions}
+          onClose={() => setConflictModal(null)}
+        />
+      )}
 
       {/* ── Page header ── */}
       <div
@@ -759,6 +818,7 @@ export default function RepertuarPage() {
             accentColor={accent}
             prodMap={prodMap}
             propConflicts={propConflicts}
+            onConflictClick={setConflictModal}
           />
         </div>
       )}

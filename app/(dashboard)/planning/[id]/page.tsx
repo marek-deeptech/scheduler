@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
+import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import { supabase } from '@/lib/supabase'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -40,7 +41,9 @@ interface ProdOption {
 interface AvailData {
   theatreByProdId:     Record<string, string>
   theatreNameByProdId: Record<string, string>
-  castByProdId:        Record<string, string[]>
+  castByProdId:        Record<string, string[]>     // production_id → artist names
+  castIdsByProdId:     Record<string, string[]>     // production_id → artist ids
+  artistIdByName:      Record<string, string>       // artist name → artist id
   blockedByDate:       Record<string, Set<string>>
   prodsByTheatreId:    Record<string, ProdOption[]>
 }
@@ -150,6 +153,14 @@ export default function ProposalDetailPage() {
   const [error,        setError]        = useState<string | null>(null)
   const [openDropdown, setOpenDropdown] = useState<string | null>(null) // "date||prodId"
   const [favouriteSet, setFavouriteSet] = useState<Set<string>>(new Set())
+  const [conflictModal, setConflictModal] = useState<{
+    artistId:    string
+    artistName:  string
+    conflictDate: string
+    conflictStart?: string
+    conflictEnd?:   string
+    productions: string[]
+  } | null>(null)
 
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -201,10 +212,16 @@ export default function ProposalDetailPage() {
         const theatreNames: Record<string, string> = {}
         for (const t of (theatres ?? []) as any[]) theatreNames[t.id] = t.name
 
-        const castByProdId: Record<string, string[]> = {}
+        const castByProdId: Record<string, string[]>   = {}
+        const castIdsByProdId: Record<string, string[]> = {}
+        const artistIdByName: Record<string, string>    = {}
         for (const ap of (artistProds ?? []) as any[]) {
           const artist = ((artists ?? []) as any[]).find((a: any) => a.id === ap.artist_id)
-          if (artist) { castByProdId[ap.production_id] ??= []; castByProdId[ap.production_id].push(artist.name) }
+          if (artist) {
+            castByProdId[ap.production_id]   ??= []; castByProdId[ap.production_id].push(artist.name)
+            castIdsByProdId[ap.production_id] ??= []; castIdsByProdId[ap.production_id].push(artist.id)
+            artistIdByName[artist.name] = artist.id
+          }
         }
 
         const theatreByProdId: Record<string, string>     = {}
@@ -230,7 +247,7 @@ export default function ProposalDetailPage() {
           }
         }
 
-        setAvailData({ theatreByProdId, theatreNameByProdId, castByProdId, blockedByDate, prodsByTheatreId })
+        setAvailData({ theatreByProdId, theatreNameByProdId, castByProdId, castIdsByProdId, artistIdByName, blockedByDate, prodsByTheatreId })
 
         const favs = new Set<string>()
         for (const pr of (prods ?? []) as any[]) {
@@ -335,6 +352,18 @@ export default function ProposalDetailPage() {
 
   return (
     <div className="space-y-5" ref={dropdownRef}>
+      {/* Conflict resolution modal */}
+      {conflictModal && (
+        <ConflictResolutionModal
+          artistId={conflictModal.artistId}
+          artistName={conflictModal.artistName}
+          conflictDate={conflictModal.conflictDate}
+          conflictStart={conflictModal.conflictStart}
+          conflictEnd={conflictModal.conflictEnd}
+          productions={conflictModal.productions}
+          onClose={() => setConflictModal(null)}
+        />
+      )}
 
       {/* Back + header */}
       <div>
@@ -465,21 +494,49 @@ export default function ProposalDetailPage() {
                                 )}
                                 {show.production_title}
                               </span>
-                              {/* Conflict icon */}
-                              {hasConflict && (
-                                <span
-                                  title={`Konflikt obsady: ${conflictActors.join(', ')}`}
-                                  className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 bg-red-50 border border-red-200 rounded text-[10px] font-semibold text-red-600 cursor-help"
-                                >
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" strokeLinecap="round" strokeLinejoin="round"/>
-                                    <path d="M12 9v4M12 17h.01" strokeLinecap="round"/>
-                                  </svg>
-                                  {conflictActors.length === 1
-                                    ? conflictActors[0].split(' ').pop()   // last name only
-                                    : `${conflictActors.length} aktorów`}
-                                </span>
-                              )}
+                              {/* Conflict icon — clickable per-actor */}
+                              {hasConflict && (() => {
+                                // Find conflicting sibling productions on same date
+                                const siblingTitles = (eventsByDate.get(date) ?? [])
+                                  .filter(s => s !== show)
+                                  .filter(s => {
+                                    const castA = new Set(availData?.castByProdId[show.production_id ?? ''] ?? [])
+                                    const castB = availData?.castByProdId[s.production_id ?? ''] ?? []
+                                    return castB.some(n => castA.has(n))
+                                  })
+                                  .map(s => s.production_title)
+                                const allProds = [show.production_title, ...siblingTitles]
+                                return (
+                                  <span className="shrink-0 flex items-center flex-wrap gap-0.5 px-1.5 py-0.5 bg-red-50 border border-red-200 rounded text-[10px] font-semibold text-red-600">
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0">
+                                      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" strokeLinecap="round" strokeLinejoin="round"/>
+                                      <path d="M12 9v4M12 17h.01" strokeLinecap="round"/>
+                                    </svg>
+                                    {conflictActors.map((name, ci) => {
+                                      const artistId = availData?.artistIdByName[name]
+                                      return (
+                                        <button
+                                          key={ci}
+                                          type="button"
+                                          onClick={() => artistId && setConflictModal({
+                                            artistId,
+                                            artistName: name,
+                                            conflictDate: date,
+                                            conflictStart: show.start_time?.slice(0,5),
+                                            conflictEnd:   show.end_time?.slice(0,5),
+                                            productions:   allProds,
+                                          })}
+                                          className={`underline underline-offset-2 transition-opacity ${artistId ? 'hover:opacity-70 cursor-pointer' : 'cursor-default'}`}
+                                          title={`Konflikt obsady: ${name} — kliknij aby rozwiązać`}
+                                        >
+                                          {ci > 0 && <span style={{ textDecoration: 'none' }}>, </span>}
+                                          {name.split(' ').pop()}
+                                        </button>
+                                      )
+                                    })}
+                                  </span>
+                                )
+                              })()}
                               <span className="text-[11px] text-gray-400 font-mono shrink-0">
                                 {show.start_time?.slice(0,5)}–{show.end_time?.slice(0,5)}
                               </span>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import ArtistModal from '@/components/ArtistModal'
 import { IconMail, IconPhone, IconTheatre, IconSun, IconHeart } from '@/lib/icons'
@@ -1049,6 +1049,20 @@ export default function ArtistsPage() {
   const [modal,        setModal]        = useState<ArtistRow | null | undefined>(undefined)
   const [search,       setSearch]       = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+
+  // Auto-select artist from URL param (?select=<id>) and optionally open edit modal (?edit=1)
+  const searchParams = useSearchParams()
+  const selectParam  = searchParams.get('select')
+  const editParam    = searchParams.get('edit')
+
+  useEffect(() => {
+    if (!selectParam || artists.length === 0) return
+    const target = artists.find(a => a.id === selectParam)
+    if (!target) return
+    selectArtist(target.id)
+    if (editParam === '1') setModal(target)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectParam, editParam, artists])
 
   useEffect(() => { fetchArtists() }, [])
 
