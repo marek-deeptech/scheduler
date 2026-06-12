@@ -91,8 +91,14 @@ function conflictDetails(
 ): ConflictDetail[] {
   const out: ConflictDetail[] = []
   const seen = new Set<string>()
-  const mine   = allEvs.filter(e => e._prodId === prodId)
-  const myCast = castByProd.get(prodId) ?? new Set<string>()
+  const mine = allEvs.filter(e => e._prodId === prodId)
+
+  // Effective cast of an event: explicit event_artists override the
+  // production cast (this is how substitutions are recorded)
+  const evCast = (e: any): Set<string> => {
+    const ids = (e.event_artists ?? []).map((ea: any) => ea.artist_id)
+    return ids.length > 0 ? new Set<string>(ids) : (castByProd.get(e._prodId) ?? new Set<string>())
+  }
 
   const push = (artistId: string | null, a: any, b: any, key: string) => {
     if (seen.has(key)) return
@@ -117,9 +123,10 @@ function conflictDetails(
 
       if (b._prodId !== prodId) {
         // Cross-production: shared cast members double-booked
-        const otherCast = castByProd.get(b._prodId) ?? new Set<string>()
-        for (const id of myCast) {
-          if (otherCast.has(id)) push(id, a, b, `${id}|${date}`)
+        const castA = evCast(a)
+        const castB = evCast(b)
+        for (const id of castA) {
+          if (castB.has(id)) push(id, a, b, `${id}|${date}`)
         }
       } else {
         // Within production: explicit artist assignment or room clash

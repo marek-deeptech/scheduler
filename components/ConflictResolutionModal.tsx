@@ -75,6 +75,57 @@ export default function ConflictResolutionModal({
   const [substitutes, setSubstitutes] = useState<SubstituteInfo[]>([])
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState<string | null>(null)
+  // Substitution flow: picked substitute → production choice → saved
+  const [chooseProdFor, setChooseProdFor] = useState<SubstituteInfo | null>(null)
+  const [applying,      setApplying]      = useState(false)
+  const [done,          setDone]          = useState<string | null>(null)
+
+  async function applySubstitution(sub: SubstituteInfo, prodTitle: string) {
+    setApplying(true)
+    setError(null)
+    try {
+      // Find the conflicting event of the chosen production on that date
+      const { data: prods, error: pErr } = await supabase
+        .from('productions').select('id').eq('title', prodTitle).limit(1)
+      if (pErr) throw pErr
+      const pid = prods?.[0]?.id
+      if (!pid) throw new Error(`Nie znaleziono tytułu „${prodTitle}"`)
+
+      const { data: evs, error: eErr } = await supabase
+        .from('events')
+        .select('id, start_time, end_time')
+        .eq('production_id', pid)
+        .gte('start_time', `${conflictDate}T00:00:00`)
+        .lte('start_time', `${conflictDate}T23:59:59`)
+      if (eErr) throw eErr
+
+      let targets = evs ?? []
+      if (conflictStart && targets.length > 1) {
+        targets = targets.filter(e =>
+          timesOverlap(
+            String(e.start_time).slice(11, 16), String(e.end_time).slice(11, 16),
+            conflictStart, conflictEnd ?? '23:59',
+          )
+        )
+      }
+      if (targets.length === 0) throw new Error('Brak wydarzenia tego dnia dla wybranego tytułu')
+
+      // Swap in the event cast: remove the conflicted actor, add the substitute
+      for (const ev of targets) {
+        await supabase.from('event_artists').delete().eq('event_id', ev.id).eq('artist_id', artistId)
+        await supabase.from('event_artists').delete().eq('event_id', ev.id).eq('artist_id', sub.id)
+        const { error: insErr } = await supabase.from('event_artists').insert({ event_id: ev.id, artist_id: sub.id })
+        if (insErr) throw insErr
+      }
+
+      setDone(`${sub.name} zastąpi: ${artistName} w „${prodTitle}" — ${dayLabel(conflictDate)}, ${fmtDate(conflictDate)}`)
+    } catch (e: any) {
+      setError(e?.message ?? 'Błąd zapisu zastępstwa')
+    } finally {
+      setApplying(false)
+      setChooseProdFor(null)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -297,12 +348,61 @@ export default function ConflictResolutionModal({
             </div>
           )}
 
-          {!loading && !error && substitutes.length > 0 && (
+          {/* Success view */}
+          {done && (
+            <div className="py-4 text-center">
+              <div className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center"
+                   style={{ background: '#f0fdf4', border: '1px solid #86efac' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#15803d" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              </div>
+              <p className="text-sm font-semibold" style={{ color: '#15803d' }}>Zastępstwo zapisane</p>
+              <p className="text-xs mt-1 px-4" style={{ color: '#7a7068' }}>{done}</p>
+            </div>
+          )}
+
+          {/* Step 2: choose which production the substitute plays in */}
+          {!done && chooseProdFor && (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-medium" style={{ color: '#1a1410' }}>
+                W którym tytule zagra <b>{chooseProdFor.name}</b>?
+              </p>
+              {productions.map((p, i) => (
+                <button
+                  key={i}
+                  disabled={applying}
+                  onClick={() => applySubstitution(chooseProdFor, p)}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-colors hover:bg-red-50 disabled:opacity-50"
+                  style={{ background: '#fff5f5', color: '#7a2020', border: '1px solid #fecaca' }}
+                >
+                  <span className="text-xs" style={{ color: '#fca5a5' }}>#{i + 1}</span>
+                  {p}
+                  <span className="ml-auto text-[11px] font-semibold" style={{ color: '#c8102e' }}>
+                    {applying ? 'Zapisuję…' : 'Wybierz →'}
+                  </span>
+                </button>
+              ))}
+              <button
+                disabled={applying}
+                onClick={() => setChooseProdFor(null)}
+                className="text-xs py-1.5 transition-colors hover:text-gray-700"
+                style={{ color: '#a89e92' }}
+              >
+                ← Wróć do listy zastępców
+              </button>
+            </div>
+          )}
+
+          {!done && !chooseProdFor && !loading && !error && substitutes.length > 0 && (
             <div className="flex flex-col gap-1.5 max-h-60 overflow-y-auto">
-              {substitutes.map(sub => (
+              {substitutes.map(sub => {
+                const selectable = sub.available === 'available' || sub.available === 'unknown'
+                return (
                 <div
                   key={sub.id}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+                  onClick={() => { if (selectable) setChooseProdFor(sub) }}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl ${selectable ? 'cursor-pointer hover:shadow-sm' : ''}`}
                   style={{
                     background: sub.available === 'available'
                       ? '#f0fdf4'
@@ -336,37 +436,59 @@ export default function ConflictResolutionModal({
                       {sub.available === 'unknown'   && 'Nieznana dostępność'}
                     </span>
                   </div>
+                  {/* Select substitute */}
+                  {selectable && (
+                    <button
+                      onClick={e => { e.stopPropagation(); setChooseProdFor(sub) }}
+                      className="shrink-0 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors"
+                      style={{ background: '#c8102e', color: '#fff' }}
+                    >
+                      Wybierz
+                    </button>
+                  )}
                   {/* Quick link to artist profile */}
                   <button
-                    onClick={() => { router.push(`/artists?select=${sub.id}`); onClose() }}
-                    className="shrink-0 text-[10px] font-semibold px-2 py-1 rounded-lg transition-colors hover:bg-white"
+                    onClick={e => { e.stopPropagation(); router.push(`/artists?select=${sub.id}`); onClose() }}
+                    className="shrink-0 text-[10px] font-semibold px-2 py-1.5 rounded-lg transition-colors hover:bg-white"
                     style={{ color: '#7a7068', border: '1px solid #e4ddd4' }}
                     title="Otwórz profil zastępcy"
                   >
                     Profil →
                   </button>
                 </div>
-              ))}
+              )})}
             </div>
           )}
         </div>
 
         {/* Footer actions */}
         <div className="px-5 py-3 flex items-center gap-2" style={{ borderTop: '1px solid #f2ede6', background: '#faf8f5' }}>
-          <button
-            onClick={() => { router.push(`/artists?select=${artistId}&edit=1`); onClose() }}
-            className="flex-1 py-2 rounded-xl text-sm font-semibold transition-colors"
-            style={{ background: '#c8102e', color: '#fff' }}
-          >
-            Zarządzaj zastępcami
-          </button>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-sm font-medium transition-colors hover:bg-gray-100"
-            style={{ color: '#7a7068', border: '1px solid #e4ddd4' }}
-          >
-            Zamknij
-          </button>
+          {done ? (
+            <button
+              onClick={onClose}
+              className="flex-1 py-2 rounded-xl text-sm font-semibold transition-colors"
+              style={{ background: '#15803d', color: '#fff' }}
+            >
+              ✓ Gotowe
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => { router.push(`/artists?select=${artistId}&edit=1`); onClose() }}
+                className="flex-1 py-2 rounded-xl text-sm font-semibold transition-colors"
+                style={{ background: '#c8102e', color: '#fff' }}
+              >
+                Zarządzaj zastępcami
+              </button>
+              <button
+                onClick={onClose}
+                className="px-4 py-2 rounded-xl text-sm font-medium transition-colors hover:bg-gray-100"
+                style={{ color: '#7a7068', border: '1px solid #e4ddd4' }}
+              >
+                Zamknij
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
