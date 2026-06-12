@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Playfair_Display, DM_Sans } from 'next/font/google'
 import './globals.css'
 
@@ -19,6 +19,14 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   title: 'Teatr Polonia — Harmonogram',
   description: 'System zarządzania repertuarem Teatru Polonia',
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  // viewportFit cover → env(safe-area-inset-*) works on iOS notch devices
+  viewportFit: 'cover',
+  themeColor: '#faf6f0',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

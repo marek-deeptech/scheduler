@@ -1253,13 +1253,13 @@ export default function ArtistsPage() {
         />
       )}
 
-      <div className="flex gap-0 -m-8 h-[calc(100vh-0px)] overflow-hidden">
+      <div className="flex gap-0 -m-4 md:-m-8 md:h-screen md:overflow-hidden">
 
         {/* ── Left: list ──────────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 md:overflow-hidden">
 
           {/* Toolbar */}
-          <div className="flex items-center justify-between px-8 py-5 shrink-0"
+          <div className="flex items-center justify-between gap-3 px-4 md:px-8 py-4 md:py-5 shrink-0"
             style={{ borderBottom: '1px solid #e4ddd4', background: '#fff' }}>
             <div>
               <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>
@@ -1279,7 +1279,7 @@ export default function ArtistsPage() {
           </div>
 
           {/* Search + filter */}
-          <div className="px-8 py-3 shrink-0 flex items-center gap-3 flex-wrap"
+          <div className="px-4 md:px-8 py-3 shrink-0 flex items-center gap-3 flex-wrap"
             style={{ borderBottom: '1px solid #e4ddd4', background: '#faf8f5' }}>
             <input
               value={search}
@@ -1314,7 +1314,7 @@ export default function ArtistsPage() {
           </div>
 
           {/* List */}
-          <div className="flex-1 overflow-y-auto px-8 py-4" style={{ background: '#f2ede6' }}>
+          <div className="flex-1 md:overflow-y-auto px-4 md:px-8 py-4" style={{ background: '#f2ede6' }}>
             {loading ? (
               <div className="flex items-center justify-center h-40 text-sm" style={{ color: '#a89e92' }}>{ta.loading}</div>
             ) : filtered.length === 0 ? (
@@ -1334,7 +1334,12 @@ export default function ArtistsPage() {
         </div>
 
         {/* ── Right: profile panel ─────────────────────────────────── */}
-        <div className={`shrink-0 transition-all duration-200 overflow-hidden ${selectedArtist ? 'w-80' : 'w-0'}`}
+        <div
+          className={
+            selectedArtist
+              ? 'fixed inset-0 z-[60] overflow-y-auto bg-white md:static md:inset-auto md:z-auto md:w-80 md:shrink-0 md:overflow-hidden md:bg-transparent md:transition-all md:duration-200'
+              : 'hidden md:block md:w-0 md:shrink-0 md:overflow-hidden md:transition-all md:duration-200'
+          }
           style={{ borderLeft: '1px solid #e4ddd4' }}>
           {selectedArtist && (
             <ProfilePanel

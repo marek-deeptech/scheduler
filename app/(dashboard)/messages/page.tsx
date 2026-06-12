@@ -66,8 +66,9 @@ function statusClasses(status: string | null) {
 
 /* ── PersonRow ─────────────────────────────────────────────────── */
 /* Shared grid template — must match the header row exactly */
-const ROW = 'grid items-center gap-x-4 px-5 py-3'
-             + ' grid-cols-[16px_32px_minmax(0,1fr)_96px_128px_minmax(0,160px)_80px]'
+const ROW = 'grid items-center gap-x-3 md:gap-x-4 px-4 md:px-5 py-3'
+             + ' grid-cols-[16px_32px_minmax(0,1fr)_auto]'
+             + ' md:grid-cols-[16px_32px_minmax(0,1fr)_96px_128px_minmax(0,160px)_80px]'
 
 function PersonRow({
   person,
@@ -93,30 +94,33 @@ function PersonRow({
       />
       {/* avatar */}
       <PersonAvatar name={person.name} url={person.avatar_url} />
-      {/* name + role */}
+      {/* name + role (mobile shows status badge inline) */}
       <div className="min-w-0">
         <p className="text-sm font-semibold text-gray-900 truncate">{person.name}</p>
         <p className="text-xs text-gray-500 truncate">{person.role ?? '—'}</p>
+        <span className={`md:hidden inline-block mt-1 text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${statusClasses(person.status)}`}>
+          {person.status ?? '—'}
+        </span>
       </div>
       {/* team */}
-      <div>
+      <div className="hidden md:block">
         <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 whitespace-nowrap">
           {person.team}
         </span>
       </div>
       {/* status */}
-      <div>
+      <div className="hidden md:block">
         <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${statusClasses(person.status)}`}>
           {person.status ?? '—'}
         </span>
       </div>
       {/* contact */}
-      <div className="min-w-0">
+      <div className="hidden md:block min-w-0">
         {person.email && <p className="text-xs text-gray-500 truncate">{person.email}</p>}
         {person.phone && <p className="text-xs text-gray-500 truncate">{person.phone}</p>}
       </div>
-      {/* actions */}
-      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* actions — always visible on touch, hover-reveal on desktop */}
+      <div className="flex items-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
         {person.email && (
           <button
             onClick={onEmail}
@@ -182,7 +186,7 @@ function ComposeModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90dvh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900">
@@ -457,7 +461,7 @@ export default function MessagesPage() {
   return (
     <div className="pb-24">
       {/* Page header */}
-      <div className="flex items-center justify-between px-8 py-5 -mx-8 -mt-8 mb-6" style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
+      <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-4 -mx-4 -mt-4 md:px-8 md:py-5 md:-mx-8 md:-mt-8 mb-6" style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
         <div>
           <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>{tm.title}</h1>
           <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>{tm.subtitle(people.length)}</p>
@@ -593,9 +597,9 @@ export default function MessagesPage() {
                 ? <>{tm.nSelected(selected.size)} <button onClick={() => setSelected(new Set())} className="underline decoration-dotted hover:text-gray-700 ml-1">{tm.clearSelection}</button></>
                 : `${filtered.length}`}
             </span>
-            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colTeam}</span>
-            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colStatus}</span>
-            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colContact}</span>
+            <span className="hidden md:block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colTeam}</span>
+            <span className="hidden md:block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colStatus}</span>
+            <span className="hidden md:block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colContact}</span>
             <div />
           </div>
 
@@ -623,7 +627,10 @@ export default function MessagesPage() {
 
       {/* Sticky bottom bar */}
       {selected.size > 0 && (
-        <div className="fixed bottom-0 left-56 right-0 z-40 bg-white border-t border-gray-200 px-8 py-4 flex items-center gap-4 shadow-lg">
+        <div
+          className="fixed bottom-0 left-0 md:left-56 right-0 z-40 bg-white border-t border-gray-200 px-4 md:px-8 py-3 md:py-4 flex items-center gap-3 md:gap-4 flex-wrap shadow-lg"
+          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+        >
           <span className="text-sm font-semibold text-gray-900">
             {tm.selectedCount(selected.size)}
           </span>

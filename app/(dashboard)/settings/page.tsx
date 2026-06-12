@@ -455,15 +455,15 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="-m-8 flex flex-col min-h-full">
+    <div className="-m-4 md:-m-8 flex flex-col min-h-full">
       {/* Full-width header */}
-      <div className="flex items-start gap-4 px-8 py-5 shrink-0" style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
+      <div className="flex items-start gap-4 px-4 md:px-8 py-4 md:py-5 shrink-0" style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
         <div>
           <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>Ustawienia</h1>
           <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>Zarządzaj teatrami, salami i zespołami</p>
         </div>
       </div>
-    <div className="max-w-2xl mx-auto w-full space-y-6 px-8 py-6">
+    <div className="max-w-2xl mx-auto w-full space-y-6 px-4 md:px-8 py-4 md:py-6">
 
       {/* ── Tab navigation ─────────────────────────────────────────────────── */}
       <div className="flex gap-2">

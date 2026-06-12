@@ -171,10 +171,10 @@ export default function AssistantPage() {
   }
 
   return (
-    <div className="flex flex-col h-full -m-8">
+    <div className="flex flex-col h-full -m-4 md:-m-8">
 
       {/* Header */}
-      <div className="px-8 py-5 bg-white shrink-0" style={{ borderBottom: '1px solid #e4ddd4' }}>
+      <div className="px-4 md:px-8 py-4 md:py-5 bg-white shrink-0" style={{ borderBottom: '1px solid #e4ddd4' }}>
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: '#1a1410' }}>
@@ -211,7 +211,7 @@ export default function AssistantPage() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 md:px-8 py-4 md:py-6 space-y-4">
         {loading ? (
           <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Ładowanie historii…</div>
         ) : messages.length === 0 ? (
@@ -252,7 +252,7 @@ export default function AssistantPage() {
                   </div>
                 )}
                 <div
-                  className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                  className={`max-w-[88%] md:max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                     msg.role === 'user' ? 'rounded-br-sm' : 'rounded-bl-sm shadow-sm border'
                   }`}
                   style={msg.role === 'user'
@@ -280,7 +280,7 @@ export default function AssistantPage() {
       </div>
 
       {/* Input */}
-      <div className="px-8 py-4 shrink-0" style={{ borderTop: '1px solid #e4ddd4' }}>
+      <div className="px-4 md:px-8 py-3 md:py-4 shrink-0" style={{ borderTop: '1px solid #e4ddd4' }}>
         {messages.length > 0 && !streaming && (
           <div className="flex gap-2 mb-3 flex-wrap">
             {SUGGESTIONS.slice(0, 3).map(s => (

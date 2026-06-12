@@ -411,8 +411,8 @@ export default function ProposalDetailPage() {
 
       {/* Approve bar */}
       {isDraft && (
-        <div className="no-print flex items-center gap-3 bg-white rounded-2xl px-5 py-3" style={{ border: '1px solid #e4ddd4' }}>
-          <p className="flex-1 text-sm text-gray-500">Ta propozycja czeka na zatwierdzenie. Możesz edytować spektakle przed zatwierdzeniem.</p>
+        <div className="no-print flex items-center gap-3 flex-wrap bg-white rounded-2xl px-4 md:px-5 py-3" style={{ border: '1px solid #e4ddd4' }}>
+          <p className="flex-1 min-w-[200px] text-sm text-gray-500">Ta propozycja czeka na zatwierdzenie. Możesz edytować spektakle przed zatwierdzeniem.</p>
           <button
             onClick={() => window.print()}
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
@@ -439,8 +439,8 @@ export default function ProposalDetailPage() {
         </div>
       )}
       {proposal.status === 'approved' && (
-        <div className="no-print flex items-center gap-3 bg-green-50 border border-green-200 rounded-2xl px-5 py-3">
-          <p className="flex-1 text-sm text-green-800 font-medium">
+        <div className="no-print flex items-center gap-3 flex-wrap bg-green-50 border border-green-200 rounded-2xl px-4 md:px-5 py-3">
+          <p className="flex-1 min-w-[200px] text-sm text-green-800 font-medium">
             ✓ Zatwierdzono{proposal.approved_at ? ` ${new Date(proposal.approved_at).toLocaleDateString('pl-PL', { day:'numeric', month:'long', year:'numeric' })}` : ''} — spektakle dodane do kalendarza
           </p>
           <button
@@ -515,7 +515,7 @@ export default function ProposalDetailPage() {
                       return (
                         <div key={i}>
                           {/* Show row — info grows, right column fixed */}
-                          <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0 flex-wrap md:flex-nowrap">
 
                             {/* Info section (grows) */}
                             <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-wrap">
@@ -587,7 +587,7 @@ export default function ProposalDetailPage() {
                             </div>
 
                             {/* Right column — day name + buttons, always same width */}
-                            <div className="flex items-center gap-1.5 shrink-0 w-[200px] justify-end">
+                            <div className="flex items-center gap-1.5 shrink-0 w-auto md:w-[200px] justify-end ml-auto">
                               {isWeekend && (
                                 <span className="text-[11px] font-medium text-gray-400 mr-1">{DOW_FULL[dow]}</span>
                               )}

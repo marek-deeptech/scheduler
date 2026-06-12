@@ -408,7 +408,7 @@ export default function ReportsPage() {
     <div className="max-w-6xl mx-auto space-y-6 pb-10">
 
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 px-8 py-5 -mx-8 -mt-8 mb-2" style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
+      <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-4 -mx-4 -mt-4 md:px-8 md:py-5 md:-mx-8 md:-mt-8 mb-2" style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
         <div>
           <h2 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>{tr.pageTitle}</h2>
           <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>{theatreName} · {tr.generated} {generatedStr}</p>
@@ -437,7 +437,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4">
         {loading
           ? [...Array(5)].map((_, i) => <div key={i} className="bg-white border border-gray-200 rounded-2xl p-5 h-28 animate-pulse" />)
           : statCards.map(s => {
@@ -460,7 +460,8 @@ export default function ReportsPage() {
             <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>{tr.productionsSection}</h3>
             <p className="text-xs text-gray-500 mt-0.5">{tr.productionsCount(productionTable.length, !!selectedTheatreId)}</p>
           </div>
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#b8b0a4' }}>{tr.colProduction}</th>
@@ -508,11 +509,12 @@ export default function ReportsPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
       {/* Charts row 1: workload + status */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4">
 
         {/* Artist workload */}
         <div className="col-span-3 bg-white border border-gray-200 rounded-2xl p-6">
@@ -568,7 +570,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Charts row 2: per-production + room util */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* Rehearsals per production */}
         <div className="bg-white border border-gray-200 rounded-2xl p-6">
@@ -629,7 +631,8 @@ export default function ReportsPage() {
             </div>
             <span className="text-xs text-gray-500">{tr.workloadCount(artistTable.length)}</span>
           </div>
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[560px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-8">{tr.colRank}</th>
@@ -701,6 +704,7 @@ export default function ReportsPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
         )
       })()}

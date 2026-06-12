@@ -531,11 +531,11 @@ export default function EventsPage() {
   function goToday()   { setCalMonth(new Date()); setSelectedDay(todayStr) }
 
   return (
-    <div className="-m-8 flex flex-col min-h-full">
+    <div className="-m-4 md:-m-8 flex flex-col min-h-full">
 
       {/* Header */}
-      <div className="px-8 py-5 bg-white shrink-0" style={{ borderBottom: '1px solid #e4ddd4' }}>
-        <div className="flex items-center justify-between gap-4">
+      <div className="px-4 md:px-8 py-4 md:py-5 bg-white shrink-0" style={{ borderBottom: '1px solid #e4ddd4' }}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>
               Wydarzenia
@@ -592,7 +592,7 @@ export default function EventsPage() {
           <div className="flex items-center justify-center h-40 text-sm" style={{ color: '#a89e92' }}>Ładowanie wydarzeń…</div>
 
         ) : view === 'calendar' ? (
-          <div className="px-8 py-6 space-y-5 max-w-3xl">
+          <div className="px-4 md:px-8 py-4 md:py-6 space-y-5 max-w-3xl">
             <div className="bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid #e4ddd4' }}>
               <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #f2ede6' }}>
                 <button onClick={prevMonth} className="w-8 h-8 flex items-center justify-center rounded-xl transition-colors hover:bg-gray-100" style={{ color: '#7a7068' }}>
@@ -695,7 +695,7 @@ export default function EventsPage() {
           </div>
 
         ) : (
-          <div className="px-8 py-6">
+          <div className="px-4 md:px-8 py-4 md:py-6">
             {listGrouped.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-center gap-3">
                 <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: '#e4ddd4' }}>

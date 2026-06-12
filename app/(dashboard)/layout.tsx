@@ -180,7 +180,7 @@ function ProfileSwitcher() {
 
 // ── Sidebar ─────────────────────────────────────────────────────────────────
 
-function Sidebar() {
+function Sidebar({ mobile = false }: { mobile?: boolean }) {
   const { t, locale, toggle } = useLanguage()
   const { selectedTheatreId, setSelectedTheatreId } = useTheatre()
   const { mode } = useProfile()
@@ -209,7 +209,10 @@ function Sidebar() {
   }
 
   return (
-    <aside className="w-[210px] flex flex-col shrink-0" style={{ background: '#faf6f0', borderRight: '1px solid #e4ddd4' }}>
+    <aside
+      className={`${mobile ? 'w-full' : 'w-[210px]'} flex flex-col shrink-0 h-full overflow-y-auto`}
+      style={{ background: '#faf6f0', borderRight: mobile ? 'none' : '1px solid #e4ddd4' }}
+    >
 
       {/* Logo */}
       <div className="px-4 pt-5 pb-4 flex items-center justify-center">
@@ -314,19 +317,146 @@ function Sidebar() {
   )
 }
 
+// ── Mobile bottom tab bar ───────────────────────────────────────────────────
+
+function MobileTabBar() {
+  const { t } = useLanguage()
+  const { mode } = useProfile()
+  const pathname = usePathname()
+
+  const tabs = mode === 'coordinator'
+    ? [
+        { href: '/dashboard', label: t.nav.dashboard, icon: icons.home },
+        { href: '/calendar',  label: t.nav.calendar,  icon: icons.calendar },
+        { href: '/planning',  label: 'Planowanie',    icon: icons.planning },
+        { href: '/messages',  label: t.nav.messages,  icon: icons.mail },
+      ]
+    : [
+        { href: '/actor/calendar', label: 'Kalendarz',  icon: icons.calendar },
+        { href: '/actor/messages', label: 'Wiadomości', icon: icons.mail },
+      ]
+
+  return (
+    <nav
+      className="md:hidden flex shrink-0 no-print z-40"
+      style={{
+        background: '#faf6f0',
+        borderTop: '1px solid #e4ddd4',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}
+    >
+      {tabs.map(tb => {
+        const active = pathname === tb.href || pathname.startsWith(tb.href + '/')
+        return (
+          <Link
+            key={tb.href}
+            href={tb.href}
+            className="flex-1 flex flex-col items-center gap-0.5 pt-2 pb-1.5 min-h-[52px] text-[10px] font-semibold"
+            style={{ color: active ? '#c8102e' : '#a89e92' }}
+          >
+            {tb.icon}
+            <span className="truncate max-w-full px-1">{tb.label}</span>
+          </Link>
+        )
+      })}
+    </nav>
+  )
+}
+
+// ── Shell (needs provider context, hence separate from DashboardLayout) ─────
+
+function Shell({ children }: { children: React.ReactNode }) {
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const pathname = usePathname()
+
+  // Close the drawer after navigation
+  useEffect(() => { setDrawerOpen(false) }, [pathname])
+
+  // Lock body scroll while the drawer is open (iOS Safari)
+  useEffect(() => {
+    document.body.style.overflow = drawerOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [drawerOpen])
+
+  return (
+    <div className="flex h-dvh" style={{ background: 'var(--bg)' }}>
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex shrink-0 h-full">
+        <Sidebar />
+      </div>
+
+      {/* Mobile drawer */}
+      <div
+        className={`fixed inset-0 z-[70] md:hidden transition-[visibility] ${drawerOpen ? 'visible' : 'invisible'}`}
+        style={{ transitionDuration: '0.25s' }}
+        aria-hidden={!drawerOpen}
+      >
+        <div
+          className={`absolute inset-0 bg-black/40 transition-opacity duration-200 ${drawerOpen ? 'opacity-100' : 'opacity-0'}`}
+          onClick={() => setDrawerOpen(false)}
+        />
+        <div
+          className={`absolute left-0 top-0 bottom-0 w-[270px] max-w-[82vw] shadow-2xl transition-transform duration-200 ${drawerOpen ? 'translate-x-0' : '-translate-x-full'}`}
+          style={{ background: '#faf6f0', paddingTop: 'env(safe-area-inset-top)' }}
+        >
+          <button
+            aria-label="Zamknij menu"
+            onClick={() => setDrawerOpen(false)}
+            className="absolute top-2 right-2 z-10 p-2 rounded-lg"
+            style={{ color: '#a89e92', marginTop: 'env(safe-area-inset-top)' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+          <Sidebar mobile />
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Mobile top bar */}
+        <header
+          className="md:hidden flex items-center gap-2 px-3 shrink-0 no-print z-40"
+          style={{
+            paddingTop: 'env(safe-area-inset-top)',
+            minHeight: 'calc(50px + env(safe-area-inset-top))',
+            background: '#faf6f0',
+            borderBottom: '1px solid #e4ddd4',
+          }}
+        >
+          <button
+            aria-label="Otwórz menu"
+            onClick={() => setDrawerOpen(true)}
+            className="p-2.5 -ml-1 rounded-lg active:bg-[#ede7df]"
+            style={{ color: '#5a524a' }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-teatr-polonia.jpg" alt="Teatr Polonia" className="h-7 w-auto" />
+        </header>
+
+        <main className="flex-1 overflow-y-auto overscroll-contain">
+          <div className="px-4 py-4 md:px-8 md:py-8 max-w-[1400px]">
+            {children}
+          </div>
+        </main>
+
+        {/* Mobile bottom tab bar */}
+        <MobileTabBar />
+      </div>
+    </div>
+  )
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <LanguageProvider>
       <TheatreProvider>
         <ProfileProvider>
-          <div className="flex h-screen" style={{ background: 'var(--bg)' }}>
-            <Sidebar />
-            <main className="flex-1 overflow-y-auto">
-              <div className="px-8 py-8 max-w-[1400px]">
-                {children}
-              </div>
-            </main>
-          </div>
+          <Shell>{children}</Shell>
         </ProfileProvider>
       </TheatreProvider>
     </LanguageProvider>

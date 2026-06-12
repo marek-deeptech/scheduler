@@ -205,7 +205,7 @@ export default function PlanningPage() {
       )}
 
       {/* ── Header ── */}
-      <div className="flex items-start justify-between gap-4 px-8 py-5 -mx-8 -mt-8 mb-2"
+      <div className="flex items-start justify-between gap-4 px-4 py-4 -mx-4 -mt-4 md:px-8 md:py-5 md:-mx-8 md:-mt-8 mb-2"
         style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
         <div>
           <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>Planowanie repertuaru</h1>
@@ -218,7 +218,7 @@ export default function PlanningPage() {
         <div className="flex gap-3 items-end flex-wrap">
 
           {/* Month picker — only months without approved repertoire */}
-          <div className="w-52 shrink-0">
+          <div className="w-full sm:w-52 shrink-0">
             <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#b8b0a4' }}>Miesiąc</label>
             <select
               value={selectedMonth}
@@ -234,7 +234,7 @@ export default function PlanningPage() {
           </div>
 
           {/* Constraints */}
-          <div className="flex-1 min-w-[260px]">
+          <div className="flex-1 min-w-[220px] sm:min-w-[260px] w-full sm:w-auto">
             <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#b8b0a4' }}>Dodatkowe ograniczenia <span className="normal-case font-normal" style={{ color: '#a89e92' }}>(opcjonalne)</span></label>
             <input
               type="text"

@@ -131,15 +131,23 @@ function CastPopup({ popup, onClose }: { popup: PopupState; onClose: () => void 
   // Clamp so popup stays within viewport
   const vpW = typeof window !== 'undefined' ? window.innerWidth  : 1200
   const vpH = typeof window !== 'undefined' ? window.innerHeight : 900
-  const W   = 340
+  const isMobile = vpW < 768
+  const W   = isMobile ? Math.min(340, vpW - 32) : 340
   const H   = 220 // rough estimate
-  const left = Math.min(popup.x, vpW - W - 16)
-  const top  = popup.y + H > vpH ? popup.y - H - 12 : popup.y + 8
+  const left = isMobile ? (vpW - W) / 2 : Math.min(popup.x, vpW - W - 16)
+  const top  = isMobile
+    ? Math.max(16, (vpH - H) / 2 - 40)
+    : (popup.y + H > vpH ? popup.y - H - 12 : popup.y + 8)
 
   return (
+    <>
+    {/* Mobile: tap outside to close */}
+    {isMobile && (
+      <div className="fixed inset-0 z-[9998] bg-black/30" onClick={onClose} />
+    )}
     <div
       ref={ref}
-      onMouseLeave={onClose}
+      onMouseLeave={isMobile ? undefined : onClose}
       className="fixed z-[9999] rounded-2xl shadow-2xl overflow-hidden"
       style={{
         left, top,
@@ -221,6 +229,119 @@ function CastPopup({ popup, onClose }: { popup: PopupState; onClose: () => void 
       {/* Bottom accent bar */}
       <div className="h-0.5 w-full" style={{ background: popup.accentColor }} />
     </div>
+    </>
+  )
+}
+
+// ── Single show entry (shared by desktop table cell and mobile card) ──────────
+
+const HOVER_CAPABLE = () =>
+  typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches
+
+function EventBlock({ e, room, prodMap, propConflicts, conflictTitleSet, onConflictClick, onOpenPopup, onClosePopup }: {
+  e:                TaggedEvent
+  room:             string
+  prodMap:          Map<string, ProdInfo>
+  propConflicts:    ProposalConflict[]
+  conflictTitleSet: Set<string>
+  onConflictClick:  (params: {
+    artistId: string; artistName: string; conflictDate: string;
+    conflictStart?: string; conflictEnd?: string; productions: string[]
+  }) => void
+  onOpenPopup:  (ev: React.MouseEvent, title: string) => void
+  onClosePopup: (title: string) => void
+}) {
+  const titleConflicts = propConflicts.filter(c =>
+    c.productions.some(p => p.title === e.production_title)
+  )
+  const artistMap = new Map<string, string>()
+  for (const c of titleConflicts) {
+    c.artistIds.forEach((id, i) => {
+      if (!artistMap.has(id)) artistMap.set(id, c.artistNames[i] ?? id)
+    })
+  }
+  const hasConflict = conflictTitleSet.has(e.production_title)
+
+  return (
+    <div>
+      {/* Time + room label */}
+      <div className="text-[10px] font-bold uppercase tracking-wider mb-1"
+           style={{ color: '#a89e92' }}>
+        {e.start_time?.slice(0, 5) || '—'} | {room.toUpperCase()}
+      </div>
+
+      {/* Production title + conflict badge */}
+      <div className="flex items-start gap-1.5 mb-2 flex-wrap">
+        <div
+          className="text-sm font-bold leading-snug flex items-center gap-1"
+          style={{
+            fontFamily: 'var(--font-playfair), Georgia, serif',
+            color: '#3a3a3a',
+          }}
+        >
+          {prodMap.get(e.production_title)?.is_favourite && (
+            <svg viewBox="0 0 24 24" width="13" height="13" style={{ flexShrink: 0, marginTop: '1px' }} fill="#ef4444" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+            </svg>
+          )}
+          {e.production_title}
+        </div>
+        {artistMap.size > 0 && (
+          <span
+            className="shrink-0 mt-0.5 flex items-center flex-wrap gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md leading-snug"
+            style={{ background: '#fff0f0', color: '#c8102e', border: '1px solid #fecaca' }}
+          >
+            ⚠{' '}
+            {[...artistMap.entries()].map(([id, name], ni) => {
+              const conflict = titleConflicts.find(c => c.artistIds.includes(id))
+              const productions = conflict?.productions.map(p => p.title) ?? []
+              const conflictDate = conflict?.date ?? e.date
+              const conflictStart = conflict?.productions[0]?.start_time
+              const conflictEnd = e.end_time?.slice(0, 5)
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onConflictClick({
+                    artistId: id,
+                    artistName: name,
+                    conflictDate,
+                    conflictStart,
+                    conflictEnd,
+                    productions,
+                  })}
+                  className="underline underline-offset-2 hover:opacity-70 transition-opacity cursor-pointer py-0.5"
+                  style={{ color: '#c8102e' }}
+                >
+                  {ni > 0 && <span style={{ color: '#fca5a5', textDecoration: 'none', marginRight: '2px' }}>, </span>}
+                  {name}
+                </button>
+              )
+            })}
+          </span>
+        )}
+      </div>
+
+      {/* OBSADA button — hover on desktop, tap on touch devices */}
+      <button
+        onClick={(ev) => onOpenPopup(ev, e.production_title)}
+        onMouseEnter={(ev) => { if (HOVER_CAPABLE()) onOpenPopup(ev, e.production_title) }}
+        onMouseLeave={() => {
+          if (HOVER_CAPABLE()) {
+            setTimeout(() => onClosePopup(e.production_title), 120)
+          }
+        }}
+        className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded transition-colors"
+        style={{
+          border: hasConflict ? '1px solid #c8102e' : '1px solid #b0aba3',
+          color:  hasConflict ? '#c8102e' : '#6b6660',
+          background: 'transparent',
+          letterSpacing: '0.1em',
+        }}
+      >
+        obsada
+      </button>
+    </div>
   )
 }
 
@@ -287,11 +408,72 @@ function MonthTable({ month, events, accentColor, prodMap, propConflicts, onConf
     })
   }
 
+  function closePopup(title: string) {
+    setPopup(p => (p?.info.title === title ? null : p))
+  }
+
   return (
     <>
       {popup && <CastPopup popup={popup} onClose={() => setPopup(null)} />}
 
-      <div className="overflow-x-auto">
+      {/* ── Mobile: day cards ── */}
+      <div className="md:hidden">
+        {activeDays.map(day => {
+          const dateStr = `${month}-${String(day).padStart(2, '0')}`
+          const dow = new Date(dateStr + 'T12:00:00').getDay()
+          const isWeekend = dow === 0 || dow === 6
+          const dayEvents: Array<{ e: TaggedEvent; room: string }> = rooms
+            .flatMap(room => (byDateRoom[dateStr]?.[room] ?? []).map(e => ({ e, room })))
+            .sort((a, b) => (a.e.start_time || '').localeCompare(b.e.start_time || ''))
+
+          return (
+            <div key={day} className="border-b" style={{ borderColor: '#e4ddd4' }}>
+              {/* Day header */}
+              <div
+                className="flex items-baseline gap-2 px-4 py-2"
+                style={{ background: isWeekend ? '#f7efe7' : '#faf8f5' }}
+              >
+                <span
+                  style={{
+                    fontFamily: 'var(--font-playfair), Georgia, serif',
+                    fontSize: '1.5rem', fontWeight: 700, lineHeight: 1,
+                    color: isWeekend ? '#7a2e1a' : '#1a1410',
+                  }}
+                >
+                  {day}
+                </span>
+                <span
+                  className="text-[10px] font-bold uppercase tracking-widest"
+                  style={{ color: isWeekend ? '#b84a28' : '#a89e92' }}
+                >
+                  {DAY_PL[dow]}
+                </span>
+              </div>
+
+              {/* Shows */}
+              <div className="px-4 py-3 space-y-3" style={{ background: '#fff' }}>
+                {dayEvents.map(({ e, room }, ei) => (
+                  <div
+                    key={ei}
+                    className={ei > 0 ? 'pt-3' : ''}
+                    style={ei > 0 ? { borderTop: '1px dashed #e4ddd4' } : {}}
+                  >
+                    <EventBlock
+                      e={e} room={room} prodMap={prodMap}
+                      propConflicts={propConflicts} conflictTitleSet={conflictTitleSet}
+                      onConflictClick={onConflictClick}
+                      onOpenPopup={openPopup} onClosePopup={closePopup}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* ── Desktop: table ── */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
 
           {/* ── Column widths ── */}
@@ -387,100 +569,12 @@ function MonthTable({ month, events, accentColor, prodMap, propConflicts, onConf
                               className={ei > 0 ? 'mt-4 pt-4' : ''}
                               style={ei > 0 ? { borderTop: '1px dashed #e4ddd4' } : {}}
                             >
-                              {/* Time + room label */}
-                              <div className="text-[10px] font-bold uppercase tracking-wider mb-1"
-                                   style={{ color: '#a89e92' }}>
-                                {e.start_time?.slice(0, 5) || '—'} | {room.toUpperCase()}
-                              </div>
-
-                              {/* Production title + conflict badge */}
-                              <div className="flex items-start gap-1.5 mb-2">
-                                <div
-                                  className="text-sm font-bold leading-snug flex items-center gap-1"
-                                  style={{
-                                    fontFamily: 'var(--font-playfair), Georgia, serif',
-                                    color: '#3a3a3a',
-                                  }}
-                                >
-                                  {prodMap.get(e.production_title)?.is_favourite && (
-                                    <svg viewBox="0 0 24 24" width="13" height="13" style={{ flexShrink: 0, marginTop: '1px' }} fill="#ef4444" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                      <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
-                                    </svg>
-                                  )}
-                                  {e.production_title}
-                                </div>
-                                {(() => {
-                                  const titleConflicts = propConflicts.filter(c =>
-                                    c.productions.some(p => p.title === e.production_title)
-                                  )
-                                  if (titleConflicts.length === 0) return null
-                                  // Build unique artist id+name pairs
-                                  const artistMap = new Map<string, string>()
-                                  for (const c of titleConflicts) {
-                                    c.artistIds.forEach((id, i) => {
-                                      if (!artistMap.has(id)) artistMap.set(id, c.artistNames[i] ?? id)
-                                    })
-                                  }
-                                  return (
-                                    <span
-                                      className="shrink-0 mt-0.5 flex items-center flex-wrap gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md leading-snug"
-                                      style={{ background: '#fff0f0', color: '#c8102e', border: '1px solid #fecaca' }}
-                                    >
-                                      ⚠{' '}
-                                      {[...artistMap.entries()].map(([id, name], ni) => {
-                                        const conflict = titleConflicts.find(c => c.artistIds.includes(id))
-                                        const productions = conflict?.productions.map(p => p.title) ?? []
-                                        const conflictDate = conflict?.date ?? e.date
-                                        const conflictStart = conflict?.productions[0]?.start_time
-                                        const conflictEnd = e.end_time?.slice(0, 5)
-                                        return (
-                                          <button
-                                            key={id}
-                                            type="button"
-                                            onClick={() => onConflictClick({
-                                              artistId: id,
-                                              artistName: name,
-                                              conflictDate,
-                                              conflictStart,
-                                              conflictEnd,
-                                              productions,
-                                            })}
-                                            className="underline underline-offset-2 hover:opacity-70 transition-opacity cursor-pointer"
-                                            style={{ color: '#c8102e' }}
-                                          >
-                                            {ni > 0 && <span style={{ color: '#fca5a5', textDecoration: 'none', marginRight: '2px' }}>, </span>}
-                                            {name}
-                                          </button>
-                                        )
-                                      })}
-                                    </span>
-                                  )
-                                })()}
-                              </div>
-
-                              {/* OBSADA button */}
-                              <button
-                                onMouseEnter={(ev) => openPopup(ev, e.production_title)}
-                                onMouseLeave={() => {
-                                  setTimeout(() => setPopup(p =>
-                                    p?.info.title === e.production_title ? null : p
-                                  ), 120)
-                                }}
-                                className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded transition-colors"
-                                style={{
-                                  border: conflictTitleSet.has(e.production_title)
-                                    ? '1px solid #c8102e'
-                                    : '1px solid #b0aba3',
-                                  color: conflictTitleSet.has(e.production_title)
-                                    ? '#c8102e'
-                                    : '#6b6660',
-                                  background: 'transparent',
-                                  cursor: 'default',
-                                  letterSpacing: '0.1em',
-                                }}
-                              >
-                                obsada
-                              </button>
+                              <EventBlock
+                                e={e} room={room} prodMap={prodMap}
+                                propConflicts={propConflicts} conflictTitleSet={conflictTitleSet}
+                                onConflictClick={onConflictClick}
+                                onOpenPopup={openPopup} onClosePopup={closePopup}
+                              />
                             </div>
                           ))
                         )}
@@ -653,7 +747,7 @@ export default function RepertuarPage() {
 
       {/* ── Page header ── */}
       <div
-        className="flex items-center justify-between gap-4 px-8 py-5 -mx-8 -mt-8"
+        className="flex items-center justify-between gap-3 flex-wrap px-4 py-4 -mx-4 -mt-4 md:px-8 md:py-5 md:-mx-8 md:-mt-8"
         style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}
       >
         <div>
@@ -724,7 +818,7 @@ export default function RepertuarPage() {
       {/* ── Month navigation tabs ── */}
       {!loading && months.length > 0 && (
         <div
-          className="-mx-8 px-8"
+          className="-mx-4 px-4 md:-mx-8 md:px-8"
           style={{ background: '#faf8f5', borderBottom: '1px solid #e4ddd4' }}
         >
           <div className="flex items-end overflow-x-auto gap-0" style={{ scrollbarWidth: 'none' }}>
@@ -736,7 +830,7 @@ export default function RepertuarPage() {
                 <button
                   key={p.month}
                   onClick={() => setActiveMonth(p.month)}
-                  className="relative shrink-0 px-6 py-4 whitespace-nowrap transition-all"
+                  className="relative shrink-0 px-4 md:px-6 py-3.5 md:py-4 whitespace-nowrap transition-all"
                   style={{
                     color:        isActive ? '#1a1410' : '#a89e92',
                     background:   'transparent',
@@ -767,7 +861,7 @@ export default function RepertuarPage() {
       {/* ── Stats bar ── */}
       {!loading && active && (
         <div
-          className="-mx-8 px-8 py-3 flex items-center gap-6 flex-wrap"
+          className="-mx-4 px-4 md:-mx-8 md:px-8 py-3 flex items-center gap-4 md:gap-6 flex-wrap"
           style={{ background: '#faf8f5', borderBottom: '1px solid #e4ddd4' }}
         >
           <StatBit icon="🎬" value={Object.keys(byProdVisible).length} label="tytułów" />
@@ -809,7 +903,7 @@ export default function RepertuarPage() {
 
       {/* ── Vertical table ── */}
       {!loading && active && (
-        <div className="-mx-8">
+        <div className="-mx-4 md:-mx-8">
           <MonthTable
             month={active.month}
             events={visibleEvents}

@@ -211,7 +211,7 @@ export default function ConflictResolutionModal({
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div
-        className="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
+        className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl shadow-2xl"
         style={{ background: '#fff', border: '1px solid #e4ddd4' }}
       >
         {/* Header */}

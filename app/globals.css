@@ -138,6 +138,29 @@ a:hover { text-decoration: none; }
 .fade-up-3 { animation: fadeUp 0.3s 0.15s ease both; }
 .fade-up-4 { animation: fadeUp 0.3s 0.20s ease both; }
 
+/* ── Mobile / touch ────────────────────────────────────────────── */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+@media (max-width: 767px) {
+  /* iOS Safari zooms the page when a focused input has font-size < 16px */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* Comfortable touch targets for buttons that are tiny on desktop */
+  button {
+    touch-action: manipulation;
+  }
+}
+
+@media (pointer: coarse) {
+  ::-webkit-scrollbar { width: 0; height: 0; }
+}
+
 /* ── Print ─────────────────────────────────────────────────────── */
 @media print {
   /* Hide app chrome: sidebar nav + anything explicitly marked */

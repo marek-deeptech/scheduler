@@ -136,7 +136,7 @@ function MemberPickerModal({ teamId, currentMemberIds, onClose, onSaved }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[70vh] flex flex-col">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[70dvh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900">{ts.addToTeamTitle}</h2>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-lg">×</button>
@@ -573,7 +573,8 @@ export default function TeamSection({
           <p className="text-sm text-gray-500 italic text-center py-8">{ts.addPeopleHint}</p>
         ) : (
           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-            <table className="w-full text-sm table-fixed">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm table-fixed min-w-[760px]">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="text-left px-4 py-3 font-medium text-gray-500 text-xs w-44">{ts.colPerson}</th>
@@ -647,6 +648,7 @@ export default function TeamSection({
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </section>
