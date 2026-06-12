@@ -170,6 +170,10 @@ export default function DashboardPage() {
   const [vacNextNames,      setVacNextNames]      = useState<string[]>([])
   // Proposal-level cast conflicts
   const [castConflicts,     setCastConflicts]     = useState<import('@/lib/conflicts').ProposalConflict[]>([])
+  // Per-month repertoire plan info: approved flag + counts (from the first
+  // draft proposal when the month is not yet approved)
+  interface MonthPlan { approved: boolean; shows: number; titles: number; hasProposal: boolean }
+  const [monthPlans, setMonthPlans] = useState<{ nm: MonthPlan | null; m2: MonthPlan | null }>({ nm: null, m2: null })
 
   useEffect(() => { fetchAll() }, [selectedTheatreId])
 
@@ -384,9 +388,36 @@ export default function DashboardPage() {
     try {
       const { detectProposalConflicts } = await import('@/lib/conflicts')
       const [propJson, castRes] = await Promise.all([
-        fetch('/api/planning/generate?status=approved').then(r => r.json()),
+        fetch('/api/planning/generate').then(r => r.json()),
         supabase.from('productions').select('title, artist_productions(artists(id, name))'),
       ])
+      const allProposals: any[] = propJson.proposals ?? []
+
+      // ── Month plan info for the Repertuar tiles ──
+      const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      function planFor(key: string) {
+        const monthProps = allProposals.filter(p => p.month === key)
+        const approved = monthProps.find(p => p.status === 'approved')
+        const src = approved
+          // First draft of the newest batch (list is created_at desc → take the last matching "1")
+          ?? monthProps.filter(p => p.status === 'draft')
+               .find(p => /(^|\s)1$/.test(String(p.label ?? '').trim()))
+          ?? monthProps.filter(p => p.status === 'draft')[0]
+        if (!src) return { approved: false, shows: 0, titles: 0, hasProposal: false }
+        const evs: any[] = src.proposal_data ?? []
+        return {
+          approved: !!approved,
+          shows: evs.length,
+          titles: new Set(evs.map(e => e.production_title)).size,
+          hasProposal: true,
+        }
+      }
+      setMonthPlans({
+        nm: planFor(monthKey(new Date(now.getFullYear(), now.getMonth() + 1, 1))),
+        m2: planFor(monthKey(new Date(now.getFullYear(), now.getMonth() + 2, 1))),
+      })
+      // Keep conflict detection on approved proposals only
+      propJson.proposals = allProposals.filter(p => p.status === 'approved')
       // Build maps
       const pCastMap = new Map<string, string[]>()
       const aNameMap = new Map<string, string>()
@@ -703,18 +734,35 @@ export default function DashboardPage() {
       cta: notConfirmedCount > 0 ? { label: 'Wyślij przypomnienie', href: '/messages' } : undefined,
     },
     {
-      label: `Repertuar – ${nmMonthLabel}`, value: showsNMCount,
-      sub: titlesNMCount > 0 ? `${titlesNMCount} tytuł${titlesNMCount === 1 ? '' : titlesNMCount < 5 ? 'y' : 'ów'}` : 'brak spektakli',
+      label: `Repertuar – ${nmMonthLabel}`,
+      value: monthPlans.nm?.approved === false && monthPlans.nm.hasProposal ? monthPlans.nm.shows : showsNMCount,
+      sub: (() => {
+        const t = monthPlans.nm?.approved === false && monthPlans.nm.hasProposal ? monthPlans.nm.titles : titlesNMCount
+        return t > 0 ? `${t} tytuł${t === 1 ? '' : t < 5 ? 'y' : 'ów'}` : 'brak spektakli'
+      })(),
       warn: false,
+      badge: monthPlans.nm?.hasProposal ? { approved: monthPlans.nm.approved } : undefined,
       tip: repertuarMonthTip(showsNMList, nmMonthLabel), tipAlign: 'left' as const,
     },
     {
-      label: `Spektakle – ${m2MonthLabel}`, value: showsM2Count,
-      sub: showsM2Conflicts > 0 ? `${showsM2Conflicts} ${plKonflikt(showsM2Conflicts)}` : showsM2Count > 0 ? `${showsM2Count} spektakli` : 'brak',
+      label: `Repertuar – ${m2MonthLabel}`,
+      value: monthPlans.m2?.approved === false && monthPlans.m2.hasProposal ? monthPlans.m2.shows : showsM2Count,
+      sub: (() => {
+        if (showsM2Conflicts > 0) return `${showsM2Conflicts} ${plKonflikt(showsM2Conflicts)}`
+        const t = monthPlans.m2?.approved === false && monthPlans.m2.hasProposal
+          ? monthPlans.m2.titles
+          : new Set(showsM2List.filter(e => e.production_title).map(e => e.production_title)).size
+        return t > 0 ? `${t} tytuł${t === 1 ? '' : t < 5 ? 'y' : 'ów'}` : 'brak'
+      })(),
       warn: showsM2Conflicts > 0,
+      badge: monthPlans.m2?.hasProposal ? { approved: monthPlans.m2.approved } : undefined,
       tip: showsMonthTip(showsM2List, m2MonthLabel), tipAlign: 'center' as const,
       onClick: showsM2Conflicts > 0 ? () => setShowConflictPanel(true) : undefined,
-      cta: showsM2Count === 0 ? { label: `Zaplanuj ${m2MonthLabel}`, href: '/planning' } : undefined,
+      cta: monthPlans.m2?.hasProposal && !monthPlans.m2.approved
+        ? { label: `Zatwierdź ${m2MonthLabel}`, href: '/planning' }
+        : showsM2Count === 0 && !monthPlans.m2?.hasProposal
+        ? { label: `Zaplanuj ${m2MonthLabel}`, href: '/planning' }
+        : undefined,
     },
     {
       label: 'Konflikty obsady', value: castConflicts.length,
@@ -758,24 +806,40 @@ export default function DashboardPage() {
     <div className="max-w-7xl mx-auto space-y-5">
 
       {/* ── Stat cards ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4">
         {statCards.map(s => (
           <div
             key={s.label}
-            className={`bg-white border border-[#e4ddd4] rounded-2xl px-5 py-4 flex flex-col gap-1 transition-shadow ${s.onClick ? 'cursor-pointer hover:shadow-md hover:border-[#cec5b8]' : ''}`}
-            style={{ minHeight: 120 }}
+            className={`bg-white border border-[#e4ddd4] rounded-2xl px-4 py-3 md:px-5 md:py-4 flex flex-col gap-0.5 md:gap-1 md:min-h-[120px] transition-shadow ${s.onClick ? 'cursor-pointer hover:shadow-md hover:border-[#cec5b8]' : ''}`}
             onClick={s.onClick}
           >
-            <p className="text-xs font-medium" style={{ color: '#7a7068' }}>{s.label}</p>
-            <p className={`text-4xl font-bold leading-none mt-1 ${s.warn ? 'text-red-600' : ''}`} style={s.warn ? undefined : { color: '#1a1410' }}>{s.value}</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium" style={{ color: '#7a7068' }}>{s.label}</p>
+              {(s as any).badge && (
+                <span
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                  style={(s as any).badge.approved
+                    ? { background: '#dcfce7', color: '#166534' }
+                    : { background: '#fef3c7', color: '#92400e' }}
+                >
+                  {(s as any).badge.approved ? '✓ Zatwierdzony' : 'Niezatwierdzony'}
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2 mt-0.5 md:mt-1">
+              <p className={`text-3xl md:text-4xl font-bold leading-none ${s.warn ? 'text-red-600' : ''}`} style={s.warn ? undefined : { color: '#1a1410' }}>{s.value}</p>
+              {(s as any).badge && (
+                <span className="text-xs font-medium" style={{ color: '#a89e92' }}>spektakli</span>
+              )}
+            </div>
             <Tooltip tip={s.tip} align={s.tipAlign}>
-              <span className={`text-xs font-medium mt-1 underline decoration-dotted underline-offset-2 cursor-help transition-colors
+              <span className={`text-xs font-medium mt-0.5 md:mt-1 underline decoration-dotted underline-offset-2 cursor-help transition-colors
                 ${s.warn ? 'text-red-500 decoration-red-300' : 'text-gray-500 decoration-gray-300'}`}>
                 {s.sub}
               </span>
             </Tooltip>
             {s.cta && (
-              <div className="mt-auto pt-3" onClick={e => e.stopPropagation()}>
+              <div className="mt-auto pt-2 md:pt-3" onClick={e => e.stopPropagation()}>
                 <Link
                   href={s.cta.href}
                   className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
