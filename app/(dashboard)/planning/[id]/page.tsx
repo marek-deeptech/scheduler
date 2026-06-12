@@ -413,29 +413,32 @@ export default function ProposalDetailPage() {
       {isDraft && (
         <div className="no-print flex items-center gap-3 flex-wrap bg-white rounded-2xl px-4 md:px-5 py-3" style={{ border: '1px solid #e4ddd4' }}>
           <p className="flex-1 min-w-[200px] text-sm text-gray-500">Ta propozycja czeka na zatwierdzenie. Możesz edytować spektakle przed zatwierdzeniem.</p>
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
-            style={{ background: '#1a1410', color: '#fff' }}
-            onMouseOver={e => (e.currentTarget.style.background = '#000')}
-            onMouseOut={e => (e.currentTarget.style.background = '#1a1410')}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-              <rect x="6" y="14" width="12" height="8"/>
-            </svg>
-            Drukuj
-          </button>
-          <button
-            onClick={handleApprove}
-            disabled={approving}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl disabled:opacity-50 transition-colors shrink-0"
-            style={{ background: '#c8102e', color: '#fff' }}
-            onMouseOver={e => !e.currentTarget.disabled && (e.currentTarget.style.background = '#9e0c24')}
-            onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
-          >
-            {approving ? 'Zatwierdzam…' : '✓ Zatwierdź repertuar'}
-          </button>
+          {/* Buttons in one row: full-width pair on mobile, inline on desktop */}
+          <div className="flex gap-2 w-full md:w-auto">
+            <button
+              onClick={() => window.print()}
+              className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
+              style={{ background: '#1a1410', color: '#fff' }}
+              onMouseOver={e => (e.currentTarget.style.background = '#000')}
+              onMouseOut={e => (e.currentTarget.style.background = '#1a1410')}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                <rect x="6" y="14" width="12" height="8"/>
+              </svg>
+              Drukuj
+            </button>
+            <button
+              onClick={handleApprove}
+              disabled={approving}
+              className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl disabled:opacity-50 transition-colors shrink-0"
+              style={{ background: '#c8102e', color: '#fff' }}
+              onMouseOver={e => !e.currentTarget.disabled && (e.currentTarget.style.background = '#9e0c24')}
+              onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
+            >
+              {approving ? 'Zatwierdzam…' : '✓ Zatwierdź repertuar'}
+            </button>
+          </div>
         </div>
       )}
       {proposal.status === 'approved' && (

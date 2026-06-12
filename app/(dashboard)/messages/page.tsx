@@ -640,22 +640,25 @@ export default function MessagesPage() {
           <span className="text-sm font-semibold text-gray-900">
             {tm.selectedCount(selected.size)}
           </span>
-          <span className="text-gray-500">·</span>
-          <button
-            onClick={() => setCompose({ type: 'email', ids: Array.from(selected) })}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition-colors"
-            style={{ background: '#c8102e', color: '#fff' }}
-            onMouseOver={e => (e.currentTarget.style.background = '#9e0c24')}
-            onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
-          >
-            <MailIcon /> {tm.sendEmail}
-          </button>
-          <button
-            onClick={() => setCompose({ type: 'sms', ids: Array.from(selected) })}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
-          >
-            <PhoneIcon /> {tm.sendSms}
-          </button>
+          <span className="hidden md:inline text-gray-500">·</span>
+          {/* Buttons stay in one row: full-width pair on mobile, inline on desktop */}
+          <div className="flex gap-2 w-full md:w-auto order-last md:order-none">
+            <button
+              onClick={() => setCompose({ type: 'email', ids: Array.from(selected) })}
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition-colors"
+              style={{ background: '#c8102e', color: '#fff' }}
+              onMouseOver={e => (e.currentTarget.style.background = '#9e0c24')}
+              onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
+            >
+              <MailIcon /> {tm.sendEmail}
+            </button>
+            <button
+              onClick={() => setCompose({ type: 'sms', ids: Array.from(selected) })}
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+            >
+              <PhoneIcon /> {tm.sendSms}
+            </button>
+          </div>
           <button
             onClick={() => setSelected(new Set())}
             className="ml-auto text-sm text-gray-500 hover:text-gray-700"
