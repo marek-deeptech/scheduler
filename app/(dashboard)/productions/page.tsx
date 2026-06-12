@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
 import { useTheatre } from '@/lib/theatre-context'
 import ProductionModal from '@/components/ProductionModal'
+import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import { IconWarning, IconTheatre } from '@/lib/icons'
 import { sortByLastName } from '@/lib/names'
 
@@ -15,6 +16,14 @@ interface EventRow    {
   id: string; title: string; type: string | null
   start_time: string; end_time: string
   room: string | null; artist_count: number
+}
+
+interface ConflictDetail {
+  artistId: string | null   // null → room clash without shared cast
+  date: string               // YYYY-MM-DD
+  start: string              // HH:MM
+  end: string                // HH:MM
+  eventTitles: string[]
 }
 
 interface ProductionRow {
@@ -32,6 +41,7 @@ interface ProductionRow {
   cast: CastMember[]
   events: EventRow[]
   hasConflict: boolean
+  conflicts: ConflictDetail[]
 }
 
 interface ArtistRecord { id: string; name: string; role: string | null; teams?: { name: string } | null }
@@ -70,18 +80,61 @@ function fmtDayShort(iso: string) {
 function initials(name: string) {
   return name.split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase()
 }
-function detectConflict(evs: any[]): boolean {
-  for (let i = 0; i < evs.length; i++) {
-    for (let j = i + 1; j < evs.length; j++) {
-      const a = evs[i], b = evs[j]
+// Conflicts of one production:
+// • cross-production: overlapping events of two productions whose CASTS share
+//   an artist (same logic as the Repertuar conflict detection)
+// • within production: events sharing an assigned artist or the same room
+function conflictDetails(
+  prodId: string,
+  allEvs: any[],
+  castByProd: Map<string, Set<string>>,
+): ConflictDetail[] {
+  const out: ConflictDetail[] = []
+  const seen = new Set<string>()
+  const mine   = allEvs.filter(e => e._prodId === prodId)
+  const myCast = castByProd.get(prodId) ?? new Set<string>()
+
+  const push = (artistId: string | null, a: any, b: any, key: string) => {
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push({
+      artistId,
+      date:  String(a.start_time).slice(0, 10),
+      start: String(a.start_time).slice(11, 16),
+      end:   String(a.end_time).slice(11, 16),
+      eventTitles: [...new Set([
+        a._prodTitle ?? a.type ?? a.title,
+        b._prodTitle ?? b.type ?? b.title,
+      ].filter(Boolean))],
+    })
+  }
+
+  for (const a of mine) {
+    for (const b of allEvs) {
+      if (b.id === a.id) continue
       if (!(new Date(a.start_time) < new Date(b.end_time) && new Date(b.start_time) < new Date(a.end_time))) continue
-      const aIds = (a.event_artists ?? []).map((ea: any) => ea.artist_id)
-      const bIds = (b.event_artists ?? []).map((ea: any) => ea.artist_id)
-      if (aIds.some((id: string) => bIds.includes(id))) return true
-      if (a.room_id && b.room_id && a.room_id === b.room_id) return true
+      const date = String(a.start_time).slice(0, 10)
+
+      if (b._prodId !== prodId) {
+        // Cross-production: shared cast members double-booked
+        const otherCast = castByProd.get(b._prodId) ?? new Set<string>()
+        for (const id of myCast) {
+          if (otherCast.has(id)) push(id, a, b, `${id}|${date}`)
+        }
+      } else {
+        // Within production: explicit artist assignment or room clash
+        const aIds = (a.event_artists ?? []).map((ea: any) => ea.artist_id)
+        const bIds = new Set((b.event_artists ?? []).map((ea: any) => ea.artist_id))
+        for (const id of aIds) {
+          if (bIds.has(id)) push(id, a, b, `${id}|${date}`)
+        }
+        if (a.room_id && b.room_id && a.room_id === b.room_id) {
+          push(null, a, b, `room|${[a.id, b.id].sort().join('|')}`)
+        }
+      }
     }
   }
-  return false
+  return out
 }
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
@@ -103,11 +156,12 @@ function Avatar({ member, size = 'sm' }: { member: CastMember; size?: 'sm' | 'md
 
 // ─── Production card ──────────────────────────────────────────────────────────
 
-function ProductionCard({ prod, isSelected, onClick, onEdit }: {
+function ProductionCard({ prod, isSelected, onClick, onEdit, onConflictClick }: {
   prod: ProductionRow
   isSelected: boolean
   onClick: () => void
   onEdit: () => void
+  onConflictClick: () => void
 }) {
   const now      = new Date()
   const upcoming = prod.events.filter(e => new Date(e.start_time) >= now).slice(0, 1)[0]
@@ -187,9 +241,13 @@ function ProductionCard({ prod, isSelected, onClick, onEdit }: {
         <div className="flex items-center gap-3 pt-2 border-t border-gray-50 mt-auto">
           <span className="text-xs text-gray-500">{prod.events.length} wydarzeń</span>
           {prod.hasConflict && (
-            <span className="text-[11px] font-semibold text-red-500 flex items-center gap-1">
+            <button
+              onClick={e => { e.stopPropagation(); onConflictClick() }}
+              className="text-[11px] font-semibold text-red-500 flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-red-700 transition-colors"
+              title="Kliknij, aby rozwiązać konflikt"
+            >
               <IconWarning size={12} className="text-red-500" /> Konflikt
-            </span>
+            </button>
           )}
           <button
             onClick={e => { e.stopPropagation(); onEdit() }}
@@ -464,6 +522,33 @@ export default function ProductionsPage() {
   const [selectedId,  setSelectedId]  = useState<string | null>(null)
   const [modal,       setModal]       = useState<ProductionRow | null | undefined>(undefined)
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  // Conflict resolution: chooser popup (many conflicts) + substitution modal
+  const [conflictChooser, setConflictChooser] = useState<ProductionRow | null>(null)
+  const [conflictModal,   setConflictModal]   = useState<{
+    artistId: string; artistName: string; conflictDate: string
+    conflictStart?: string; conflictEnd?: string; productions: string[]
+  } | null>(null)
+
+  const artistNameById = useMemo(() => new Map(artists.map(a => [a.id, a.name])), [artists])
+
+  function openConflictResolution(prod: ProductionRow, c: ConflictDetail) {
+    if (!c.artistId) return
+    setConflictChooser(null)
+    setConflictModal({
+      artistId:      c.artistId,
+      artistName:    artistNameById.get(c.artistId) ?? 'Aktor',
+      conflictDate:  c.date,
+      conflictStart: c.start,
+      conflictEnd:   c.end,
+      productions:   [prod.title, ...c.eventTitles.filter(t => t !== prod.title)],
+    })
+  }
+
+  function handleConflictClick(prod: ProductionRow) {
+    const actorConfs = prod.conflicts.filter(c => c.artistId)
+    if (actorConfs.length === 1) openConflictResolution(prod, actorConfs[0])
+    else setConflictChooser(prod)
+  }
 
   useEffect(() => { fetchData() }, [selectedTheatreId])
 
@@ -489,6 +574,20 @@ export default function ProductionsPage() {
     // Only show Cast team members in production casts
     const castIdSet = new Set((artistData ?? []).map((a: any) => a.id))
 
+    // Flat list of all fetched events + cast per production, for
+    // cross-production conflict detection
+    const allEvs = (prodData ?? []).flatMap((p: any) =>
+      (p.events ?? []).map((e: any) => ({ ...e, _prodId: p.id, _prodTitle: p.title }))
+    )
+    const castByProd = new Map<string, Set<string>>()
+    for (const p of prodData ?? []) {
+      castByProd.set(p.id, new Set(
+        ((p as any).artist_productions ?? [])
+          .map((ap: any) => (Array.isArray(ap.artists) ? ap.artists[0] : ap.artists)?.id)
+          .filter((id: any) => id && castIdSet.has(id))
+      ))
+    }
+
     const rows: ProductionRow[] = (prodData ?? []).map((p: any) => {
       const th     = Array.isArray(p.theatres) ? p.theatres[0] : p.theatres
       const rawEvs = p.events ?? []
@@ -499,6 +598,7 @@ export default function ProductionsPage() {
         })
         .filter((a: any) => a && castIdSet.has(a.id))
       const sortedCast = sortByLastName(cast)
+      const conflicts = conflictDetails(p.id, allEvs, castByProd)
       const events: EventRow[] = rawEvs
         .map((e: any) => {
           const rm = Array.isArray(e.rooms) ? e.rooms[0] : e.rooms
@@ -528,7 +628,8 @@ export default function ProductionsPage() {
         is_favourite:  p.is_favourite ?? false,
         cast: sortedCast,
         events,
-        hasConflict:   detectConflict(rawEvs),
+        conflicts,
+        hasConflict:   conflicts.length > 0,
       }
     })
 
@@ -574,6 +675,68 @@ export default function ProductionsPage() {
           onClose={() => setModal(undefined)}
           onSaved={() => { setModal(undefined); fetchData() }}
         />
+      )}
+
+      {/* Conflict resolution modal (actor substitution) */}
+      {conflictModal && (
+        <ConflictResolutionModal
+          artistId={conflictModal.artistId}
+          artistName={conflictModal.artistName}
+          conflictDate={conflictModal.conflictDate}
+          conflictStart={conflictModal.conflictStart}
+          conflictEnd={conflictModal.conflictEnd}
+          productions={conflictModal.productions}
+          onClose={() => { setConflictModal(null); fetchData() }}
+        />
+      )}
+
+      {/* Conflict chooser — pick which conflict to resolve */}
+      {conflictChooser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setConflictChooser(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80dvh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
+              <div>
+                <h3 className="text-sm font-bold" style={{ color: '#1a1410' }}>Konflikty — {conflictChooser.title}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Wybierz konflikt do rozwiązania</p>
+              </div>
+              <button
+                onClick={() => setConflictChooser(null)}
+                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
+              {conflictChooser.conflicts.map((c, i) => c.artistId ? (
+                <button
+                  key={i}
+                  onClick={() => openConflictResolution(conflictChooser, c)}
+                  className="text-left rounded-xl px-3.5 py-3 border border-red-200 bg-red-50 hover:bg-red-100 transition-colors"
+                >
+                  <p className="text-sm font-semibold" style={{ color: '#c8102e' }}>
+                    {artistNameById.get(c.artistId) ?? 'Aktor'}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    {new Date(c.date + 'T12:00:00').toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'long' })}
+                    {' · '}{c.start}–{c.end}
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">{c.eventTitles.join(' ↔ ')}</p>
+                  <p className="text-[11px] font-medium mt-1.5" style={{ color: '#c8102e' }}>Znajdź zastępstwo →</p>
+                </button>
+              ) : (
+                <div key={i} className="rounded-xl px-3.5 py-3 border border-gray-200 bg-gray-50">
+                  <p className="text-sm font-semibold text-gray-700">Kolizja sali</p>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    {new Date(c.date + 'T12:00:00').toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'long' })}
+                    {' · '}{c.start}–{c.end} · {c.eventTitles.join(' ↔ ')}
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-1">Zmień salę lub godzinę w edycji wydarzenia</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="flex gap-0 -m-4 md:-m-8 md:h-screen md:overflow-hidden">
@@ -648,6 +811,7 @@ export default function ProductionsPage() {
                     isSelected={selectedId === p.id}
                     onClick={() => setSelectedId(prev => prev === p.id ? null : p.id)}
                     onEdit={() => setModal(p)}
+                    onConflictClick={() => handleConflictClick(p)}
                   />
                 ))}
               </div>
