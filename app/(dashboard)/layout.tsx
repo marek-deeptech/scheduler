@@ -405,7 +405,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             className="absolute top-2 right-2 z-10 p-2 rounded-lg"
             style={{ color: '#a89e92', marginTop: 'env(safe-area-inset-top)' }}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
           </button>
@@ -430,7 +430,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             className="p-2.5 -ml-1 rounded-lg active:bg-[#ede7df]"
             style={{ color: '#5a524a' }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>

@@ -718,7 +718,7 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
         <div className="flex items-start justify-between mb-4">
           <Avatar url={artist.avatar_url} name={artist.name} size="lg" />
           <button onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-full text-lg leading-none transition-colors"
+            className="w-10 h-10 flex items-center justify-center rounded-full text-2xl leading-none transition-colors"
             style={{ color: '#a89e92' }}
             onMouseOver={e => { e.currentTarget.style.background = '#f2ede6'; e.currentTarget.style.color = '#1a1410' }}
             onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#a89e92' }}>

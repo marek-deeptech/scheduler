@@ -104,6 +104,8 @@ export default function ActorCalendarPage() {
   // Multi-select
   const [multiMode,     setMultiMode]     = useState(false)
   const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set())
+  // Day filter for the vertical list (mini-calendar click)
+  const [filterDay,     setFilterDay]     = useState<string | null>(null)
 
   // Redirect if no actor selected
   useEffect(() => {
@@ -363,23 +365,16 @@ export default function ActorCalendarPage() {
               <h1 className="text-xl font-bold text-gray-900">Mój Kalendarz</h1>
               <p className="text-xs text-gray-500 mt-0.5">{actorName}</p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => { setMultiMode(v => !v); setMultiSelected(new Set()) }}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
-                  multiMode
-                    ? 'bg-gray-900 text-white border-gray-900'
-                    : 'text-gray-600 border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                {multiMode ? `Zaznaczono ${multiSelected.size}` : 'Zaznacz wiele'}
-              </button>
-              <button onClick={prevMonth} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">‹</button>
-              <span className="text-sm font-semibold text-gray-800 min-w-[130px] text-center">
-                {MONTHS_PL[viewMonth]} {viewYear}
-              </span>
-              <button onClick={nextMonth} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">›</button>
-            </div>
+            <button
+              onClick={() => { setMultiMode(v => !v); setMultiSelected(new Set()) }}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                multiMode
+                  ? 'bg-gray-900 text-white border-gray-900'
+                  : 'text-gray-600 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              {multiMode ? `Zaznaczono ${multiSelected.size}` : 'Zaznacz wiele'}
+            </button>
           </div>
 
             {/* Global status + productions strip — only show "Na wyjeździe" productions */}
@@ -423,105 +418,215 @@ export default function ActorCalendarPage() {
           </div>
         )}
 
-        {/* Calendar grid */}
-        <div className="flex-1 overflow-y-auto px-3 md:px-8 py-4">
+        {/* Content: mini calendar + vertical day list (Events-tab style) */}
+        <div className="flex-1 overflow-y-auto px-4 md:px-8 py-4 md:py-6">
           {loading ? (
             <div className="flex items-center justify-center h-40 text-gray-500 text-sm">Ładowanie…</div>
           ) : (
-            <>
-              {/* Day-of-week header */}
-              <div className="grid grid-cols-7 mb-1">
-                {DAYS_PL.map(d => (
-                  <div key={d} className="text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider py-1">{d}</div>
-                ))}
-              </div>
+            <div className="space-y-5 max-w-3xl">
 
-              {/* Days */}
-              <div className="grid grid-cols-7 gap-1">
-                {days.map((day, i) => {
-                  if (!day) return <div key={`pad-${i}`} />
-                  const dateStr  = toDateStr(day)
-                  const isToday  = dateStr === todayStr
-                  const isSel      = !multiMode && dateStr === selected
-                  const isMultiSel = multiMode && multiSelected.has(dateStr)
-                  const dayEvs     = getEventsForDate(dateStr)
-                  const daySt      = effectiveStatus(dateStr)
-                  const isPending  = pending[dateStr] !== undefined
-                  const stDef      = DAY_STATUSES.find(s => s.value === daySt?.status)
-                  const isBlocking = daySt && BLOCKING_STATUSES.has(daySt.status)
-                  const hasConflict = isBlocking && dayEvs.length > 0
-
-                  return (
+              {/* ── Mini month calendar card ── */}
+              <div className="bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid #e4ddd4' }}>
+                <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #f2ede6' }}>
+                  <button onClick={prevMonth} className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors hover:bg-gray-100 text-gray-500 text-lg">‹</button>
+                  <div className="flex items-center gap-3">
+                    <h2 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.1rem', fontWeight: 700, color: '#1a1410' }}>{MONTHS_PL[viewMonth]}</h2>
+                    <span className="text-sm font-medium" style={{ color: '#a89e92' }}>{viewYear}</span>
                     <button
-                      key={dateStr}
-                      onClick={() => {
-                        if (multiMode) {
-                          toggleMultiDate(dateStr)
-                        } else {
-                          setSelected(isSel ? null : dateStr)
-                          setNoteInput(getStatusForDate(dateStr)?.note ?? '')
-                        }
-                      }}
-                      className={`relative p-1.5 rounded-xl border text-left transition-all min-h-[72px] flex flex-col ${
-                        isMultiSel
-                          ? 'border-gray-900 ring-2 ring-gray-900 bg-gray-50'
-                          : isSel
-                          ? 'border-gray-900 ring-1 ring-gray-900 bg-white'
-                          : hasConflict
-                          ? 'border-orange-300 bg-orange-50 hover:border-orange-400'
-                          : 'border-gray-100 hover:border-gray-300 bg-white hover:bg-gray-50'
-                      }`}
+                      onClick={() => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); setFilterDay(todayStr) }}
+                      className="text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors"
+                      style={{ background: '#f2ede6', color: '#7a7068', border: '1px solid #e4ddd4' }}
                     >
-                      {/* Multi-select checkmark */}
-                      {multiMode && (
-                        <span className={`absolute top-1 right-1 w-4 h-4 rounded-full border-2 flex items-center justify-center text-[9px] font-bold transition-colors ${
-                          isMultiSel
-                            ? 'bg-gray-900 border-gray-900 text-white'
-                            : 'border-gray-300 bg-white'
-                        }`}>
-                          {isMultiSel ? '✓' : ''}
-                        </span>
-                      )}
-
-                      {/* Conflict badge */}
-                      {hasConflict && !multiMode && (
-                        <span className="absolute top-1 right-1 text-[10px]">⚠️</span>
-                      )}
-
-                      {/* Date number */}
-                      <span className={`text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full mb-1 ${
-                        isToday ? 'bg-gray-900 text-white' : 'text-gray-700'
-                      }`}>
-                        {day.getDate()}
-                      </span>
-
-                      {/* Status dot */}
-                      {daySt && (
-                        <span className={`w-full text-[9px] font-bold px-1 py-0.5 rounded-md text-center mb-0.5 ${stDef?.cls ?? 'bg-gray-100 text-gray-600'} ${isPending ? 'opacity-60' : ''}`}>
-                          {isPending && '● '}{DAY_STATUSES.find(s => s.value === daySt.status)?.icon ?? '?'}
-                        </span>
-                      )}
-
-                      {/* Events */}
-                      <div className="flex flex-col gap-0.5 mt-auto w-full">
-                        {dayEvs.slice(0, 2).map(ev => (
-                          <span key={ev.id} className={`text-[9px] rounded px-1 truncate font-medium border ${
-                            ev.isMine
-                              ? 'bg-gray-900 text-white border-gray-900'
-                              : 'bg-white text-gray-600 border-gray-300'
-                          }`}>
-                            {fmtTime(ev.start_time)} {ev.type ?? ev.title}
-                          </span>
-                        ))}
-                        {dayEvs.length > 2 && (
-                          <span className="text-[9px] text-gray-400">+{dayEvs.length - 2}</span>
-                        )}
-                      </div>
+                      Dziś
                     </button>
-                  )
-                })}
+                  </div>
+                  <button onClick={nextMonth} className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors hover:bg-gray-100 text-gray-500 text-lg">›</button>
+                </div>
+
+                {/* Day-of-week header */}
+                <div className="grid grid-cols-7 px-3 pt-3 pb-1">
+                  {DAYS_PL.map(d => (
+                    <div key={d} className="text-center text-[11px] font-semibold uppercase tracking-wider"
+                      style={{ color: d === 'So' || d === 'Nd' ? '#cec5b8' : '#a89e92' }}>{d}</div>
+                  ))}
+                </div>
+
+                {/* Days */}
+                <div className="grid grid-cols-7 gap-px px-3 pb-4">
+                  {days.map((day, i) => {
+                    if (!day) return <div key={`pad-${i}`} />
+                    const dateStr    = toDateStr(day)
+                    const isToday    = dateStr === todayStr
+                    const isSel      = !multiMode && dateStr === filterDay
+                    const isMultiSel = multiMode && multiSelected.has(dateStr)
+                    const dayEvs     = getEventsForDate(dateStr)
+                    const daySt      = effectiveStatus(dateStr)
+                    const stDef      = DAY_STATUSES.find(s => s.value === daySt?.status)
+                    const isBlocking = daySt && BLOCKING_STATUSES.has(daySt.status)
+                    const hasConflict = isBlocking && dayEvs.length > 0
+
+                    return (
+                      <button
+                        key={dateStr}
+                        onClick={() => {
+                          if (multiMode) toggleMultiDate(dateStr)
+                          else setFilterDay(prev => prev === dateStr ? null : dateStr)
+                        }}
+                        className="flex flex-col items-center py-1.5 rounded-xl transition-all"
+                        style={{
+                          background: isMultiSel ? '#1a1410' : isSel ? '#1a1410' : isToday ? '#f2ede6' : 'transparent',
+                          border: isToday && !isSel && !isMultiSel ? '1px solid #e4ddd4' : '1px solid transparent',
+                        }}
+                      >
+                        <span className="text-sm font-medium w-7 h-7 flex items-center justify-center rounded-lg"
+                          style={{ color: (isSel || isMultiSel) ? '#fff' : isToday ? '#1a1410' : '#3e3830' }}>
+                          {day.getDate()}
+                        </span>
+                        <div className="flex gap-0.5 mt-1 h-1.5 items-center">
+                          {hasConflict && <span className="text-[8px] leading-none">⚠️</span>}
+                          {!hasConflict && stDef && (
+                            <span className={`w-1.5 h-1.5 rounded-full ${stDef.dot}`} />
+                          )}
+                          {dayEvs.length > 0 && (
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: (isSel || isMultiSel) ? '#fff' : '#1a1410' }} />
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Footer */}
+                <div className="px-5 py-2.5 flex items-center justify-between" style={{ borderTop: '1px solid #f2ede6' }}>
+                  <span className="text-xs" style={{ color: '#a89e92' }}>
+                    {events.length} {events.length === 1 ? 'wydarzenie' : 'wydarzeń'} w miesiącu
+                  </span>
+                  {filterDay && !multiMode && (
+                    <button onClick={() => setFilterDay(null)} className="text-xs underline decoration-dotted underline-offset-2" style={{ color: '#7a7068' }}>
+                      Pokaż wszystkie
+                    </button>
+                  )}
+                </div>
               </div>
-            </>
+
+              {/* ── Vertical day-by-day list ── */}
+              {(() => {
+                const monthDays = days.filter((d): d is Date => d !== null)
+                const visible = monthDays.filter(d => {
+                  const ds = toDateStr(d)
+                  if (filterDay && !multiMode) return ds === filterDay
+                  return getEventsForDate(ds).length > 0 || !!effectiveStatus(ds)
+                })
+
+                if (visible.length === 0) {
+                  return (
+                    <div className="text-center py-10">
+                      <p className="text-sm" style={{ color: '#a89e92' }}>
+                        {filterDay ? 'Brak wydarzeń i statusu tego dnia' : 'Brak wydarzeń i statusów w tym miesiącu'}
+                      </p>
+                      {filterDay && (
+                        <button
+                          onClick={() => { setSelected(filterDay); setNoteInput(getStatusForDate(filterDay)?.note ?? '') }}
+                          className="mt-3 px-4 py-2 text-xs font-semibold rounded-xl bg-gray-900 text-white hover:bg-gray-700 transition-colors"
+                        >
+                          Ustaw status na ten dzień
+                        </button>
+                      )}
+                    </div>
+                  )
+                }
+
+                return (
+                  <div className="space-y-6">
+                    {visible.map(day => {
+                      const dateStr    = toDateStr(day)
+                      const dayEvs     = getEventsForDate(dateStr)
+                      const daySt      = effectiveStatus(dateStr)
+                      const isPending  = pending[dateStr] !== undefined
+                      const stDef      = DAY_STATUSES.find(s => s.value === daySt?.status)
+                      const isBlocking = daySt && BLOCKING_STATUSES.has(daySt.status)
+                      const hasConflict = isBlocking && dayEvs.length > 0
+                      const savedNote  = getStatusForDate(dateStr)?.note
+
+                      return (
+                        <div key={dateStr}>
+                          {/* Day header */}
+                          <div className="flex items-center gap-3 mb-3 flex-wrap">
+                            <p className="text-xs font-semibold uppercase tracking-wider capitalize" style={{ color: '#7a7068' }}>
+                              {day.toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })}
+                            </p>
+                            <div className="flex-1 h-px" style={{ background: '#e4ddd4' }} />
+                            {daySt && (
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${stDef?.cls ?? 'bg-gray-100 text-gray-600'} ${isPending ? 'opacity-70' : ''}`}>
+                                {isPending && '● '}{daySt.status}
+                              </span>
+                            )}
+                            <button
+                              onClick={() => { setSelected(dateStr); setNoteInput(getStatusForDate(dateStr)?.note ?? '') }}
+                              className="text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors hover:bg-gray-100"
+                              style={{ background: '#f2ede6', color: '#7a7068', border: '1px solid #e4ddd4' }}
+                            >
+                              {daySt ? 'Edytuj' : 'Ustaw status'}
+                            </button>
+                          </div>
+
+                          {/* Conflict warning */}
+                          {hasConflict && (
+                            <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2 mb-2">
+                              <p className="text-[11px] font-semibold text-orange-700">
+                                ⚠ Status „{daySt!.status}" koliduje z {dayEvs.length} {dayEvs.length === 1 ? 'wydarzeniem' : 'wydarzeniami'} tego dnia
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Note */}
+                          {savedNote && (
+                            <p className="text-xs italic mb-2 border-l-2 pl-2" style={{ color: '#7a7068', borderColor: '#e4ddd4' }}>
+                              „{savedNote}"
+                            </p>
+                          )}
+
+                          {/* Events */}
+                          {dayEvs.length > 0 ? (
+                            <div className="space-y-2">
+                              {dayEvs.map(ev => (
+                                <div key={ev.id} className={`rounded-2xl p-3.5 ${ev.isMine ? 'bg-gray-900' : 'bg-white border border-gray-200'}`}>
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className={`text-sm font-semibold ${ev.isMine ? 'text-white' : 'text-gray-800'}`}>
+                                        {ev.type ?? ev.title}
+                                      </p>
+                                      <p className={`text-xs mt-0.5 ${ev.isMine ? 'text-gray-300' : 'text-gray-500'}`}>
+                                        {fmtTime(ev.start_time)}–{fmtTime(ev.end_time)}
+                                        {ev.room ? ` · ${ev.room}` : ''}
+                                      </p>
+                                    </div>
+                                    {ev.isMine && (
+                                      <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-gray-900">
+                                        Obsada
+                                      </span>
+                                    )}
+                                  </div>
+                                  {ev.production && (
+                                    <span className={`inline-block mt-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                      ev.isMine ? 'bg-white/15 text-white' : 'border border-gray-300 text-gray-600 bg-white'
+                                    }`}>
+                                      {ev.production}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs italic" style={{ color: '#a89e92' }}>Brak wydarzeń tego dnia</p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+            </div>
           )}
         </div>
       </div>
@@ -541,7 +646,7 @@ export default function ActorCalendarPage() {
                 <h3 className="text-sm font-bold text-gray-900">
                   {multiSelected.size > 0 ? `${multiSelected.size} ${multiSelected.size === 1 ? 'dzień' : 'dni'}` : 'Zaznacz dni'}
                 </h3>
-                <button onClick={exitMultiMode} className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500">×</button>
+                <button onClick={exitMultiMode} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-xl">×</button>
               </div>
               {multiSelected.size === 0 && (
                 <p className="text-xs text-gray-400 mt-1">Kliknij dni w kalendarzu, żeby je zaznaczyć</p>
@@ -580,7 +685,7 @@ export default function ActorCalendarPage() {
               <div className="px-5 py-4 border-b border-gray-100 shrink-0">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-gray-900">{dayLabel}</h3>
-                  <button onClick={() => setSelected(null)} className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500">×</button>
+                  <button onClick={() => setSelected(null)} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-xl">×</button>
                 </div>
               </div>
 

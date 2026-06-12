@@ -234,7 +234,7 @@ export default function ConflictResolutionModal({
             </div>
             <button
               onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center rounded-full text-lg leading-none shrink-0 hover:bg-gray-100 transition-colors"
+              className="w-10 h-10 flex items-center justify-center rounded-full text-2xl leading-none shrink-0 hover:bg-gray-100 transition-colors"
               style={{ color: '#9ca3af', marginTop: '-2px' }}
             >
               ×

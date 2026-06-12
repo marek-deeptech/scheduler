@@ -279,7 +279,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
           <h2 className="text-lg font-semibold text-gray-900">
             {isEdit ? em.editTitle : em.createTitle}
           </h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-600 transition-colors text-lg">
+          <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-600 transition-colors text-2xl">
             ×
           </button>
         </div>

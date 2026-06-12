@@ -139,7 +139,7 @@ function MemberPickerModal({ teamId, currentMemberIds, onClose, onSaved }: {
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[70dvh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900">{ts.addToTeamTitle}</h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-lg">×</button>
+          <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-2xl">×</button>
         </div>
         <div className="px-4 pt-3">
           <input autoFocus type="search" value={search} onChange={e => setSearch(e.target.value)}

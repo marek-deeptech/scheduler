@@ -194,7 +194,7 @@ function ComposeModal({
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 transition-colors text-lg leading-none"
+            className="w-10 h-10 -mr-2 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors text-2xl leading-none"
           >
             ×
           </button>
@@ -468,67 +468,71 @@ export default function MessagesPage() {
         </div>
       </div>
 
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      {/* Toolbar — stacked rows on mobile, single wrapping row on desktop */}
+      <div className="mb-4 space-y-2 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-2">
         <input
           type="text"
           placeholder={tm.searchPlaceholder}
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="border border-gray-200 rounded-xl px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
+          className="border border-gray-200 rounded-xl px-3 py-2 text-sm w-full md:w-56 bg-white focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
         />
 
-        {([[  'all', tm.allTeams], ['Cast', tm.teamCast], ['Technique', tm.teamTechnique], ['Wardrobe', tm.teamWardrobe]] as [string, string][]).map(([val, label]) => (
-          <button
-            key={val}
-            onClick={() => setTeamFilter(val)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
-              teamFilter === val
-                ? ''
-                : 'text-gray-500 border-gray-200 hover:bg-gray-50'
-            }`}
-            style={teamFilter === val ? { background: '#1a1410', color: '#fff', borderColor: '#1a1410' } : undefined}
-          >
-            {label}
-          </button>
-        ))}
+        <div className="flex flex-wrap gap-1.5 md:contents">
+          {([[  'all', tm.allTeams], ['Cast', tm.teamCast], ['Technique', tm.teamTechnique], ['Wardrobe', tm.teamWardrobe]] as [string, string][]).map(([val, label]) => (
+            <button
+              key={val}
+              onClick={() => setTeamFilter(val)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                teamFilter === val
+                  ? ''
+                  : 'text-gray-500 border-gray-200 hover:bg-gray-50'
+              }`}
+              style={teamFilter === val ? { background: '#1a1410', color: '#fff', borderColor: '#1a1410' } : undefined}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
-        {theatres.length > 1 && (
+        <div className="grid grid-cols-2 gap-2 md:contents">
+          {theatres.length > 1 && (
+            <select
+              value={theatreFilter}
+              onChange={e => setTheatreFilter(e.target.value)}
+              className="w-full md:w-auto border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-white focus:outline-none md:ml-auto"
+            >
+              <option value="all">{tm.allTheatres}</option>
+              {theatres.map(th => (
+                <option key={th.id} value={th.id}>{th.name}</option>
+              ))}
+            </select>
+          )}
+
           <select
-            value={theatreFilter}
-            onChange={e => setTheatreFilter(e.target.value)}
-            className="border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 focus:outline-none ml-auto"
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className={`w-full md:w-auto border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-white focus:outline-none ${theatres.length <= 1 ? 'md:ml-auto' : ''}`}
           >
-            <option value="all">{tm.allTheatres}</option>
-            {theatres.map(th => (
-              <option key={th.id} value={th.id}>{th.name}</option>
-            ))}
+            <option value="all">{tm.allStatuses}</option>
+            <option value="Dostępny">Dostępny</option>
+            <option value="Dostępny tylko w Warszawie">Dostępny tylko w Warszawie</option>
+            <option value="Niepewny">Niepewny</option>
+            <option value="Niedostępny">Niedostępny</option>
+            <option value="Urlop">Urlop</option>
+            <option value="Choroba">Choroba</option>
           </select>
-        )}
 
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-          className={`border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 focus:outline-none ${theatres.length <= 1 ? 'ml-auto' : ''}`}
-        >
-          <option value="all">{tm.allStatuses}</option>
-          <option value="Dostępny">Dostępny</option>
-          <option value="Dostępny tylko w Warszawie">Dostępny tylko w Warszawie</option>
-          <option value="Niepewny">Niepewny</option>
-          <option value="Niedostępny">Niedostępny</option>
-          <option value="Urlop">Urlop</option>
-          <option value="Choroba">Choroba</option>
-        </select>
-
-        <select
-          value={sortBy}
-          onChange={e => setSortBy(e.target.value as 'name' | 'team' | 'status')}
-          className="border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 focus:outline-none"
-        >
-          <option value="name">{tm.sortByName}</option>
-          <option value="team">{tm.sortByTeam}</option>
-          <option value="status">{tm.sortByStatus}</option>
-        </select>
+          <select
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value as 'name' | 'team' | 'status')}
+            className={`w-full md:w-auto border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-white focus:outline-none ${theatres.length > 1 ? 'col-span-2 md:col-auto' : ''}`}
+          >
+            <option value="name">{tm.sortByName}</option>
+            <option value="team">{tm.sortByTeam}</option>
+            <option value="status">{tm.sortByStatus}</option>
+          </select>
+        </div>
       </div>
 
       {/* ── Responses section ──────────────────────────────────────── */}
