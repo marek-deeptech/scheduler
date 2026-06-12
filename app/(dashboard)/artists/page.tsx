@@ -446,7 +446,9 @@ function MessagesTab({ artist, detail, onDetailRefresh }: {
   const [sent,          setSent]          = useState(false)
   const [confirmingId,  setConfirmingId]  = useState<string | null>(null)
 
-  useEffect(() => { onDetailRefresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // NOTE: no refresh-on-mount here — detail is fetched when the artist is
+  // selected, and a mount-effect combined with the loading state used to
+  // unmount/remount this tab in an endless flicker loop.
 
   const confirmations = detail.confirmations ?? []
   const messages      = detail.messages      ?? []
