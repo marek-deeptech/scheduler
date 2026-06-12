@@ -77,7 +77,7 @@ function EditableRow({ name, sub, onSave, onDelete }: {
         <span className="text-sm text-gray-800 font-medium">{name}</span>
         {sub && <span className="text-xs text-gray-500 ml-2">{sub}</span>}
       </div>
-      <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
         <button title="Zmień nazwę" onClick={() => setEditing(true)}
           className="p-1.5 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors">
           <PencilIcon />

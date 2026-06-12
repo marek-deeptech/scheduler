@@ -257,7 +257,7 @@ export default function ConflictResolutionModal({
   return (
     /* Backdrop */
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[80] flex items-center justify-center p-4"
       style={{ background: 'rgba(26,20,16,0.55)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >

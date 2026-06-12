@@ -134,7 +134,7 @@ function MemberPickerModal({ teamId, currentMemberIds, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[70dvh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
@@ -198,7 +198,7 @@ function ContactModal({ member, type, onClose }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm">
         {/* Header */}
@@ -477,7 +477,7 @@ export default function TeamSection({
                 <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${STATUS_BADGE[m.status ?? ''] ?? 'bg-gray-100 text-gray-500'}`}>
                   {m.status ?? '—'}
                 </span>
-                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                <div className="flex items-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all">
                   {m.email && (
                     <button onClick={e => { e.stopPropagation(); setContactTarget({ member: m, type: 'email' }) }}
                       title={ts.sendEmail}

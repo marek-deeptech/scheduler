@@ -36,7 +36,7 @@ interface Props {
   productions: Production[]
   theatres: Theatre[]
   rooms: Room[]
-  zIndex?: number                    // default 50; use 60 when nested inside another modal
+  zIndex?: number                    // default 80; use 90 when nested inside another modal
   onClose: () => void
   onSaved: () => void
 }
@@ -57,7 +57,7 @@ function splitDateTime(iso: string) {
   return { date, time }
 }
 
-export default function EventModal({ event, defaultDate, defaultProductionId, artists, productions, theatres, rooms, zIndex = 50, onClose, onSaved }: Props) {
+export default function EventModal({ event, defaultDate, defaultProductionId, artists, productions, theatres, rooms, zIndex = 80, onClose, onSaved }: Props) {
   const { t, locale } = useLanguage()
   const em = t.eventModal
   const isEdit = !!event

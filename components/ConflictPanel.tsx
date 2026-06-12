@@ -134,7 +134,7 @@ export default function ConflictPanel({ conflicts, allArtists, allRooms, allThea
   const countByType = (r: ConflictReason) => conflicts.filter(c => c.reasons.includes(r)).length
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-16 overflow-y-auto">
+    <div className="fixed inset-0 z-[80] flex items-start justify-center p-4 pt-16 overflow-y-auto">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden mb-8">
