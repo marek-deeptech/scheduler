@@ -634,7 +634,7 @@ export default function ActorCalendarPage() {
       {/* ── Right: day detail panel ───────────────────────────────────────── */}
       <div className={
         selected || multiMode
-          ? 'fixed inset-x-0 bottom-0 top-auto max-h-[70dvh] z-[60] rounded-t-2xl shadow-2xl bg-white border-t border-gray-200 flex flex-col overflow-hidden md:static md:inset-auto md:max-h-none md:rounded-none md:shadow-none md:z-auto md:w-72 md:shrink-0 md:border-t-0 md:border-l md:transition-all md:duration-200'
+          ? 'fixed inset-x-0 bottom-0 top-auto max-h-[70dvh] z-[60] rounded-t-2xl shadow-2xl bg-white border-t border-gray-200 flex flex-col overflow-hidden pb-[env(safe-area-inset-bottom)] md:pb-0 md:static md:inset-auto md:max-h-none md:rounded-none md:shadow-none md:z-auto md:w-72 md:shrink-0 md:border-t-0 md:border-l md:transition-all md:duration-200'
           : 'hidden'
       }>
 

@@ -629,11 +629,13 @@ export default function MessagesPage() {
         </div>
       )}
 
-      {/* Sticky bottom bar */}
+      {/* Spacer so the fixed action bar doesn't cover the last rows */}
+      {selected.size > 0 && <div className="h-28 md:h-20" />}
+
+      {/* Sticky bottom bar — on mobile it sits above the bottom tab bar */}
       {selected.size > 0 && (
         <div
-          className="fixed bottom-0 left-0 md:left-56 right-0 z-40 bg-white border-t border-gray-200 px-4 md:px-8 py-3 md:py-4 flex items-center gap-3 md:gap-4 flex-wrap shadow-lg"
-          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+          className="fixed bottom-[calc(52px+env(safe-area-inset-bottom))] md:bottom-0 left-0 md:left-56 right-0 z-40 bg-white border-t border-gray-200 px-4 md:px-8 py-3 md:py-4 flex items-center gap-3 md:gap-4 flex-wrap shadow-lg"
         >
           <span className="text-sm font-semibold text-gray-900">
             {tm.selectedCount(selected.size)}
