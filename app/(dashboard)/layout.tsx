@@ -317,6 +317,78 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
   )
 }
 
+// ── Mobile top-bar user chip ────────────────────────────────────────────────
+
+function MobileUserChip({ onOpenDrawer }: { onOpenDrawer: () => void }) {
+  const { mode, actorId, actorName, loggedIn, login, logout } = useProfile()
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+
+  // Actor photo from the artists table
+  useEffect(() => {
+    let cancelled = false
+    if (mode === 'actor' && actorId) {
+      supabase.from('artists').select('avatar_url').eq('id', actorId).single()
+        .then(({ data }) => { if (!cancelled) setAvatarUrl((data as any)?.avatar_url ?? null) })
+    } else {
+      setAvatarUrl(null)
+    }
+    return () => { cancelled = true }
+  }, [mode, actorId])
+
+  if (!loggedIn) {
+    return (
+      <div className="ml-auto flex items-center gap-2 shrink-0">
+        <span className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: '#e4ddd4', color: '#a89e92' }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+          </svg>
+        </span>
+        <button
+          onClick={() => { login(); onOpenDrawer() }}
+          className="px-3 py-2 text-[11px] font-semibold rounded-lg shrink-0"
+          style={{ background: '#c8102e', color: '#fff' }}
+        >
+          Zaloguj
+        </button>
+      </div>
+    )
+  }
+
+  const isActor = mode === 'actor' && !!actorId
+  const label   = isActor ? (actorName ?? 'Aktor') : 'Koordynator'
+
+  return (
+    <div className="ml-auto flex items-center gap-2 min-w-0">
+      {/* Avatar + name — tap opens the drawer (profile switcher) */}
+      <button onClick={onOpenDrawer} className="flex items-center gap-1.5 min-w-0">
+        {avatarUrl ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={avatarUrl} alt={label} className="w-8 h-8 rounded-full object-cover shrink-0" style={{ border: '1px solid #e4ddd4' }} />
+        ) : (
+          <span className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0" style={{ background: '#1a1410', color: '#fff' }}>
+            {label.charAt(0).toUpperCase()}
+          </span>
+        )}
+        <span className="text-left leading-tight min-w-0">
+          <span className="block text-[11px] font-semibold truncate max-w-[88px]" style={{ color: '#1a1410' }}>{label}</span>
+          {isActor && (
+            <span className="block text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#a89e92' }}>
+              Aktor
+            </span>
+          )}
+        </span>
+      </button>
+      <button
+        onClick={logout}
+        className="px-2.5 py-2 text-[11px] font-semibold rounded-lg shrink-0"
+        style={{ border: '1px solid #e4ddd4', color: '#7a7068', background: '#fff' }}
+      >
+        Wyloguj
+      </button>
+    </div>
+  )
+}
+
 // ── Mobile bottom tab bar ───────────────────────────────────────────────────
 
 function MobileTabBar() {
@@ -435,7 +507,10 @@ function Shell({ children }: { children: React.ReactNode }) {
             </svg>
           </button>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-teatr-polonia.jpg" alt="Teatr Polonia" className="h-7 w-auto" />
+          <img src="/logo-teatr-polonia.jpg" alt="Teatr Polonia" className="h-6 w-auto shrink-0" />
+
+          {/* Logged-in user + Zaloguj/Wyloguj */}
+          <MobileUserChip onOpenDrawer={() => setDrawerOpen(true)} />
         </header>
 
         <main className="flex-1 overflow-y-auto overscroll-contain">
