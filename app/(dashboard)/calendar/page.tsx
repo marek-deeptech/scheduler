@@ -11,6 +11,7 @@ import {
   conflictArtistIds,
   type ProposalConflict,
 } from '@/lib/conflicts'
+import { sortByLastName } from '@/lib/names'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -554,12 +555,14 @@ export default function RepertuarPage() {
         // Build prodMap: title → ProdInfo (including castIds for conflict detection)
         const map = new Map<string, ProdInfo>()
         for (const p of prodRes.data ?? []) {
-          const castEntries: Array<{ id: string; name: string }> = (p.artist_productions ?? [])
-            .map((ap: any) => {
-              const a = Array.isArray(ap.artists) ? ap.artists[0] : ap.artists
-              return a ? { id: a.id as string, name: a.name as string } : null
-            })
-            .filter(Boolean) as Array<{ id: string; name: string }>
+          const castEntries: Array<{ id: string; name: string }> = sortByLastName(
+            (p.artist_productions ?? [])
+              .map((ap: any) => {
+                const a = Array.isArray(ap.artists) ? ap.artists[0] : ap.artists
+                return a ? { id: a.id as string, name: a.name as string } : null
+              })
+              .filter(Boolean) as Array<{ id: string; name: string }>
+          )
 
           map.set(p.title, {
             title:        p.title,

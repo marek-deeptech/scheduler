@@ -6,6 +6,7 @@ import { useLanguage } from '@/lib/language-context'
 import { useTheatre } from '@/lib/theatre-context'
 import ProductionModal from '@/components/ProductionModal'
 import { IconWarning, IconTheatre } from '@/lib/icons'
+import { sortByLastName } from '@/lib/names'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -497,7 +498,7 @@ export default function ProductionsPage() {
           return a ? { id: a.id, name: a.name, role: a.role ?? null, avatar_url: a.avatar_url ?? null } : null
         })
         .filter((a: any) => a && castIdSet.has(a.id))
-        .sort((a: CastMember, b: CastMember) => a.name.localeCompare(b.name))
+      const sortedCast = sortByLastName(cast)
       const events: EventRow[] = rawEvs
         .map((e: any) => {
           const rm = Array.isArray(e.rooms) ? e.rooms[0] : e.rooms
@@ -525,7 +526,7 @@ export default function ProductionsPage() {
         status:        p.status ?? 'Bieżące',
         comment:       p.comment ?? null,
         is_favourite:  p.is_favourite ?? false,
-        cast,
+        cast: sortedCast,
         events,
         hasConflict:   detectConflict(rawEvs),
       }
@@ -533,10 +534,10 @@ export default function ProductionsPage() {
 
     setProductions(rows)
     setTheatres(thData ?? [])
-    setArtists((artistData ?? []).map((a: any) => ({
+    setArtists(sortByLastName((artistData ?? []).map((a: any) => ({
       id: a.id, name: a.name, role: a.role,
       teams: Array.isArray(a.teams) ? (a.teams[0] ?? null) : (a.teams ?? null),
-    })))
+    }))))
     setRooms(roomData ?? [])
     setLoading(false)
   }

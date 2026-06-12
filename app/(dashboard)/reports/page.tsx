@@ -9,6 +9,7 @@ import {
   PieChart, Pie, Legend,
 } from 'recharts'
 import { findConflicts } from '@/lib/conflicts'
+import { sortByLastName } from '@/lib/names'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -192,7 +193,7 @@ export default function ReportsPage() {
     ])
 
     setEvents((evData ?? []) as unknown as EventRow[])
-    setArtists((artData ?? []) as ArtistRow[])
+    setArtists(sortByLastName((artData ?? []) as ArtistRow[]))
     setAvails(avData ?? [])
     setEventsM1((histM1Data ?? []) as unknown as EventRow[])
     setEventsM2((histM2Data ?? []) as unknown as EventRow[])

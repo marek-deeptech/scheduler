@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import ArtistModal from '@/components/ArtistModal'
 import { IconMail, IconPhone, IconTheatre, IconSun, IconHeart } from '@/lib/icons'
 import { useLanguage } from '@/lib/language-context'
+import { sortByLastName } from '@/lib/names'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1223,8 +1224,7 @@ export default function ArtistsPage() {
       const q = search.toLowerCase()
       list = list.filter(a => a.name.toLowerCase().includes(q) || (a.role ?? '').toLowerCase().includes(q))
     }
-    const lastName = (name: string) => name.trim().split(' ').pop() ?? name
-    return [...list].sort((a, b) => lastName(a.name).localeCompare(lastName(b.name), 'pl'))
+    return sortByLastName(list)
   }, [artists, statusFilter, search])
 
   const selectedArtist = artists.find(a => a.id === selectedId) ?? null

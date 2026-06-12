@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { sortByLastName, sortNamesByLastName } from '@/lib/names'
 
 // ── SQL migration (run once in Supabase SQL Editor) ───────────────────────────
 // ALTER TABLE events ADD COLUMN IF NOT EXISTS description text;
@@ -96,7 +97,9 @@ function EventCard({ ev, extraIdx, now, onEdit }: {
   ev: EventRow; extraIdx: number; now: Date; onEdit: (ev: EventRow) => void
 }) {
   const style  = typeStyle(ev.type, extraIdx)
-  const actors = (ev.event_artists ?? []).map((ea: any) => ea.artists?.name).filter(Boolean) as string[]
+  const actors = sortNamesByLastName(
+    (ev.event_artists ?? []).map((ea: any) => ea.artists?.name).filter(Boolean) as string[]
+  )
   const room   = ev.rooms?.name ?? ev.location ?? null
   const isPast = new Date(ev.end_time) < now
 
@@ -462,7 +465,7 @@ export default function EventsPage() {
     setEvents((evData ?? []) as any[])
     setEventTypes(typesData ?? [])
     setRooms(roomsData ?? [])
-    setArtists(artistsData ?? [])
+    setArtists(sortByLastName(artistsData ?? []))
     setLoading(false)
   }
 

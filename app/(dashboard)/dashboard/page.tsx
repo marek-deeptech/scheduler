@@ -7,6 +7,7 @@ import { useTheatre } from '@/lib/theatre-context'
 import { useLanguage } from '@/lib/language-context'
 import { findConflicts, CONFLICT_LABEL, CONFLICT_ICON, type ConflictResult, type ConflictReason } from '@/lib/conflicts'
 import ConflictPanel from '@/components/ConflictPanel'
+import { sortByLastName } from '@/lib/names'
 import { IconUser, IconMapPin, IconSun, IconHeart, IconXCircle, IconStar, IconInbox, IconCalendar, IconWarning } from '@/lib/icons'
 
 /* ─── Constants ──────────────────────────────────────────────────── */
@@ -280,7 +281,7 @@ export default function DashboardPage() {
         .lte('date', nmEndStr),
     ])
 
-    const allArtistsRaw = (artistData ?? []) as any[]
+    const allArtistsRaw = sortByLastName((artistData ?? []) as any[])
 
     // Scope to artists who have at least one production at the selected theatre
     const scopedRaw = selectedTheatreId
@@ -373,7 +374,7 @@ export default function DashboardPage() {
     if (techTeam?.id) {
       const { data: techArtists } = await supabase
         .from('artists').select('id, name, role, status').eq('team_id', techTeam.id).order('name')
-      setTechToday((techArtists ?? []).map(a => ({
+      setTechToday(sortByLastName(techArtists ?? []).map(a => ({
         id: a.id, name: a.name, role: a.role, status: a.status,
         eventCount: todayMapped.filter(e => e.artist_ids.includes(a.id) && dayKey(e.start_time) === today).length,
       })))

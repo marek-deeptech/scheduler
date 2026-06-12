@@ -7,6 +7,7 @@ import { LanguageProvider, useLanguage } from '@/lib/language-context'
 import { TheatreProvider, useTheatre } from '@/lib/theatre-context'
 import { ProfileProvider, useProfile } from '@/lib/profile-context'
 import { supabase } from '@/lib/supabase'
+import { sortByLastName } from '@/lib/names'
 
 interface Theatre { id: string; name: string }
 interface Actor   { id: string; name: string }
@@ -95,7 +96,7 @@ function ProfileSwitcher() {
       .select('id, name, teams!inner(name)')
       .eq('teams.name', 'Cast')
       .order('name')
-    setActors(((data ?? []) as any[]).map(a => ({ id: a.id, name: a.name })))
+    setActors(sortByLastName(((data ?? []) as any[]).map(a => ({ id: a.id, name: a.name }))))
     setLoading(false)
   }
 

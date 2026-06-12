@@ -7,6 +7,7 @@ import { useLanguage } from '@/lib/language-context'
 import { Artist } from '@/types'
 import Avatar from '@/components/Avatar'
 import { IconTheatre, IconWrench, IconHanger } from '@/lib/icons'
+import { sortByLastName } from '@/lib/names'
 
 const teamColor: Record<string, string> = {
   Cast:      'bg-gray-100 text-gray-700',
@@ -39,7 +40,7 @@ export default function TeamPage({ teamName }: { teamName: string | null }) {
       query = query.is('team_id', null)
     }
     const { data } = await query
-    setArtists(data ?? [])
+    setArtists(sortByLastName(data ?? []))
     setLoading(false)
   }
 

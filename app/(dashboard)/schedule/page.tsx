@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
 import { Production, Event, Artist } from '@/types'
+import { sortByLastName } from '@/lib/names'
 
 export default function SchedulePage() {
   const { t } = useLanguage()
@@ -31,7 +32,7 @@ export default function SchedulePage() {
       supabase.from('artists').select('*, teams!inner(name)').eq('teams.name', 'Cast').order('name'),
     ])
     setProductions(prodData ?? [])
-    setArtists(artistData ?? [])
+    setArtists(sortByLastName(artistData ?? []))
     if (prodData && prodData.length > 0) {
       const firstId = prodData[0].id
       setSelectedProduction(firstId)

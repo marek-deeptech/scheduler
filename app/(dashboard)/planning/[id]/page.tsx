@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import { supabase } from '@/lib/supabase'
+import { sortByLastName } from '@/lib/names'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -215,13 +216,20 @@ export default function ProposalDetailPage() {
         const castByProdId: Record<string, string[]>   = {}
         const castIdsByProdId: Record<string, string[]> = {}
         const artistIdByName: Record<string, string>    = {}
+        const castPairsByProdId: Record<string, { id: string; name: string }[]> = {}
         for (const ap of (artistProds ?? []) as any[]) {
           const artist = ((artists ?? []) as any[]).find((a: any) => a.id === ap.artist_id)
           if (artist) {
-            castByProdId[ap.production_id]   ??= []; castByProdId[ap.production_id].push(artist.name)
-            castIdsByProdId[ap.production_id] ??= []; castIdsByProdId[ap.production_id].push(artist.id)
+            castPairsByProdId[ap.production_id] ??= []
+            castPairsByProdId[ap.production_id].push({ id: artist.id, name: artist.name })
             artistIdByName[artist.name] = artist.id
           }
+        }
+        // Sort each cast alphabetically by surname, keeping name/id arrays aligned
+        for (const [prodId, pairs] of Object.entries(castPairsByProdId)) {
+          const sorted = sortByLastName(pairs)
+          castByProdId[prodId]    = sorted.map(p => p.name)
+          castIdsByProdId[prodId] = sorted.map(p => p.id)
         }
 
         const theatreByProdId: Record<string, string>     = {}

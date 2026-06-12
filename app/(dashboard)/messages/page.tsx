@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
+import { lastName } from '@/lib/names'
 
 interface Person {
   id: string
@@ -425,7 +426,7 @@ export default function MessagesPage() {
     if (theatreFilter !== 'all') list = list.filter(p => p.theatreIds.includes(theatreFilter))
     if (statusFilter !== 'all') list = list.filter(p => p.status === statusFilter)
     return [...list].sort((a, b) => {
-      if (sortBy === 'name') return a.name.localeCompare(b.name, 'pl')
+      if (sortBy === 'name') return lastName(a.name).localeCompare(lastName(b.name), 'pl') || a.name.localeCompare(b.name, 'pl')
       if (sortBy === 'team') return a.team.localeCompare(b.team, 'pl')
       return (a.status ?? '').localeCompare(b.status ?? '', 'pl')
     })

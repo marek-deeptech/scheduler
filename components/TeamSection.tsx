@@ -7,6 +7,7 @@ import ArtistModal from '@/components/ArtistModal'
 import Avatar from '@/components/Avatar'
 import { IconMail, IconPhone } from '@/lib/icons'
 import { useLanguage } from '@/lib/language-context'
+import { sortByLastName } from '@/lib/names'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -117,7 +118,7 @@ function MemberPickerModal({ teamId, currentMemberIds, onClose, onSaved }: {
 
   useEffect(() => {
     supabase.from('artists').select('id, name, role').order('name')
-      .then(({ data }) => setAll(data ?? []))
+      .then(({ data }) => setAll(sortByLastName(data ?? [])))
   }, [])
 
   const outside = all.filter(a => !currentMemberIds.includes(a.id))
@@ -342,7 +343,7 @@ export default function TeamSection({
     ])
 
     const mems: Member[] = (memberData ?? []).map((a: any) => ({ ...a, avatar_url: a.avatar_url ?? null }))
-    setMembers(mems)
+    setMembers(sortByLastName(mems))
     setAllProductions((prodData ?? []).map((p: any) => ({
       id: p.id, title: p.title,
       theatres: Array.isArray(p.theatres) ? p.theatres[0] ?? null : p.theatres ?? null,

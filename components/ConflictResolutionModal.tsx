@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { lastName } from '@/lib/names'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -183,10 +184,11 @@ export default function ConflictResolutionModal({
           }
         })
 
-        // Sort: available first
+        // Sort: available first, then alphabetically by surname
         result.sort((a, b) => {
           const order = { available: 0, unknown: 1, busy: 2, blocked: 3 }
           return (order[a.available] ?? 1) - (order[b.available] ?? 1)
+            || lastName(a.name).localeCompare(lastName(b.name), 'pl')
         })
 
         if (!cancelled) { setSubstitutes(result); setLoading(false) }
