@@ -896,7 +896,7 @@ export default function DashboardPage() {
                           {ev.type}
                         </span>
                       )}
-                      {ev.production_title && (
+                      {ev.production_title && ev.production_title !== ev.title && (
                         <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                           {ev.production_title}
                         </span>

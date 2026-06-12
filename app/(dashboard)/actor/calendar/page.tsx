@@ -607,7 +607,7 @@ export default function ActorCalendarPage() {
                                       </span>
                                     )}
                                   </div>
-                                  {ev.production && (
+                                  {ev.production && ev.production !== (ev.type ?? ev.title) && (
                                     <span className={`inline-block mt-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                                       ev.isMine ? 'bg-white/15 text-white' : 'border border-gray-300 text-gray-600 bg-white'
                                     }`}>
@@ -779,7 +779,7 @@ export default function ActorCalendarPage() {
                             {fmtTime(ev.start_time)}–{fmtTime(ev.end_time)}
                             {ev.room ? ` · ${ev.room}` : ''}
                           </p>
-                          {ev.production && (
+                          {ev.production && ev.production !== (ev.type ?? ev.title) && (
                             <span className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white text-gray-900">
                               {ev.production}
                             </span>
@@ -804,7 +804,7 @@ export default function ActorCalendarPage() {
                             {fmtTime(ev.start_time)}–{fmtTime(ev.end_time)}
                             {ev.room ? ` · ${ev.room}` : ''}
                           </p>
-                          {ev.production && (
+                          {ev.production && ev.production !== (ev.type ?? ev.title) && (
                             <span className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 text-gray-600 bg-white">
                               {ev.production}
                             </span>

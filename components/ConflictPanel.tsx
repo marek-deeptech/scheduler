@@ -107,7 +107,7 @@ function EventCard({
             <IconMapPin size={12} className="text-gray-500 inline" /> {[room, theatre].filter(Boolean).join(' · ')}
           </p>
         )}
-        {event.production_title && (
+        {event.production_title && event.production_title !== event.title && event.production_title !== event.type && (
           <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1"><IconTheatre size={12} className="text-gray-500 inline" /> {event.production_title}</p>
         )}
       </div>
