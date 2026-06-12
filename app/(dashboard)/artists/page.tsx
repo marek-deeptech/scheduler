@@ -870,10 +870,9 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
         </div>
       )}
 
-      {/* Messages tab */}
-      {activeTab === 'messages' && loading ? (
-        <div className="flex-1 flex items-center justify-center text-xs" style={{ color: '#a89e92' }}>{ta.loading}</div>
-      ) : activeTab === 'messages' && detail ? (
+      {/* Messages tab — keep content mounted during refresh (loader only on first load),
+          otherwise MessagesTab's mount-effect re-triggers fetchDetail in a loop */}
+      {activeTab === 'messages' && detail ? (
         <div className="flex-1 overflow-y-auto" style={{ background: '#faf8f5' }}>
           <MessagesTab artist={artist} detail={detail} onDetailRefresh={onDetailRefresh} />
         </div>
@@ -882,7 +881,7 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
       ) : null}
 
       {/* Profile tab */}
-      {activeTab === 'profile' && loading ? (
+      {activeTab === 'profile' && !detail && loading ? (
         <div className="flex-1 flex items-center justify-center text-xs" style={{ color: '#a89e92' }}>{ta.loading}</div>
       ) : activeTab === 'profile' && detail ? (
         <div className="flex-1 overflow-y-auto" style={{ background: '#faf8f5' }}>
