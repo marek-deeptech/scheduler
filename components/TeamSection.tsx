@@ -197,6 +197,19 @@ function ContactModal({ member, type, onClose }: {
     setTimeout(onClose, 2500)
   }
 
+  async function handleSendSms() {
+    if (!body.trim()) return
+    setSending(true)
+    await fetch('/api/notify/individual-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artistId: member.id, subject: '', body, channel: 'sms' }),
+    })
+    setSending(false)
+    setSent(true)
+    setTimeout(onClose, 2500)
+  }
+
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
@@ -264,15 +277,15 @@ function ContactModal({ member, type, onClose }: {
               <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-500">{body.length}/160</span>
               </div>
+              {sent && <p className="text-xs text-green-600 font-medium">{ts.emailSent}</p>}
               <div className="flex justify-between items-center pt-1">
                 <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-600">{ts.cancel}</button>
-                <a
-                  href={`sms:${member.phone}${body ? `?body=${encodeURIComponent(body)}` : ''}`}
-                  onClick={() => setTimeout(onClose, 300)}
-                  className={`px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-xl transition-opacity
-                    ${!body.trim() ? 'opacity-40 pointer-events-none' : ''}`}>
-                  {ts.openSms}
-                </a>
+                <button
+                  onClick={handleSendSms}
+                  disabled={sending || !body.trim() || sent}
+                  className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-xl disabled:opacity-40 transition-opacity">
+                  {sending ? ts.sending : ts.send}
+                </button>
               </div>
             </>
           )}

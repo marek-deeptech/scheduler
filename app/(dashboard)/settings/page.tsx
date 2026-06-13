@@ -129,7 +129,7 @@ const TEMPLATE_VARS = [
 
 // ─── Notifications Tab ────────────────────────────────────────────────────────
 
-type FieldKey = 'notification_email_subject' | 'notification_email_intro' | 'notification_sms'
+type FieldKey = 'notification_email_subject' | 'notification_email_intro' | 'notification_sms' | 'coordinator_email'
 
 interface SettingField {
   key: FieldKey
@@ -137,9 +137,11 @@ interface SettingField {
   type: 'input' | 'textarea'
   rows?: number
   smsLimit?: boolean
+  noVars?: boolean
 }
 
 const FIELDS: SettingField[] = [
+  { key: 'coordinator_email',          label: 'Email koordynatora (alarmy o chorobie i zmianach dostępności)', type: 'input', noVars: true },
   { key: 'notification_email_subject', label: 'Temat emaila',  type: 'input' },
   { key: 'notification_email_intro',   label: 'Wstęp emaila',  type: 'textarea', rows: 3 },
   { key: 'notification_sms',           label: 'Treść SMS',     type: 'textarea', rows: 4, smsLimit: true },
@@ -176,8 +178,7 @@ function TemplateField({
     setBusy(true)
     await supabase
       .from('app_settings')
-      .update({ value, updated_at: new Date().toISOString() })
-      .eq('key', field.key)
+      .upsert({ key: field.key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
     setBusy(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -214,7 +215,7 @@ function TemplateField({
       )}
 
       {/* Variable pills */}
-      <div className="flex flex-wrap gap-1.5 mt-2">
+      <div className={`flex flex-wrap gap-1.5 mt-2 ${field.noVars ? 'hidden' : ''}`}>
         {TEMPLATE_VARS.map(v => (
           <button
             key={v}
@@ -246,6 +247,7 @@ function TemplateField({
 
 function NotificationsTab() {
   const [values, setValues] = useState<Record<FieldKey, string>>({
+    coordinator_email:          '',
     notification_email_subject: '',
     notification_email_intro:   '',
     notification_sms:           '',
@@ -257,7 +259,7 @@ function NotificationsTab() {
       const { data } = await supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['notification_email_subject', 'notification_email_intro', 'notification_sms'])
+        .in('key', ['coordinator_email', 'notification_email_subject', 'notification_email_intro', 'notification_sms'])
       if (data) {
         const map: Partial<Record<FieldKey, string>> = {}
         for (const row of data) {

@@ -1,4 +1,6 @@
+import { createClient } from '@supabase/supabase-js'
 import { sendEmail, emailWrapper } from '@/lib/email'
+import { logMessages } from '@/lib/message-log'
 
 function fmtPolish(iso: string) {
   const d = new Date(iso)
@@ -55,6 +57,24 @@ export async function POST(request: Request) {
 
   const subject = `[Konflikty] ${count} konfliktów grafiku — ${today}`
   const ok = await sendEmail(coordinatorEmail, subject, html)
+
+  if (ok) {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+    const summary = conflicts
+      .map(c => `${c.eventA.title} vs ${c.eventB.title} (${fmtPolish(c.eventA.start_time)})${c.artistNames.length ? ` — ${c.artistNames.join(', ')}` : ''}`)
+      .join('\n')
+    await logMessages(supabase, [{
+      artist_id: null,
+      type: 'email',
+      direction: 'to_coordinator',
+      kind: 'conflict_alert',
+      subject,
+      body: summary,
+    }])
+  }
 
   return Response.json({ ok })
 }

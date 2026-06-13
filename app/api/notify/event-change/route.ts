@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { sendEmail, emailWrapper } from '@/lib/email'
+import { logMessages, type MessageLogRow } from '@/lib/message-log'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,10 +29,10 @@ export async function POST(request: Request) {
 
   const { data: artists } = await supabase
     .from('artists')
-    .select('name, email')
+    .select('id, name, email')
     .in('id', artistIds)
 
-  const recipients = (artists ?? []).filter((a: any) => a.email) as { name: string; email: string }[]
+  const recipients = (artists ?? []).filter((a: any) => a.email) as { id: string; name: string; email: string }[]
 
   if (recipients.length === 0) {
     return Response.json({ ok: true, sent: 0 })
@@ -81,11 +82,28 @@ export async function POST(request: Request) {
     `)
   }
 
+  const summary = action === 'save'
+    ? `Zmiana w grafiku: ${event.title}, ${dateLabel}, ${startTime}–${endTime}${event.production_title ? ` (${event.production_title})` : ''}`
+    : `Odwołano: ${event.title}, ${dateLabel}, ${startTime}–${endTime}${event.production_title ? ` (${event.production_title})` : ''}`
+
   let sent = 0
+  const logRows: MessageLogRow[] = []
   for (const artist of recipients) {
     const ok = await sendEmail(artist.email, subject, bodyHtml)
-    if (ok) sent++
+    if (ok) {
+      sent++
+      logRows.push({
+        artist_id: artist.id,
+        type: 'email',
+        kind: 'event_change',
+        subject,
+        body: summary,
+        related_event_id: action === 'save' ? event.id : null,
+      })
+    }
   }
+
+  await logMessages(supabase, logRows)
 
   return Response.json({ ok: true, sent })
 }

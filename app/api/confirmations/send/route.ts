@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
+import { logMessages, type MessageLogRow } from '@/lib/message-log'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -113,6 +114,8 @@ export async function POST(request: Request) {
   let sentSms = 0
 
   const notifiedArtistIds = new Set<string>()
+  const logRows: MessageLogRow[] = []
+  const logSummary = `Prośba o potwierdzenie: ${eventTitle}, ${dateLabel}, ${startTime}–${endTime}${eventDetails.production_title ? ` (${eventDetails.production_title})` : ''}`
 
   for (const artistId of artistIds) {
     const artist = artistMap[artistId]
@@ -176,6 +179,14 @@ export async function POST(request: Request) {
       if (ok) {
         sentEmail++
         artistNotified = true
+        logRows.push({
+          artist_id: artistId,
+          type: 'email',
+          kind: 'confirmation_request',
+          subject,
+          body: logSummary,
+          related_event_id: eventId,
+        })
       }
     }
 
@@ -189,6 +200,14 @@ export async function POST(request: Request) {
       if (ok) {
         sentSms++
         artistNotified = true
+        logRows.push({
+          artist_id: artistId,
+          type: 'sms',
+          kind: 'confirmation_request',
+          subject: `Potwierdzenie: ${eventTitle}`,
+          body: logSummary,
+          related_event_id: eventId,
+        })
       }
     }
 
@@ -198,6 +217,8 @@ export async function POST(request: Request) {
   }
 
   sent = notifiedArtistIds.size
+
+  await logMessages(supabase, logRows)
 
   return Response.json({ ok: true, sent, sentEmail, sentSms })
 }

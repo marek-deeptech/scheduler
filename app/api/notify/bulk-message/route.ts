@@ -1,8 +1,15 @@
 import { createClient } from '@supabase/supabase-js'
 import { sendEmail, emailWrapper } from '@/lib/email'
+import { sendSms } from '@/lib/sms'
+import { logMessages, type MessageLogRow } from '@/lib/message-log'
 
 export async function POST(request: Request) {
-  const { artistIds, subject, body } = await request.json() as { artistIds: string[], subject: string, body: string }
+  const { artistIds, subject, body, channel = 'email' } = await request.json() as {
+    artistIds: string[]
+    subject: string
+    body: string
+    channel?: 'email' | 'sms' | 'both'
+  }
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -11,10 +18,8 @@ export async function POST(request: Request) {
 
   const { data: artists } = await supabase
     .from('artists')
-    .select('id, name, email')
+    .select('id, name, email, phone')
     .in('id', artistIds)
-
-  const withEmail = (artists ?? []).filter((a: any) => a.email)
 
   const bodyHtml = body
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -25,22 +30,28 @@ export async function POST(request: Request) {
     <p style="font-size:14px;line-height:1.7;color:#374151">${bodyHtml}</p>
   `)
 
-  let sent = 0
-  const logRows: { artist_id: string; type: string; subject: string; body: string; sent_at: string }[] = []
-  const sentAt = new Date().toISOString()
+  let sentEmail = 0
+  let sentSms = 0
+  const logRows: MessageLogRow[] = []
 
-  for (const artist of withEmail) {
-    const a = artist as any
-    const ok = await sendEmail(a.email, subject, html)
-    if (ok) {
-      sent++
-      logRows.push({ artist_id: a.id, type: 'email', subject, body, sent_at: sentAt })
+  for (const artist of (artists ?? []) as { id: string; name: string; email: string | null; phone: string | null }[]) {
+    if ((channel === 'email' || channel === 'both') && artist.email) {
+      const ok = await sendEmail(artist.email, subject, html)
+      if (ok) {
+        sentEmail++
+        logRows.push({ artist_id: artist.id, type: 'email', subject, body })
+      }
+    }
+    if ((channel === 'sms' || channel === 'both') && artist.phone) {
+      const ok = await sendSms(artist.phone, body)
+      if (ok) {
+        sentSms++
+        logRows.push({ artist_id: artist.id, type: 'sms', subject: subject || 'SMS', body })
+      }
     }
   }
 
-  if (logRows.length > 0) {
-    await supabase.from('actor_messages').insert(logRows)
-  }
+  await logMessages(supabase, logRows)
 
-  return Response.json({ ok: true, sent, total: withEmail.length })
+  return Response.json({ ok: true, sent: sentEmail + sentSms, sentEmail, sentSms, total: (artists ?? []).length })
 }

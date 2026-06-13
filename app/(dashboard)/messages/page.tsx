@@ -170,7 +170,22 @@ function ComposeModal({
       await fetch('/api/notify/bulk-message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ artistIds: ids, subject, body }),
+        body: JSON.stringify({ artistIds: ids, subject, body, channel: 'email' }),
+      })
+      setSent(true)
+      setTimeout(() => onClose(), 2500)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  async function handleSendSms() {
+    setSending(true)
+    try {
+      await fetch('/api/notify/bulk-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ artistIds: phoneRecipients.map(r => r.id), subject: '', body, channel: 'sms' }),
       })
       setSent(true)
       setTimeout(() => onClose(), 2500)
@@ -280,27 +295,27 @@ function ComposeModal({
                   </div>
                 </div>
               )}
-              <p className="text-xs text-gray-500 italic">
-                {tm.smsManualNote}
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleCopyNumbers}
-                  disabled={phoneRecipients.length === 0}
-                  className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {tm.copyNumbers}
-                </button>
-                {phoneRecipients.length === 1 && body.trim() && (
-                  <a
-                    href={`sms:${phoneRecipients[0].phone}?body=${encodeURIComponent(body)}`}
-                    className="flex-1 px-4 py-2 text-sm font-medium text-center rounded-xl transition-colors"
-                    style={{ background: '#1a1410', color: '#fff' }}
+              {sent ? (
+                <p className="text-sm text-green-600 font-medium text-center">{tm.sent}</p>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleCopyNumbers}
+                    disabled={phoneRecipients.length === 0}
+                    className="px-4 py-2.5 text-sm font-medium text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {tm.openSmsApp}
-                  </a>
-                )}
-              </div>
+                    {tm.copyNumbers}
+                  </button>
+                  <button
+                    onClick={handleSendSms}
+                    disabled={sending || !body.trim() || phoneRecipients.length === 0}
+                    className="flex-1 px-4 py-2.5 text-sm font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: '#c8102e', color: '#fff' }}
+                  >
+                    {sending ? 'Wysyłanie…' : tm.sendTo(phoneRecipients.length)}
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -326,6 +341,28 @@ const RESP_CFG: Record<string, { cls: string; label: string }> = {
   maybe:     { cls: 'bg-orange-500 text-white', label: 'BYĆ MOŻE' },
 }
 
+// ── Sent message history ────────────────────────────────────────
+interface SentMessage {
+  id: string
+  artistName: string | null
+  channel: string
+  kind: string
+  direction: string
+  subject: string
+  body: string
+  sentAt: string
+}
+
+const KIND_LABELS: Record<string, string> = {
+  message:              'Wiadomość',
+  confirmation_request: 'Potwierdzenie',
+  repertoire_approved:  'Repertuar',
+  event_change:         'Zmiana grafiku',
+  availability_change:  'Dostępność',
+  conflict_alert:       'Konflikty',
+  substitution:         'Zastępstwo',
+}
+
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
@@ -338,6 +375,8 @@ export default function MessagesPage() {
   const [theatres, setTheatres] = useState<Theatre[]>([])
   const [responses, setResponses] = useState<ActorResponse[]>([])
   const [responsesOpen, setResponsesOpen] = useState(true)
+  const [sentHistory, setSentHistory] = useState<SentMessage[]>([])
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [teamFilter, setTeamFilter] = useState<string>('all')
@@ -368,6 +407,28 @@ export default function MessagesPage() {
             status:      r.status,
             respondedAt: r.responded_at,
             comment:     r.comment ?? null,
+          }
+        }))
+      })
+
+    // Load sent message history (select * — works before and after migration)
+    supabase
+      .from('actor_messages')
+      .select('*, artists(name)')
+      .order('sent_at', { ascending: false })
+      .limit(100)
+      .then(({ data }) => {
+        setSentHistory(((data ?? []) as any[]).map(m => {
+          const artist = Array.isArray(m.artists) ? m.artists[0] : m.artists
+          return {
+            id:         m.id,
+            artistName: artist?.name ?? null,
+            channel:    m.type ?? 'email',
+            kind:       m.kind ?? 'message',
+            direction:  m.direction ?? 'to_actor',
+            subject:    m.subject ?? '',
+            body:       m.body ?? '',
+            sentAt:     m.sent_at,
           }
         }))
       })
@@ -574,6 +635,51 @@ export default function MessagesPage() {
                       {RESP_CFG[r.status].label}
                     </span>
                     <span className="text-[10px] text-gray-400">{fmtDate(r.respondedAt)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Sent history section ───────────────────────────────────── */}
+      {sentHistory.length > 0 && (
+        <div className="mb-6 bg-white border border-gray-200 rounded-2xl overflow-hidden">
+          <button
+            onClick={() => setHistoryOpen(v => !v)}
+            className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-gray-900">Historia wysłanych</span>
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{sentHistory.length}</span>
+            </div>
+            <span className="text-gray-400 text-sm">{historyOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {historyOpen && (
+            <div className="border-t border-gray-100 divide-y divide-gray-50 max-h-96 overflow-y-auto">
+              {sentHistory.map(m => (
+                <div key={m.id} className="flex items-start gap-3 px-5 py-3">
+                  <span className={`mt-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${
+                    m.channel === 'sms' ? 'bg-blue-100 text-blue-700' : 'bg-gray-900 text-white'
+                  }`}>
+                    {m.channel}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">
+                      {m.direction === 'to_coordinator'
+                        ? <span className="text-red-700">→ Koordynator{m.artistName ? ` · ${m.artistName}` : ''}</span>
+                        : m.artistName ?? '—'}
+                    </p>
+                    {m.subject && <p className="text-xs text-gray-600 truncate">{m.subject}</p>}
+                    <p className="text-[11px] text-gray-400 truncate">{m.body}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                      {KIND_LABELS[m.kind] ?? m.kind}
+                    </span>
+                    <span className="text-[10px] text-gray-400">{fmtDate(m.sentAt)}</span>
                   </div>
                 </div>
               ))}

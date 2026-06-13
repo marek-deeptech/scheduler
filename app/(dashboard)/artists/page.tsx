@@ -691,6 +691,8 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
   const [emailSent,    setEmailSent]    = useState(false)
   const [smsOpen,      setSmsOpen]      = useState(false)
   const [smsBody,      setSmsBody]      = useState('')
+  const [smsSending,   setSmsSending]   = useState(false)
+  const [smsSent,      setSmsSent]      = useState(false)
 
   async function handleSendEmail() {
     if (!emailSubject || !emailBody) return
@@ -705,6 +707,20 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
     setEmailSubject('')
     setEmailBody('')
     setTimeout(() => { setEmailSent(false); setEmailOpen(false) }, 3000)
+  }
+
+  async function handleSendSms() {
+    if (!smsBody.trim()) return
+    setSmsSending(true)
+    await fetch('/api/notify/individual-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artistId: artist.id, subject: '', body: smsBody, channel: 'sms' }),
+    })
+    setSmsSending(false)
+    setSmsSent(true)
+    setSmsBody('')
+    setTimeout(() => { setSmsSent(false); setSmsOpen(false) }, 3000)
   }
 
   useEffect(() => { setActiveTab('profile') }, [artist.id])
@@ -824,14 +840,15 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
               <div className="flex gap-2">
                 <button onClick={() => { setSmsOpen(false); setSmsBody('') }}
                   className="text-xs" style={{ color: '#a89e92' }}>{ta.cancel}</button>
-                <a href={`sms:${artist.phone}${smsBody ? `?body=${encodeURIComponent(smsBody)}` : ''}`}
-                  onClick={() => { setTimeout(() => { setSmsOpen(false); setSmsBody('') }, 300) }}
-                  className={`text-xs px-3 py-1.5 rounded-lg transition-opacity ${!smsBody.trim() ? 'opacity-40 pointer-events-none' : ''}`}
+                <button onClick={handleSendSms}
+                  disabled={smsSending || !smsBody.trim()}
+                  className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-40 transition-opacity"
                   style={{ background: '#1a1410', color: '#fff' }}>
-                  {ta.openSms}
-                </a>
+                  {smsSending ? ta.sending : 'Wyślij SMS'}
+                </button>
               </div>
             </div>
+            {smsSent && <p className="text-xs text-green-600 font-medium">{ta.sent}</p>}
           </div>
         )}
 

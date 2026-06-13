@@ -393,19 +393,49 @@ function MobileUserChip({ onOpenDrawer }: { onOpenDrawer: () => void }) {
 
 function MobileTabBar() {
   const { t } = useLanguage()
-  const { mode } = useProfile()
+  const { mode, actorId } = useProfile()
   const pathname = usePathname()
+  const [unread, setUnread] = useState(0)
+
+  // Licznik dla aktora: oczekujące potwierdzenia + nieprzeczytane wiadomości
+  useEffect(() => {
+    if (mode !== 'actor' || !actorId) { setUnread(0); return }
+    let cancelled = false
+    async function loadUnread() {
+      const [{ count: pendingCount }, { data: msgs }] = await Promise.all([
+        supabase
+          .from('event_confirmations')
+          .select('id', { count: 'exact', head: true })
+          .eq('artist_id', actorId)
+          .eq('status', 'pending'),
+        // select * → tolerancyjne na brak kolumn read_at/direction przed migracją
+        supabase
+          .from('actor_messages')
+          .select('id, read_at, direction, kind')
+          .eq('artist_id', actorId)
+          .limit(200),
+      ])
+      const unreadMsgs = ((msgs ?? []) as any[]).filter(m =>
+        (m.direction ?? 'to_actor') === 'to_actor' &&
+        (m.kind ?? 'message') !== 'confirmation_request' &&
+        !m.read_at
+      ).length
+      if (!cancelled) setUnread((pendingCount ?? 0) + unreadMsgs)
+    }
+    loadUnread()
+    return () => { cancelled = true }
+  }, [mode, actorId, pathname])
 
   const tabs = mode === 'coordinator'
     ? [
-        { href: '/dashboard', label: t.nav.dashboard, icon: icons.home },
-        { href: '/calendar',  label: t.nav.calendar,  icon: icons.calendar },
-        { href: '/planning',  label: 'Planowanie',    icon: icons.planning },
-        { href: '/messages',  label: t.nav.messages,  icon: icons.mail },
+        { href: '/dashboard', label: t.nav.dashboard, icon: icons.home, badge: 0 },
+        { href: '/calendar',  label: t.nav.calendar,  icon: icons.calendar, badge: 0 },
+        { href: '/planning',  label: 'Planowanie',    icon: icons.planning, badge: 0 },
+        { href: '/messages',  label: t.nav.messages,  icon: icons.mail, badge: 0 },
       ]
     : [
-        { href: '/actor/calendar', label: 'Kalendarz',  icon: icons.calendar },
-        { href: '/actor/messages', label: 'Wiadomości', icon: icons.mail },
+        { href: '/actor/calendar', label: 'Kalendarz',  icon: icons.calendar, badge: 0 },
+        { href: '/actor/messages', label: 'Wiadomości', icon: icons.mail, badge: unread },
       ]
 
   return (
@@ -423,10 +453,20 @@ function MobileTabBar() {
           <Link
             key={tb.href}
             href={tb.href}
-            className="flex-1 flex flex-col items-center gap-0.5 pt-2 pb-1.5 min-h-[52px] text-[10px] font-semibold"
+            className="relative flex-1 flex flex-col items-center gap-0.5 pt-2 pb-1.5 min-h-[52px] text-[10px] font-semibold"
             style={{ color: active ? '#c8102e' : '#a89e92' }}
           >
-            {tb.icon}
+            <span className="relative">
+              {tb.icon}
+              {tb.badge > 0 && (
+                <span
+                  className="absolute -top-1.5 -right-2 min-w-[16px] h-[16px] px-1 flex items-center justify-center rounded-full text-[9px] font-bold text-white"
+                  style={{ background: '#c8102e' }}
+                >
+                  {tb.badge > 9 ? '9+' : tb.badge}
+                </span>
+              )}
+            </span>
             <span className="truncate max-w-full px-1">{tb.label}</span>
           </Link>
         )

@@ -222,6 +222,16 @@ export default function ActorCalendarPage() {
     setMultiSelected(new Set())
   }
 
+  // Alarm do koordynatora, gdy niedostępność koliduje z repertuarem
+  function notifyCoordinator(days: { date: string; status: string; note?: string | null }[]) {
+    if (!actorId) return
+    fetch('/api/notify/availability-change', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artistId: actorId, days }),
+    }).catch(() => {})
+  }
+
   // Multi-select: save immediately with delete → insert
   async function applyStatusToSelected(status: string) {
     if (!actorId || multiSelected.size === 0) return
@@ -252,6 +262,7 @@ export default function ActorCalendarPage() {
         dates.forEach(d => delete next[d])
         return next
       })
+      notifyCoordinator(dates.map(date => ({ date, status, note: null })))
     } else {
       setSaveError('Błąd zapisu: ' + insErr.message)
     }
@@ -330,6 +341,7 @@ export default function ActorCalendarPage() {
         return [...filtered, ...toSave]
       })
       setPending({})
+      notifyCoordinator(toSave)
     }
 
     setSaving(false)

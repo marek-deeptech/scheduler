@@ -1,9 +1,160 @@
 import { createClient } from '@supabase/supabase-js'
+import { sendEmail, emailWrapper } from '@/lib/email'
+import { sendSms } from '@/lib/sms'
+import { logMessages, type MessageLogRow } from '@/lib/message-log'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+
+const MONTH_NAMES = ['stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca',
+  'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia']
+const MONTH_NOM = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
+  'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień']
+
+function monthLabel(month: string): string {
+  const m = /^(\d{4})-(\d{2})/.exec(month ?? '')
+  if (!m) return month ?? ''
+  return `${MONTH_NOM[parseInt(m[2], 10) - 1]} ${m[1]}`
+}
+
+function fmtDay(iso: string) {
+  const d = new Date(iso)
+  const weekday = d.toLocaleDateString('pl-PL', { weekday: 'short' })
+  return `${weekday} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`
+}
+function fmtTime(iso: string) {
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+interface InsertedEvent {
+  id: string
+  production_id: string | null
+  title: string
+  type: string | null
+  start_time: string
+  end_time: string
+}
+
+/** Po zatwierdzeniu: każdy aktor z obsady dostaje zestawienie swoich dat
+ *  + prośby o potwierdzenie (event_confirmations) w jednym mailu. */
+async function notifyCastAfterApproval(insertedEvents: InsertedEvent[], month: string) {
+  const productionIds = [...new Set(insertedEvents.map(e => e.production_id).filter(Boolean))] as string[]
+  if (productionIds.length === 0) return { notified: 0 }
+
+  const { data: castRows } = await supabase
+    .from('artist_productions')
+    .select('artist_id, production_id, artists(id, name, email, phone)')
+    .in('production_id', productionIds)
+
+  // artist -> jego wydarzenia
+  const artistEvents: Record<string, InsertedEvent[]> = {}
+  const artistInfo: Record<string, { name: string; email: string | null; phone: string | null }> = {}
+  for (const row of (castRows ?? []) as any[]) {
+    const artist = Array.isArray(row.artists) ? row.artists[0] : row.artists
+    if (!artist) continue
+    artistInfo[row.artist_id] = { name: artist.name, email: artist.email, phone: artist.phone }
+    const evs = insertedEvents.filter(e => e.production_id === row.production_id)
+    if (evs.length === 0) continue
+    ;(artistEvents[row.artist_id] ??= []).push(...evs)
+  }
+
+  // Prośby o potwierdzenie dla wszystkich par (wydarzenie, aktor)
+  const confirmationPayload: { event_id: string; artist_id: string; status: string; sent_at: string }[] = []
+  const sentAt = new Date().toISOString()
+  for (const [artistId, evs] of Object.entries(artistEvents)) {
+    for (const ev of evs) {
+      confirmationPayload.push({ event_id: ev.id, artist_id: artistId, status: 'pending', sent_at: sentAt })
+    }
+  }
+
+  const tokenMap: Record<string, string> = {} // `${event_id}:${artist_id}` -> token
+  if (confirmationPayload.length > 0) {
+    const { data: confs } = await supabase
+      .from('event_confirmations')
+      .upsert(confirmationPayload, { onConflict: 'event_id,artist_id' })
+      .select('event_id, artist_id, token')
+    for (const c of (confs ?? []) as any[]) {
+      tokenMap[`${c.event_id}:${c.artist_id}`] = c.token
+    }
+  }
+
+  const label = monthLabel(month)
+  const logRows: MessageLogRow[] = []
+  let notified = 0
+
+  for (const [artistId, evsRaw] of Object.entries(artistEvents)) {
+    const info = artistInfo[artistId]
+    if (!info) continue
+    const evs = [...evsRaw].sort((a, b) => a.start_time.localeCompare(b.start_time))
+
+    const listText = evs
+      .map(e => `${fmtDay(e.start_time)}, ${fmtTime(e.start_time)} — ${e.title}`)
+      .join('\n')
+
+    let artistNotified = false
+
+    if (info.email) {
+      const rows = evs.map(e => {
+        const token = tokenMap[`${e.id}:${artistId}`]
+        const link = token
+          ? `<a href="${APP_URL}/confirm/${token}" style="display:inline-block;padding:6px 14px;border-radius:8px;background:#16a34a;color:#fff;font-size:12px;font-weight:700;text-decoration:none">Potwierdź</a>`
+          : ''
+        return `<tr style="border-top:1px solid #f3f4f6">
+          <td style="padding:10px 0;font-size:13px;font-weight:600">${fmtDay(e.start_time)}</td>
+          <td style="padding:10px 8px;font-size:13px">${fmtTime(e.start_time)}–${fmtTime(e.end_time)}</td>
+          <td style="padding:10px 8px;font-size:13px">${e.title}</td>
+          <td style="padding:10px 0;text-align:right">${link}</td>
+        </tr>`
+      }).join('')
+
+      const html = emailWrapper(`
+        <h2 style="font-size:18px;font-weight:700;margin:0 0 8px">Repertuar ${label} zatwierdzony</h2>
+        <p style="color:#6b7280;margin:0 0 20px;font-size:14px">
+          Cześć ${info.name}, repertuar na ${label} został zatwierdzony.
+          Grasz w ${evs.length} ${evs.length === 1 ? 'spektaklu' : 'spektaklach'} — prosimy o potwierdzenie każdego terminu.
+        </p>
+        <table style="width:100%;border-collapse:collapse">${rows}</table>
+      `)
+
+      const ok = await sendEmail(info.email, `[Repertuar] ${label} — Twoje spektakle (${evs.length})`, html)
+      if (ok) {
+        artistNotified = true
+        logRows.push({
+          artist_id: artistId,
+          type: 'email',
+          kind: 'repertoire_approved',
+          subject: `Repertuar ${label} zatwierdzony — ${evs.length} spektakli`,
+          body: listText,
+        })
+      }
+    }
+
+    if (info.phone) {
+      const sms = `Repertuar ${label} zatwierdzony. Grasz w ${evs.length} spektaklach. Szczegoly i potwierdzenia: email lub aplikacja.`
+      const ok = await sendSms(info.phone, sms)
+      if (ok) {
+        artistNotified = true
+        logRows.push({
+          artist_id: artistId,
+          type: 'sms',
+          kind: 'repertoire_approved',
+          subject: `Repertuar ${label} zatwierdzony`,
+          body: sms,
+        })
+      }
+    }
+
+    if (artistNotified) notified++
+  }
+
+  await logMessages(supabase, logRows)
+  return { notified }
+}
 
 export async function POST(request: Request) {
   const { proposalId, action } = await request.json() as {
@@ -44,9 +195,14 @@ export async function POST(request: Request) {
     room_id:       e.room_id       ?? null,
   }))
 
+  let insertedEvents: InsertedEvent[] = []
   if (events.length > 0) {
-    const { error: insertErr } = await supabase.from('events').insert(events)
+    const { data: inserted, error: insertErr } = await supabase
+      .from('events')
+      .insert(events)
+      .select('id, production_id, title, type, start_time, end_time')
     if (insertErr) return Response.json({ error: insertErr.message }, { status: 500 })
+    insertedEvents = (inserted ?? []) as InsertedEvent[]
   }
 
   // Mark this proposal approved
@@ -63,5 +219,14 @@ export async function POST(request: Request) {
     .neq('id', proposalId)
     .eq('status', 'draft')
 
-  return Response.json({ ok: true, eventsCreated: events.length })
+  // Notify cast — błąd powiadomień nie blokuje zatwierdzenia
+  let notified = 0
+  try {
+    const result = await notifyCastAfterApproval(insertedEvents, proposal.month)
+    notified = result.notified
+  } catch (err) {
+    console.error('Cast notification error:', err)
+  }
+
+  return Response.json({ ok: true, eventsCreated: events.length, actorsNotified: notified })
 }

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { sendEmail, emailWrapper } from '@/lib/email'
+import { logMessages, type MessageLogRow } from '@/lib/message-log'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,16 +17,16 @@ export async function POST(request: Request) {
 
   const { data } = await supabase
     .from('artist_productions')
-    .select('artists(name, email)')
+    .select('artists(id, name, email)')
     .eq('production_id', productionId)
 
-  const emails: string[] = []
+  const recipients: { id: string; email: string }[] = []
   for (const row of (data ?? []) as any[]) {
     const artist = Array.isArray(row.artists) ? row.artists[0] : row.artists
-    if (artist?.email) emails.push(artist.email)
+    if (artist?.email) recipients.push({ id: artist.id, email: artist.email })
   }
 
-  if (emails.length === 0) {
+  if (recipients.length === 0) {
     return Response.json({ ok: true, sent: 0 })
   }
 
@@ -40,10 +41,22 @@ export async function POST(request: Request) {
   `)
 
   let sent = 0
-  for (const email of emails) {
-    const ok = await sendEmail(email, subject, html)
-    if (ok) sent++
+  const logRows: MessageLogRow[] = []
+  for (const r of recipients) {
+    const ok = await sendEmail(r.email, subject, html)
+    if (ok) {
+      sent++
+      logRows.push({
+        artist_id: r.id,
+        type: 'email',
+        subject,
+        body: `${body}\n\nDotyczy produkcji: ${productionTitle}`,
+        related_production_id: productionId,
+      })
+    }
   }
+
+  await logMessages(supabase, logRows)
 
   return Response.json({ ok: true, sent })
 }

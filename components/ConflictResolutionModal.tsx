@@ -111,12 +111,26 @@ export default function ConflictResolutionModal({
       if (targets.length === 0) throw new Error('Brak wydarzenia tego dnia dla wybranego tytułu')
 
       // Swap in the event cast: remove the conflicted actor, add the substitute
+      const swappedEventIds: string[] = []
       for (const ev of targets) {
         await supabase.from('event_artists').delete().eq('event_id', ev.id).eq('artist_id', artistId)
         await supabase.from('event_artists').delete().eq('event_id', ev.id).eq('artist_id', sub.id)
         const { error: insErr } = await supabase.from('event_artists').insert({ event_id: ev.id, artist_id: sub.id })
         if (insErr) throw insErr
+        swappedEventIds.push(ev.id)
       }
+
+      // Powiadom zastępcę (prośba o potwierdzenie) i odwołanego aktora — bez blokowania UI
+      fetch('/api/notify/substitution', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          removedArtistId: artistId,
+          substituteId: sub.id,
+          eventIds: swappedEventIds,
+          productionTitle: prodTitle,
+        }),
+      }).catch(() => {})
 
       setDone(`${sub.name} zastąpi: ${artistName} w „${prodTitle}" — ${dayLabel(conflictDate)}, ${fmtDate(conflictDate)}`)
     } catch (e: any) {
