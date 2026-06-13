@@ -271,10 +271,10 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
                 <Link href="/dashboard"   className={lnk('/dashboard')}  >{icons.home}    {t.nav.dashboard}</Link>
                 <Link href="/calendar"    className={lnk('/calendar')}   >{icons.calendar}{t.nav.calendar}</Link>
                 <Link href="/planning"    className={lnk('/planning')}   >{icons.planning}Planowanie</Link>
-                <Link href="/finance"     className={lnk('/finance')}    >{icons.finance} Finanse</Link>
                 <Link href="/artists"     className={lnk('/artists')}    >{icons.user}    {t.nav.artists}</Link>
                 <Link href="/productions" className={lnk('/productions')}>{icons.film}    {t.nav.productions}</Link>
                 <Link href="/events"      className={lnk('/events')}     >{icons.events}  {t.nav.events}</Link>
+                <Link href="/finance"     className={lnk('/finance')}    >{icons.finance} Finanse</Link>
               </div>
             </div>
             <div>

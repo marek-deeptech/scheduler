@@ -54,6 +54,31 @@ export const STAGE_FIXED_COST: Record<'duza' | 'mala', number> = {
   mala: 3000,
 }
 
+// Teatry i pojemności scen (wg strony WWW: Polonia Duża 266 / Mała 90,
+// Och Duża 450 / Och-Cafe 100). Tytuł gra na JEDNEJ scenie (unikalna scenografia),
+// więc pojemność i koszt wynikają z kategorii (= sceny), nie z sali wydarzenia.
+export const THEATRE_ID = {
+  polonia: '96187687-13eb-4b49-ab60-cc587f58119e',
+  och:     '8ea01433-7d8b-4710-aba3-b5dcd567eb57',
+} as const
+
+export function isMalaScena(category: PriceCategory): boolean {
+  return category === 'mala'
+}
+
+/** Pojemność sceny, na której gra tytuł — wg kategorii (sceny) i teatru. */
+export function stageCapacity(category: PriceCategory, theatreId: string | null): number {
+  const mala = isMalaScena(category)
+  if (theatreId === THEATRE_ID.och)     return mala ? 100 : 450
+  if (theatreId === THEATRE_ID.polonia) return mala ? 90  : 266
+  return mala ? 90 : 266 // fallback
+}
+
+/** Domyślny koszt ryczałtowy wynikający ze sceny (kategorii). */
+export function costForCategory(category: PriceCategory): number {
+  return isMalaScena(category) ? STAGE_FIXED_COST.mala : STAGE_FIXED_COST.duza
+}
+
 /** Średnia cena biletu (ASP) wg mixu typów — wartość brutto. */
 export function asp(p: Pick<ProductionFinance, 'priceNormal' | 'priceReduced' | 'priceLastMinute'>, mix: TicketMix): number {
   return p.priceNormal * mix.normal + p.priceReduced * mix.reduced + p.priceLastMinute * mix.last_minute

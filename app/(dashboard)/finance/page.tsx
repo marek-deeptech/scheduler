@@ -5,33 +5,18 @@ import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
 import {
   DEFAULT_PARAMS, CATEGORY_DEFAULTS, FAVOURITE_ATTENDANCE, forecastEvent, breakEvenAttendance,
-  asp, fmtPln, fmtPct, isWeekend,
+  stageCapacity, asp, fmtPln, fmtPct, isWeekend,
   type FinanceParams, type ProductionFinance, type PriceCategory,
 } from '@/lib/finance'
 
 /* ── Stałe ─────────────────────────────────────────────────────── */
 const SHOW_RX = /spektakl|premiera|gościnny|goscinny/i
 
-// Pojemności awaryjne (gdy migracja nie wgrała capacity) — wg realnych sal
-const POLONIA = '96187687-13eb-4b49-ab60-cc587f58119e'
-const OCH     = '8ea01433-7d8b-4710-aba3-b5dcd567eb57'
-function fallbackCapacity(roomName: string | null, theatreId: string | null): number {
-  const n = (roomName ?? '').toLowerCase()
-  if (theatreId === POLONIA) return n.includes('mała') || n.includes('mala') ? 90 : 266
-  if (theatreId === OCH)     return n.includes('cafe') ? 100 : 450
-  return 200
-}
-function fallbackCategory(roomName: string | null): PriceCategory {
-  const n = (roomName ?? '').toLowerCase()
-  return n.includes('mała') || n.includes('mala') || n.includes('cafe') ? 'mala' : 'standard'
-}
-
 /* ── Typy ──────────────────────────────────────────────────────── */
 interface EvRow {
   id: string; start_time: string; type: string | null
   production_id: string | null; room_id: string | null; theatre_id: string | null
 }
-interface RoomRow { id: string; name: string; theatre_id: string; capacity: number | null }
 
 /* ── Helpers ───────────────────────────────────────────────────── */
 function monthKey(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
@@ -55,7 +40,6 @@ export default function FinancePage() {
 
   const [events, setEvents] = useState<EvRow[]>([])
   const [prods, setProds] = useState<Record<string, ProductionFinance>>({})
-  const [rooms, setRooms] = useState<Record<string, RoomRow>>({})
   const [params, setParams] = useState<FinanceParams>(DEFAULT_PARAMS)
 
   // Symulacja
@@ -95,9 +79,7 @@ export default function FinancePage() {
         pData = res.data as any
       }
       for (const p of (pData ?? []) as any[]) {
-        // kategoria: z bazy, inaczej wg sali pierwszego wydarzenia tej produkcji
-        const firstEv = evs.find(e => e.production_id === p.id)
-        const cat: PriceCategory = (p.price_category as PriceCategory) || fallbackCategory(null)
+        const cat: PriceCategory = (p.price_category as PriceCategory) || 'standard'
         const def = CATEGORY_DEFAULTS[cat] ?? CATEGORY_DEFAULTS.standard
         prodMap[p.id] = {
           id: p.id, title: p.title,
@@ -113,20 +95,6 @@ export default function FinancePage() {
     }
     setProds(prodMap)
     setMigrationNeeded(migration)
-
-    // Sale — z capacity lub fallback
-    const roomIds = [...new Set(evs.map(e => e.room_id).filter(Boolean))] as string[]
-    const roomMap: Record<string, RoomRow> = {}
-    if (roomIds.length > 0) {
-      let { data: rData, error } = await supabase
-        .from('rooms').select('id, name, theatre_id, capacity').in('id', roomIds)
-      if (error) {
-        const res = await supabase.from('rooms').select('id, name, theatre_id').in('id', roomIds)
-        rData = (res.data as any[])?.map(r => ({ ...r, capacity: null })) as any
-      }
-      for (const r of (rData ?? []) as RoomRow[]) roomMap[r.id] = r
-    }
-    setRooms(roomMap)
 
     // Globalne parametry
     const { data: settings } = await supabase
@@ -167,8 +135,9 @@ export default function FinancePage() {
         : simOn
         ? { ...prodBase, assumedAttendance: simAttendance }
         : prodBase
-      const room = ev.room_id ? rooms[ev.room_id] : undefined
-      const capacity = room?.capacity ?? fallbackCapacity(room?.name ?? null, ev.theatre_id)
+      // Pojemność ze sceny tytułu (kategoria + teatr), nie z sali wydarzenia —
+      // tytuł gra na jednej, stałej scenie (unikalna scenografia).
+      const capacity = stageCapacity(prod.priceCategory, ev.theatre_id)
       const fc = forecastEvent(prod, capacity, ev.start_time, effParams)
       return { ev, prod, capacity, fc }
     }).filter(Boolean) as { ev: EvRow; prod: ProductionFinance; capacity: number; fc: ReturnType<typeof forecastEvent> }[]
@@ -202,7 +171,7 @@ export default function FinancePage() {
     }), { revenue: 0, cost: 0, sold: 0, cap: 0, count: 0 })
 
     return { perEvent, perTitle, totals }
-  }, [events, prods, rooms, effParams, simOn, simAttendance, selectedTheatreId])
+  }, [events, prods, effParams, simOn, simAttendance, selectedTheatreId])
 
   const margin = totals.revenue - totals.cost
   const avgAttendance = totals.cap > 0 ? totals.sold / totals.cap : 0

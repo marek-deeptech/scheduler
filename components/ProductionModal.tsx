@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import EventModal from '@/components/EventModal'
 import { EVENT_TYPE_CATEGORIES } from '@/types'
 import {
-  CATEGORY_DEFAULTS, DEFAULT_PARAMS, asp, fmtPln, fmtPct,
+  CATEGORY_DEFAULTS, DEFAULT_PARAMS, stageCapacity, costForCategory, asp, fmtPln, fmtPct,
   type PriceCategory,
 } from '@/lib/finance'
 
@@ -137,12 +137,8 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
     fixedCost:       '8000' as string,
   })
 
-  // Pojemność reprezentatywna sceny — do podglądu progu rentowności
-  const POLONIA = '96187687-13eb-4b49-ab60-cc587f58119e'
-  const OCH     = '8ea01433-7d8b-4710-aba3-b5dcd567eb57'
-  const previewCapacity = fin.priceCategory === 'mala'
-    ? 100
-    : form.theatre_id === OCH ? 450 : form.theatre_id === POLONIA ? 266 : 200
+  // Pojemność sceny tytułu — do podglądu progu rentowności
+  const previewCapacity = stageCapacity(fin.priceCategory, form.theatre_id || null)
 
   const previewAsp = asp(
     { priceNormal: parseFloat(fin.priceNormal) || 0, priceReduced: parseFloat(fin.priceReduced) || 0, priceLastMinute: parseFloat(fin.priceLastMinute) || 0 },
@@ -193,7 +189,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
       })
   }, [production?.id])
 
-  // Ustaw ceny domyślne kategorii po jej zmianie (gdy pola puste/zgodne z inną kategorią)
+  // Zmiana sceny/kategorii ustawia ceny i sugerowany koszt sceny
   function applyCategory(cat: PriceCategory) {
     const def = CATEGORY_DEFAULTS[cat]
     setFin(f => ({
@@ -202,6 +198,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
       priceNormal:     String(def.normal),
       priceReduced:    String(def.reduced),
       priceLastMinute: String(def.lastMinute),
+      fixedCost:       String(costForCategory(cat)),
     }))
   }
 
@@ -582,9 +579,9 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
 
          {tab === 'finance' && (
           <div className="space-y-5">
-            {/* Kategoria cenowa */}
+            {/* Scena i kategoria cenowa */}
             <div>
-              <label className={labelCls}>Kategoria cenowa</label>
+              <label className={labelCls}>Scena i kategoria cenowa</label>
               <div className="flex p-0.5 bg-gray-100 rounded-xl">
                 {(['premium', 'standard', 'mala'] as PriceCategory[]).map(cat => (
                   <button
@@ -599,7 +596,10 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
                   </button>
                 ))}
               </div>
-              <p className="mt-1 text-[11px] text-gray-400">Zmiana kategorii ustawia ceny domyślne — możesz je nadpisać poniżej.</p>
+              <p className="mt-1 text-[11px] text-gray-400">
+                Tytuł gra na jednej scenie. <b>Premium</b> i <b>Standard</b> to kategorie Dużej Sceny;
+                <b> Mała Scena</b> ma jednolitą cenę. Scena ustawia pojemność i sugerowany koszt — ceny możesz nadpisać.
+              </p>
             </div>
 
             {/* Ceny biletów */}
