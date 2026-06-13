@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
 import {
-  DEFAULT_PARAMS, CATEGORY_DEFAULTS, forecastEvent, breakEvenAttendance,
+  DEFAULT_PARAMS, CATEGORY_DEFAULTS, FAVOURITE_ATTENDANCE, forecastEvent, breakEvenAttendance,
   asp, fmtPln, fmtPct, isWeekend,
   type FinanceParams, type ProductionFinance, type PriceCategory,
 } from '@/lib/finance'
@@ -87,11 +87,11 @@ export default function FinancePage() {
     if (prodIds.length > 0) {
       let { data: pData, error } = await supabase
         .from('productions')
-        .select('id, title, price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost')
+        .select('id, title, price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost, is_favourite')
         .in('id', prodIds)
       if (error) {
         migration = true
-        const res = await supabase.from('productions').select('id, title').in('id', prodIds)
+        const res = await supabase.from('productions').select('id, title, is_favourite').in('id', prodIds)
         pData = res.data as any
       }
       for (const p of (pData ?? []) as any[]) {
@@ -107,6 +107,7 @@ export default function FinancePage() {
           priceLastMinute: p.price_last_minute ?? def.lastMinute,
           assumedAttendance: p.assumed_attendance ?? DEFAULT_PARAMS.defaultAttendance,
           fixedCost:         p.fixed_cost          ?? DEFAULT_PARAMS.defaultFixedCost,
+          isFavourite:       p.is_favourite        ?? false,
         }
       }
     }
@@ -160,7 +161,10 @@ export default function FinancePage() {
     const perEvent = visibleEvents.map(ev => {
       const prodBase = prods[ev.production_id!]
       if (!prodBase) return null
-      const prod: ProductionFinance = simOn
+      // Ulubione = pewny komplet (100%), niezależnie od symulacji
+      const prod: ProductionFinance = prodBase.isFavourite
+        ? { ...prodBase, assumedAttendance: FAVOURITE_ATTENDANCE }
+        : simOn
         ? { ...prodBase, assumedAttendance: simAttendance }
         : prodBase
       const room = ev.room_id ? rooms[ev.room_id] : undefined
@@ -183,7 +187,11 @@ export default function FinancePage() {
       attendance: t.capSum > 0 ? t.soldSum / t.capSum : 0,
       aspGross: asp(t.prod, effParams.ticketMix),
       breakEven: breakEvenAttendance(t.prod, t.capSum / Math.max(1, t.count), effParams.ticketMix),
-    })).sort((a, b) => b.margin - a.margin)
+      isFavourite: t.prod.isFavourite,
+    })).sort((a, b) =>
+      // Ulubione na górze, potem wg marży
+      (Number(b.isFavourite) - Number(a.isFavourite)) || (b.margin - a.margin)
+    )
 
     const totals = perEvent.reduce((acc, r) => ({
       revenue: acc.revenue + r.fc.revenueGross,
@@ -264,7 +272,7 @@ export default function FinancePage() {
             <div className={`grid md:grid-cols-2 gap-4 ${simOn ? '' : 'opacity-40 pointer-events-none'}`}>
               <div>
                 <div className="flex justify-between text-xs mb-1" style={{ color: '#7a7068' }}>
-                  <span>Założona frekwencja (wszystkie tytuły)</span><b style={{ color: '#1a1410' }}>{fmtPct(simAttendance)}</b>
+                  <span>Założona frekwencja (★ Favourites zawsze 100%)</span><b style={{ color: '#1a1410' }}>{fmtPct(simAttendance)}</b>
                 </div>
                 <input type="range" min={0.3} max={1} step={0.05} value={simAttendance}
                   onChange={e => setSimAttendance(parseFloat(e.target.value))} className="w-full accent-[#c8102e]" />
@@ -302,12 +310,18 @@ export default function FinancePage() {
                     <tr key={t.prod.id} style={{ borderTop: '1px solid #f7f4ef' }}>
                       <td className="px-4 py-2.5">
                         <span className="font-medium" style={{ color: '#1a1410' }}>{t.prod.title}</span>
-                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#f2ede6', color: '#7a7068' }}>
-                          {CATEGORY_DEFAULTS[t.prod.priceCategory]?.label ?? t.prod.priceCategory}
-                        </span>
+                        {t.isFavourite ? (
+                          <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: '#fff7ed', color: '#b45309' }}>
+                            <span style={{ color: '#f59e0b' }}>★</span> Favourites
+                          </span>
+                        ) : (
+                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#f2ede6', color: '#7a7068' }}>
+                            {CATEGORY_DEFAULTS[t.prod.priceCategory]?.label ?? t.prod.priceCategory}
+                          </span>
+                        )}
                       </td>
                       <td className="text-right px-3 py-2.5" style={{ color: '#7a7068' }}>{t.count}</td>
-                      <td className="text-right px-3 py-2.5" style={{ color: '#1a1410' }}>{fmtPct(t.attendance)}</td>
+                      <td className="text-right px-3 py-2.5 font-medium" style={{ color: t.isFavourite ? '#15803d' : '#1a1410' }}>{fmtPct(t.attendance)}</td>
                       <td className="text-right px-3 py-2.5" style={{ color: '#7a7068' }}>{fmtPln(t.aspGross)}</td>
                       <td className="text-right px-3 py-2.5 font-medium" style={{ color: '#1a1410' }}>{fmtPln(t.revenue)}</td>
                       <td className="text-right px-3 py-2.5 font-semibold" style={{ color: t.margin >= 0 ? '#15803d' : '#c8102e' }}>{fmtPln(t.margin)}</td>
@@ -333,7 +347,9 @@ export default function FinancePage() {
               {perEvent.map(({ ev, prod, capacity, fc }) => (
                 <div key={ev.id} className="flex items-center gap-3 px-4 py-2.5">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate" style={{ color: '#1a1410' }}>{prod.title}</p>
+                    <p className="text-sm font-medium truncate" style={{ color: '#1a1410' }}>
+                      {prod.isFavourite && <span style={{ color: '#f59e0b' }}>★ </span>}{prod.title}
+                    </p>
                     <p className="text-[11px]" style={{ color: '#a89e92' }}>
                       {dayShort(ev.start_time)}{fc.weekend && ' · weekend'} · {fc.soldTickets}/{capacity} miejsc
                     </p>

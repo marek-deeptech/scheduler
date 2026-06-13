@@ -41,7 +41,11 @@ export interface ProductionFinance {
   priceLastMinute: number
   assumedAttendance: number
   fixedCost: number
+  isFavourite: boolean
 }
+
+// Tytuły ulubione traktujemy jako pewny komplet — frekwencja 100%.
+export const FAVOURITE_ATTENDANCE = 1.0
 
 /** Średnia cena biletu (ASP) wg mixu typów — wartość brutto. */
 export function asp(p: Pick<ProductionFinance, 'priceNormal' | 'priceReduced' | 'priceLastMinute'>, mix: TicketMix): number {
