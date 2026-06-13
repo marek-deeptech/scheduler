@@ -37,25 +37,31 @@ async function main() {
   const { data: prods } = await sb.from('productions').select('id, title, theatre_id, location_type')
   // ustal scenę produkcji po wydarzeniach
   const { data: evs } = await sb.from('events').select('production_id, room_id, rooms(name)')
-  const roomByProd = {}
+  // Głosowanie: na której scenie tytuł gra najczęściej (mała vs duża)
+  const vote = {}
   for (const e of evs ?? []) {
-    if (!e.production_id || roomByProd[e.production_id]) continue
+    if (!e.production_id) continue
     const rm = Array.isArray(e.rooms) ? e.rooms[0] : e.rooms
-    roomByProd[e.production_id] = (rm?.name ?? '').toLowerCase()
+    const n = (rm?.name ?? '').toLowerCase()
+    const small = n.includes('mała') || n.includes('mala') || n.includes('cafe')
+    const v = vote[e.production_id] ??= { mala: 0, duza: 0 }
+    if (small) v.mala++; else v.duza++
   }
   let prodCount = 0
   for (const p of prods ?? []) {
-    const roomName = roomByProd[p.id] ?? ''
-    const cat = roomName.includes('mała') || roomName.includes('mala') || roomName.includes('cafe')
-      ? 'mala' : 'standard' // Premium ustaw ręcznie dla wybranych tytułów
+    const v = vote[p.id] ?? { mala: 0, duza: 0 }
+    const stage = v.mala > v.duza ? 'mala' : 'duza'   // remis → duża
+    const cat = stage === 'mala' ? 'mala' : 'standard' // Premium ustaw ręcznie dla wybranych tytułów
     const prices = CAT[cat]
+    // Koszt wg skali sceny większościowej: Duża dużo, Mała dużo mniej
+    const fixedCost = stage === 'mala' ? 3000 : 12000
     const { error } = await sb.from('productions').update({
       price_category: cat,
       price_normal: prices.normal,
       price_reduced: prices.reduced,
       price_last_minute: prices.last_minute,
       assumed_attendance: 0.75,
-      fixed_cost: 8000,
+      fixed_cost: fixedCost,
     }).eq('id', p.id)
     if (!error) prodCount++
     else { console.error('  Błąd produkcji:', error.message); return }

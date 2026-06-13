@@ -47,6 +47,13 @@ export interface ProductionFinance {
 // Tytuły ulubione traktujemy jako pewny komplet — frekwencja 100%.
 export const FAVOURITE_ATTENDANCE = 1.0
 
+// Domyślny koszt ryczałtowy per spektakl wg skali sceny (zł).
+// Duża scena: większa obsada + technika; mała scena: kameralna, dużo taniej.
+export const STAGE_FIXED_COST: Record<'duza' | 'mala', number> = {
+  duza: 12000,
+  mala: 3000,
+}
+
 /** Średnia cena biletu (ASP) wg mixu typów — wartość brutto. */
 export function asp(p: Pick<ProductionFinance, 'priceNormal' | 'priceReduced' | 'priceLastMinute'>, mix: TicketMix): number {
   return p.priceNormal * mix.normal + p.priceReduced * mix.reduced + p.priceLastMinute * mix.last_minute

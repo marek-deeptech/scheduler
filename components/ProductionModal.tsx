@@ -4,6 +4,10 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import EventModal from '@/components/EventModal'
 import { EVENT_TYPE_CATEGORIES } from '@/types'
+import {
+  CATEGORY_DEFAULTS, DEFAULT_PARAMS, asp, fmtPln, fmtPct,
+  type PriceCategory,
+} from '@/lib/finance'
 
 interface Theatre { id: string; name: string }
 interface Room    { id: string; theatre_id: string; name: string }
@@ -79,6 +83,15 @@ function typeBadgeColor(type: string | null) {
 
 function pad(n: number) { return String(n).padStart(2, '0') }
 
+function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide mb-0.5" style={{ color: '#a89e92' }}>{label}</p>
+      <p className="text-sm font-bold" style={{ color: accent ?? '#1a1410' }}>{value}</p>
+    </div>
+  )
+}
+
 function fmtDate(iso: string) {
   const d = new Date(iso)
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
@@ -112,6 +125,34 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
   const [saving,   setSaving]   = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error,    setError]    = useState<string | null>(null)
+  const [tab,      setTab]      = useState<'details' | 'finance'>('details')
+
+  // Parametry finansowe (ładowane z bazy w trybie edycji)
+  const [fin, setFin] = useState({
+    priceCategory: 'standard' as PriceCategory,
+    priceNormal:     '' as string,
+    priceReduced:    '' as string,
+    priceLastMinute: '' as string,
+    attendancePct:   '75' as string,  // % w UI, zapis jako 0–1
+    fixedCost:       '8000' as string,
+  })
+
+  // Pojemność reprezentatywna sceny — do podglądu progu rentowności
+  const POLONIA = '96187687-13eb-4b49-ab60-cc587f58119e'
+  const OCH     = '8ea01433-7d8b-4710-aba3-b5dcd567eb57'
+  const previewCapacity = fin.priceCategory === 'mala'
+    ? 100
+    : form.theatre_id === OCH ? 450 : form.theatre_id === POLONIA ? 266 : 200
+
+  const previewAsp = asp(
+    { priceNormal: parseFloat(fin.priceNormal) || 0, priceReduced: parseFloat(fin.priceReduced) || 0, priceLastMinute: parseFloat(fin.priceLastMinute) || 0 },
+    DEFAULT_PARAMS.ticketMix,
+  )
+  const previewBreakEven = previewCapacity * previewAsp > 0
+    ? (parseFloat(fin.fixedCost) || 0) / (previewCapacity * previewAsp)
+    : 0
+  const previewRevenueFull = Math.round(previewCapacity * (parseFloat(fin.attendancePct) / 100 || 0)) * previewAsp
+  const previewMargin = previewRevenueFull - (parseFloat(fin.fixedCost) || 0)
 
   // Load existing actor assignments in edit mode
   useEffect(() => {
@@ -128,6 +169,41 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
     if (!production) return
     loadEvents()
   }, [production?.id])
+
+  // Load financial params in edit mode (tolerant — gdy brak migracji finansowej)
+  useEffect(() => {
+    if (!production) return
+    supabase
+      .from('productions')
+      .select('price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost')
+      .eq('id', production.id)
+      .single()
+      .then(({ data }) => {
+        if (!data) return
+        const cat = ((data as any).price_category as PriceCategory) || 'standard'
+        const def = CATEGORY_DEFAULTS[cat] ?? CATEGORY_DEFAULTS.standard
+        setFin({
+          priceCategory:   cat,
+          priceNormal:     String((data as any).price_normal      ?? def.normal),
+          priceReduced:    String((data as any).price_reduced     ?? def.reduced),
+          priceLastMinute: String((data as any).price_last_minute ?? def.lastMinute),
+          attendancePct:   String(Math.round(((data as any).assumed_attendance ?? 0.75) * 100)),
+          fixedCost:       String((data as any).fixed_cost ?? 8000),
+        })
+      })
+  }, [production?.id])
+
+  // Ustaw ceny domyślne kategorii po jej zmianie (gdy pola puste/zgodne z inną kategorią)
+  function applyCategory(cat: PriceCategory) {
+    const def = CATEGORY_DEFAULTS[cat]
+    setFin(f => ({
+      ...f,
+      priceCategory: cat,
+      priceNormal:     String(def.normal),
+      priceReduced:    String(def.reduced),
+      priceLastMinute: String(def.lastMinute),
+    }))
+  }
 
   async function loadEvents() {
     if (!production) return
@@ -187,6 +263,20 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
       }
     }
 
+    // Zapis parametrów finansowych — osobno, tolerancyjnie (gdy brak migracji)
+    if (productionId) {
+      const financePayload = {
+        price_category:     fin.priceCategory,
+        price_normal:       parseFloat(fin.priceNormal)     || null,
+        price_reduced:      parseFloat(fin.priceReduced)    || null,
+        price_last_minute:  parseFloat(fin.priceLastMinute) || null,
+        assumed_attendance: (parseFloat(fin.attendancePct) || 0) / 100,
+        fixed_cost:         parseFloat(fin.fixedCost) || 0,
+      }
+      const { error: finErr } = await supabase.from('productions').update(financePayload).eq('id', productionId)
+      if (finErr) console.warn('Zapis parametrów finansowych pominięty (czy migracja finansowa uruchomiona?):', finErr.message)
+    }
+
     setSaving(false)
     onSaved()
   }
@@ -230,9 +320,26 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
           </button>
         </div>
 
+        {/* Tabs */}
+        <div className="flex gap-1 px-6 pt-3 shrink-0 border-b border-gray-100">
+          {([['details', 'Szczegóły'], ['finance', 'Finanse']] as const).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                tab === key ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Scrollable body */}
         <form onSubmit={handleSave} className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
 
+         {tab === 'details' && (<>
           {/* ── Basic info ── */}
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
@@ -471,6 +578,83 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
               placeholder="Dodatkowe informacje o produkcji..."
             />
           </div>
+         </>)}
+
+         {tab === 'finance' && (
+          <div className="space-y-5">
+            {/* Kategoria cenowa */}
+            <div>
+              <label className={labelCls}>Kategoria cenowa</label>
+              <div className="flex p-0.5 bg-gray-100 rounded-xl">
+                {(['premium', 'standard', 'mala'] as PriceCategory[]).map(cat => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => applyCategory(cat)}
+                    className={`flex-1 py-2 text-xs font-semibold rounded-[10px] transition-colors ${
+                      fin.priceCategory === cat ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {CATEGORY_DEFAULTS[cat].label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px] text-gray-400">Zmiana kategorii ustawia ceny domyślne — możesz je nadpisać poniżej.</p>
+            </div>
+
+            {/* Ceny biletów */}
+            <div className="grid grid-cols-3 gap-3">
+              {([
+                ['priceNormal', 'Normalny (zł)'],
+                ['priceReduced', 'Ulgowy (zł)'],
+                ['priceLastMinute', 'Wejściówka (zł)'],
+              ] as const).map(([key, label]) => (
+                <div key={key}>
+                  <label className={labelCls}>{label}</label>
+                  <input
+                    type="number" min={0} step={1}
+                    value={fin[key]}
+                    onChange={e => setFin(f => ({ ...f, [key]: e.target.value }))}
+                    className={inputCls}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Frekwencja + koszt */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Zakładana frekwencja (%)</label>
+                <input
+                  type="number" min={0} max={100} step={5}
+                  value={fin.attendancePct}
+                  onChange={e => setFin(f => ({ ...f, attendancePct: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Koszt na spektakl (zł)</label>
+                <input
+                  type="number" min={0} step={500}
+                  value={fin.fixedCost}
+                  onChange={e => setFin(f => ({ ...f, fixedCost: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+
+            {/* Podgląd na żywo */}
+            <div className="rounded-xl p-4 grid grid-cols-3 gap-3" style={{ background: '#faf8f5', border: '1px solid #e4ddd4' }}>
+              <Stat label="Śr. cena (ASP)" value={fmtPln(previewAsp)} />
+              <Stat label={`Marża/spektakl (${previewCapacity} miejsc)`} value={fmtPln(previewMargin)} accent={previewMargin >= 0 ? '#15803d' : '#c8102e'} />
+              <Stat label="Próg rentowności" value={fmtPct(previewBreakEven)} accent={previewBreakEven <= (parseFloat(fin.attendancePct) / 100) ? '#15803d' : '#c8102e'} />
+            </div>
+            <p className="text-[11px] text-gray-400 -mt-2">
+              Podgląd dla reprezentatywnej pojemności sceny ({previewCapacity} miejsc, mix biletów 70/20/10).
+              Pełna prognoza miesięczna — w zakładce <b>Finanse</b>.
+            </p>
+          </div>
+         )}
 
           {/* Error */}
           {error && (
