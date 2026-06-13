@@ -127,11 +127,24 @@ async function run() {
   log(`  HTTP ${ff.status} · ${JSON.stringify(ff.j)}`)
   ok(ff.j.sentEmail >= 1 && ff.j.sentSms >= 1, `Email: ${ff.j.sentEmail}, SMS: ${ff.j.sentSms}`)
 
-  // ── Log w actor_messages ─────────────────────────────────────────────────
+  // ── Log w actor_messages + kategoryzacja (po migracji) ───────────────────
   log('\n━━━ Ślad w actor_messages (zakładka Wiadomości) ━━━')
-  const { data: msgs } = await sb.from('actor_messages').select('type, subject').in('artist_id', [f.mainId, f.subId]).order('sent_at', { ascending: false })
+  const { data: msgs } = await sb.from('actor_messages')
+    .select('type, subject, direction, kind, read_at')
+    .in('artist_id', [f.mainId, f.subId]).order('sent_at', { ascending: false })
   ok((msgs?.length ?? 0) >= 3, `Wpisów w logu dla testowych aktorów: ${msgs?.length ?? 0}`)
-  ;(msgs ?? []).slice(0, 8).forEach(m => log(`     · [${m.type}] ${m.subject}`))
+  ;(msgs ?? []).slice(0, 10).forEach(m => log(`     · [${m.type}/${m.direction}/${m.kind}] ${m.subject}`))
+
+  const kinds = new Set((msgs ?? []).map(m => m.kind))
+  ok(kinds.has('repertoire_approved'), `kind=repertoire_approved zapisany`)
+  ok(kinds.has('confirmation_request'), `kind=confirmation_request zapisany`)
+  ok(kinds.has('substitution'), `kind=substitution zapisany`)
+
+  // Alarm do koordynatora — direction=to_coordinator (po migracji, artist_id główny)
+  const { data: alarm } = await sb.from('actor_messages')
+    .select('direction, kind, subject')
+    .eq('artist_id', f.mainId).eq('kind', 'availability_change').limit(1)
+  ok(alarm?.[0]?.direction === 'to_coordinator', `Alarm choroby: direction=${alarm?.[0]?.direction ?? 'BRAK'} (oczekiwane to_coordinator)`)
 }
 
 async function cleanup() {
