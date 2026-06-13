@@ -15,6 +15,11 @@ const MONTH_NAMES = ['stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca
 const MONTH_NOM = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
   'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień']
 
+// Miejscownik: „grasz w 1 spektaklu" / „grasz w N spektaklach"
+function pluralSpektakl(n: number): string {
+  return n === 1 ? 'spektaklu' : 'spektaklach'
+}
+
 function monthLabel(month: string): string {
   const m = /^(\d{4})-(\d{2})/.exec(month ?? '')
   if (!m) return month ?? ''
@@ -135,7 +140,7 @@ async function notifyCastAfterApproval(insertedEvents: InsertedEvent[], month: s
     }
 
     if (info.phone) {
-      const sms = `Repertuar ${label} zatwierdzony. Grasz w ${evs.length} spektaklach. Szczegoly i potwierdzenia: email lub aplikacja.`
+      const sms = `Repertuar ${label} zatwierdzony. Grasz w ${evs.length} ${pluralSpektakl(evs.length)} — szczegóły i potwierdzenia w mailu lub aplikacji.`
       const ok = await sendSms(info.phone, sms)
       if (ok) {
         artistNotified = true

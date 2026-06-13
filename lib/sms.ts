@@ -17,6 +17,19 @@ function normalizePhone(phone: string): string {
   return normalized
 }
 
+// SMS używają alfabetu GSM-7 / UCS-2. Znaki spoza GSM (np. en-dash „–",
+// cudzysłowy typograficzne) zastępujemy bezpiecznymi odpowiednikami,
+// żeby uniknąć krzaków i niepotrzebnego rozbijania na segmenty.
+function sanitizeForSms(message: string): string {
+  return message
+    .replace(/[–—]/g, '-')   // – —  → -
+    .replace(/[‘’‚]/g, "'")  // ' ' ‚ → '
+    .replace(/[“”„]/g, '"')  // " " „ → "
+    .replace(/…/g, '...')          // …    → ...
+    .replace(/ /g, ' ')            // nbsp → spacja
+    .trim()
+}
+
 export async function sendSms(phone: string, message: string): Promise<boolean> {
   const token = process.env.SMSAPI_TOKEN
   if (!token) {
@@ -25,19 +38,30 @@ export async function sendSms(phone: string, message: string): Promise<boolean> 
   }
 
   const normalizedPhone = normalizePhone(phone)
+  const text = sanitizeForSms(message)
+
+  // Endpoint sms.do wymaga form-urlencoded i jawnego encoding=utf-8,
+  // inaczej polskie znaki przychodzą jako krzaki.
+  const params = new URLSearchParams({
+    to: normalizedPhone,
+    message: text,
+    format: 'json',
+    encoding: 'utf-8',
+    normalize: '0',
+  })
 
   try {
     const res = await fetch(SMSAPI_ENDPOINT, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
       },
-      body: JSON.stringify({ to: normalizedPhone, message }),
+      body: params.toString(),
     })
 
-    if (!res.ok) {
-      const body = await res.text()
+    const body = await res.text()
+    if (!res.ok || body.includes('"error"') || body.startsWith('ERROR')) {
       console.error(`SMSAPI error ${res.status}:`, body)
       return false
     }

@@ -98,7 +98,7 @@ export async function POST(request: Request) {
       }
     }
     if (sub.phone) {
-      const smsText = `Zastepstwo: grasz w ${productionTitle}, ${dateLabel}, ${timeLabel}. Potwierdz w aplikacji lub mailu.`
+      const smsText = `Zastępstwo: grasz w „${productionTitle}", ${dateLabel}, godz. ${fmtTime(firstEv.start_time)}. Potwierdź w aplikacji lub mailu.`
       const ok = await sendSms(sub.phone, smsText)
       if (ok) {
         sent++
@@ -141,7 +141,7 @@ export async function POST(request: Request) {
       }
     }
     if (removed.phone) {
-      const smsText = `Zmiana obsady: zdjeto Cie z ${productionTitle}, ${dateLabel}, ${timeLabel}. Zastepuje: ${subName}.`
+      const smsText = `Zmiana obsady: zdjęto Cię z „${productionTitle}", ${dateLabel}, godz. ${fmtTime(firstEv.start_time)}. Zastępuje: ${subName}.`
       const ok = await sendSms(removed.phone, smsText)
       if (ok) {
         sent++

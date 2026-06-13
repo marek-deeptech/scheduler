@@ -193,7 +193,7 @@ export async function POST(request: Request) {
     // SMS
     if ((channel === 'sms' || channel === 'both') && artist.phone) {
       const smsText = fillTemplate(
-        settings['notification_sms'] ?? 'Cześć {name}! Prośba o potwierdzenie: {eventTitle}, {date}, {startTime}–{endTime}. TAK: {confirmLink} NIE: {declineLink} MOŻE: {maybeLink}',
+        settings['notification_sms'] ?? 'Cześć {name}! Potwierdź udział w: {eventTitle}, {date}, godz. {startTime}. Kliknij: {pageLink}',
         templateVars,
       )
       const ok = await sendSms(artist.phone, smsText)
