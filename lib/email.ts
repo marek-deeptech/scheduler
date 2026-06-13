@@ -1,6 +1,6 @@
 import { Resend } from 'resend'
 
-const FROM = 'Koordynacja Teatru <onboarding@resend.dev>'
+const FROM = 'Koordynacja Teatru <koordynacja@veryniceworks.com>'
 
 function getResend() {
   const key = process.env.RESEND_API_KEY
