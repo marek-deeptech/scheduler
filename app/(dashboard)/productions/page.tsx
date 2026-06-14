@@ -764,7 +764,7 @@ export default function ProductionsPage() {
               onMouseOver={e => (e.currentTarget.style.background = '#9e0c24')}
               onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
             >
-              + Nowa produkcja
+              + Nowy tytuł
             </button>
           </div>
 

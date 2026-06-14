@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, Fragment } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
 import { useLanguage } from '@/lib/language-context'
@@ -92,6 +92,16 @@ function shortName(name: string) {
   return p.length === 1 ? p[0] : `${p[0]} ${p[p.length-1][0]}.`
 }
 
+const MONTHS_PL_SHORT = ['sty','lut','mar','kwi','maj','cze','lip','sie','wrz','paź','lis','gru']
+// Ostatnie 12 miesięcy (bieżący + 11 wstecz), najnowszy pierwszy
+function last12Months(): { key: string; label: string }[] {
+  const now = new Date()
+  return Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    return { key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: `${MONTHS_PL_SHORT[d.getMonth()]} ${d.getFullYear()}` }
+  })
+}
+
 // ─── Custom tooltip ───────────────────────────────────────────────────────────
 
 function ChartTip({ active, payload, label }: any) {
@@ -132,6 +142,9 @@ export default function ReportsPage() {
   const [loading,     setLoading]     = useState(true)
   const [eventsM1,    setEventsM1]    = useState<EventRow[]>([])
   const [eventsM2,    setEventsM2]    = useState<EventRow[]>([])
+  const [hist12,      setHist12]      = useState<EventRow[]>([])
+  const [assignments, setAssignments] = useState<{ artist_id: string; production_id: string; theatre_id: string | null }[]>([])
+  const [expandedArtist, setExpandedArtist] = useState<string | null>(null)
   const [workloadSort, setWorkloadSort] = useState<'hours' | 'absence'>('hours')
 
   const today = localDate(new Date())
@@ -162,7 +175,7 @@ export default function ReportsPage() {
     const m2Start = new Date(now2.getFullYear(), now2.getMonth() - 2, 1)
     const m2End   = new Date(now2.getFullYear(), now2.getMonth() - 1, 0)
 
-    const histSel = 'id,type,start_time,end_time,theatre_id,event_artists(artist_id)'
+    const histSel = 'id,type,start_time,end_time,theatre_id,production_id,event_artists(artist_id)'
     let histM1Q = supabase.from('events').select(histSel)
       .gte('start_time', `${localDate(m1Start)}T00:00:00`)
       .lte('start_time', `${localDate(m1End)}T23:59:59`)
@@ -174,6 +187,17 @@ export default function ReportsPage() {
       histM2Q = histM2Q.eq('theatre_id', selectedTheatreId)
     }
 
+    // Ostatnie 12 miesięcy — historia (spektakle, godziny, próby per miesiąc)
+    const h12Start = new Date(now2.getFullYear(), now2.getMonth() - 11, 1)
+    const h12End   = new Date(now2.getFullYear(), now2.getMonth() + 1, 0)
+    let hist12Q = supabase.from('events').select(histSel)
+      .gte('start_time', `${localDate(h12Start)}T00:00:00`)
+      .lte('start_time', `${localDate(h12End)}T23:59:59`)
+    if (selectedTheatreId) hist12Q = hist12Q.eq('theatre_id', selectedTheatreId)
+
+    // Aktualne przypisania (w ilu tytułach gra obecnie) + mapa produkcja→aktorzy
+    let assignQ = supabase.from('artist_productions').select('artist_id, production_id, productions(theatre_id)')
+
     const [
       { data: evData },
       { data: artData },
@@ -181,6 +205,8 @@ export default function ReportsPage() {
       { data: prodData },
       { data: histM1Data },
       { data: histM2Data },
+      { data: hist12Data },
+      { data: assignData },
     ] = await Promise.all([
       evQ,
       supabase.from('artists').select('id,name,status').order('name'),
@@ -190,7 +216,15 @@ export default function ReportsPage() {
       prodQ,
       histM1Q,
       histM2Q,
+      hist12Q,
+      assignQ,
     ])
+
+    setHist12((hist12Data ?? []) as unknown as EventRow[])
+    setAssignments(((assignData ?? []) as any[]).map(r => {
+      const p = Array.isArray(r.productions) ? r.productions[0] : r.productions
+      return { artist_id: r.artist_id, production_id: r.production_id, theatre_id: p?.theatre_id ?? null }
+    }))
 
     setEvents((evData ?? []) as unknown as EventRow[])
     setArtists(sortByLastName((artData ?? []) as ArtistRow[]))
@@ -379,6 +413,41 @@ export default function ReportsPage() {
     }
     return rows
   }, [events, artists, avails, period, eventsM1, eventsM2, workloadSort])
+
+  // Ostatnie 12 miesięcy — rozbicie per aktor per miesiąc (spektakle/godziny/próby)
+  const months12 = useMemo(() => last12Months(), [])
+  const prodToArtists = useMemo(() => {
+    const m: Record<string, string[]> = {}
+    for (const a of assignments) (m[a.production_id] ??= []).push(a.artist_id)
+    return m
+  }, [assignments])
+  const monthlyByArtist = useMemo(() => {
+    const m: Record<string, Record<string, { shows: number; hours: number; rehearsals: number }>> = {}
+    for (const ev of hist12) {
+      const key = String(ev.start_time).slice(0, 7)
+      const isS = SHOW_TYPES.has(ev.type ?? '')
+      const isR = REHEARSAL_TYPES.has(ev.type ?? '')
+      if (!isS && !isR) continue
+      const h = hours(ev.start_time, ev.end_time)
+      // obsada: jawna (event_artists) albo z produkcji
+      const explicit = ev.event_artists.map(e => e.artist_id)
+      const cast = explicit.length > 0 ? explicit : (prodToArtists[(ev as any).production_id] ?? [])
+      for (const aid of cast) {
+        const cell = ((m[aid] ??= {})[key] ??= { shows: 0, hours: 0, rehearsals: 0 })
+        if (isS) { cell.shows++; cell.hours += h }
+        if (isR) cell.rehearsals++
+      }
+    }
+    return m
+  }, [hist12, prodToArtists])
+  const currentTitles = useMemo(() => {
+    const c: Record<string, number> = {}
+    for (const a of assignments) {
+      if (selectedTheatreId && a.theatre_id !== selectedTheatreId) continue
+      c[a.artist_id] = (c[a.artist_id] ?? 0) + 1
+    }
+    return c
+  }, [assignments, selectedTheatreId])
 
   const absenceList = useMemo(() => {
     return avails
@@ -671,14 +740,19 @@ export default function ReportsPage() {
                 const maxEvents = artistTable[0]?.eventCount ?? 1
                 const pct = Math.round((a.eventCount / maxEvents) * 100)
                 const fmtH = (h: number) => h === 0 ? '—' : Number.isInteger(h) ? `${h}h` : `${h.toFixed(1)}h`
+                const isExp = expandedArtist === a.id
                 return (
-                  <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
+                  <Fragment key={a.id}>
+                  <tr className="hover:bg-gray-50/50 transition-colors cursor-pointer" onClick={() => setExpandedArtist(isExp ? null : a.id)}>
                     <td className="px-6 py-3 text-xs text-gray-500 font-medium">{i + 1}</td>
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-gray-900 text-sm">{a.name}</p>
+                      <p className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-400 transition-transform" style={{ transform: isExp ? 'rotate(90deg)' : 'none' }}>▸</span>
+                        {a.name}
+                      </p>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className="text-sm font-bold text-gray-800">{a.prodCount}</span>
+                      <span className="text-sm font-bold text-gray-800">{currentTitles[a.id] ?? 0}</span>
                     </td>
                     <td className="px-4 py-3 text-center">
                       {a.absenceDays > 0
@@ -700,6 +774,36 @@ export default function ReportsPage() {
                       <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${sc}`}>{a.status ?? '—'}</span>
                     </td>
                   </tr>
+                  {isExp && (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-4" style={{ background: '#faf8f5' }}>
+                        <p className="text-xs font-semibold mb-2" style={{ color: '#7a7068' }}>Ostatnie 12 miesięcy — {a.name}</p>
+                        <div className="overflow-x-auto">
+                          <table className="text-xs border-collapse">
+                            <thead>
+                              <tr style={{ color: '#a89e92' }}>
+                                <th className="text-left font-medium px-2 py-1">Statystyka</th>
+                                {months12.map(m => <th key={m.key} className="text-center font-medium px-2 py-1 whitespace-nowrap">{m.label}</th>)}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {([['Spektakle', 'shows'], ['Godziny', 'hours'], ['Próby', 'rehearsals']] as const).map(([lbl, k]) => (
+                                <tr key={k} style={{ borderTop: '1px solid #f2ede6' }}>
+                                  <td className="text-left px-2 py-1.5 font-medium whitespace-nowrap" style={{ color: '#1a1410' }}>{lbl}</td>
+                                  {months12.map(m => {
+                                    const d = monthlyByArtist[a.id]?.[m.key]
+                                    const v = d ? (k === 'hours' ? Math.round(d.hours) : d[k]) : 0
+                                    return <td key={m.key} className="text-center px-2 py-1.5 tabular-nums" style={{ color: v ? '#1a1410' : '#cec5b8' }}>{v || '·'}</td>
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 )
               })}
             </tbody>

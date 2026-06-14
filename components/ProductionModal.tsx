@@ -279,7 +279,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
   }
 
   async function handleDelete() {
-    if (!production || !confirm('Usunąć tę produkcję?')) return
+    if (!production || !confirm('Usunąć ten tytuł?')) return
     setDeleting(true)
     const pid = production.id
     // Delete child records in order: event_artists → events → artist_productions → production
@@ -310,7 +310,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <h2 className="text-lg font-semibold text-gray-900">
-            {isEdit ? 'Edytuj produkcję' : 'Nowa produkcja'}
+            {isEdit ? 'Edytuj tytuł' : 'Nowy tytuł'}
           </h2>
           <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-600 transition-colors text-2xl">
             ×
@@ -672,7 +672,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
                 disabled={deleting}
                 className="px-4 py-2 text-sm font-medium text-red-500 border border-red-200 rounded-xl hover:bg-red-50 disabled:opacity-50 transition-colors"
               >
-                {deleting ? 'Usuwanie...' : 'Usuń produkcję'}
+                {deleting ? 'Usuwanie...' : 'Usuń tytuł'}
               </button>
             ) : <div />}
             <div className="flex gap-2">
