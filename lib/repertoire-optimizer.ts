@@ -39,6 +39,15 @@ export interface OptInputs {
   unavailByDate: Record<string, Set<string>>  // data -> artistId niedostępni (urlop/choroba)
   finance: FinanceParams
   stageRoom: (theatreId: string, stage: 'duza' | 'mala') => string | null // -> room_id
+  darkWeekdays: Set<number>                   // dni ciemne (0=Nd..6=Sb), domyślnie poniedziałek
+  stageMonthlyCap: number                     // max grań na scenę/miesiąc (z Favourites)
+}
+
+export const DEFAULT_DARK_WEEKDAYS = new Set([1]) // poniedziałek
+export const DEFAULT_STAGE_MONTHLY_CAP = 14
+
+function weekday(date: string): number {
+  return new Date(date + 'T12:00:00').getDay()
 }
 
 export interface Perf {
@@ -82,6 +91,7 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
   const cellUsed = new Set<string>()                 // `${date}|${theatre}|${stage}`
   const castBusy = new Map<string, Set<string>>()    // date -> artistId zajęci
   const titleCount = new Map<string, number>()
+  const stageCount = new Map<string, number>()       // `${theatre}|${stage}` -> liczba grań w miesiącu
   const perfs: Perf[] = []
   const prodById: Record<string, OptProduction> = {}
   inp.prods.forEach(p => prodById[p.id] = p)
@@ -107,6 +117,8 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
     cellUsed.add(`${date}|${p.theatreId}|${stage}`)
     markBusy(date, p.castIds)
     titleCount.set(p.id, (titleCount.get(p.id) ?? 0) + 1)
+    const sk = `${p.theatreId}|${stage}`
+    stageCount.set(sk, (stageCount.get(sk) ?? 0) + 1)
   }
 
   // 1) Zablokowane Favourites — twarda zajętość
@@ -121,12 +133,14 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
   const lastInCell: Record<string, { date: string; prodId: string }> = {}
 
   for (const date of inp.days) {
+    if (inp.darkWeekdays.has(weekday(date))) continue   // dzień ciemny — bez dokładania
     const busy = busyOf(date)
     const unav = inp.unavailByDate[date] ?? new Set<string>()
     for (const theatre of inp.theatres) {
       for (const stage of ['duza', 'mala'] as const) {
         const key = `${date}|${theatre}|${stage}`
         if (cellUsed.has(key)) continue
+        if ((stageCount.get(`${theatre}|${stage}`) ?? 0) >= inp.stageMonthlyCap) continue
 
         const cands = inp.prods.filter(p =>
           !p.isFavourite &&

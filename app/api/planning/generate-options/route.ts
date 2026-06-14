@@ -4,7 +4,7 @@ import {
   type FinanceParams, type PriceCategory,
 } from '@/lib/finance'
 import {
-  generateOption, OBJECTIVE_LABEL,
+  generateOption, OBJECTIVE_LABEL, DEFAULT_DARK_WEEKDAYS, DEFAULT_STAGE_MONTHLY_CAP,
   type Objective, type OptProduction, type OptInputs,
 } from '@/lib/repertoire-optimizer'
 
@@ -56,6 +56,15 @@ export async function POST(request: Request) {
     loadFinanceParams(),
   ])
 
+  // Konfiguracja planowania (dni ciemne, limit grań na scenę/miesiąc)
+  const { data: planCfg } = await supabase.from('app_settings').select('key, value')
+    .in('key', ['planning_dark_weekdays', 'planning_stage_monthly_cap'])
+  const cfg: Record<string, string> = {}
+  for (const r of planCfg ?? []) cfg[r.key] = r.value ?? ''
+  let darkWeekdays = DEFAULT_DARK_WEEKDAYS
+  try { if (cfg.planning_dark_weekdays) darkWeekdays = new Set(JSON.parse(cfg.planning_dark_weekdays)) } catch {}
+  const stageMonthlyCap = cfg.planning_stage_monthly_cap ? parseInt(cfg.planning_stage_monthly_cap) : DEFAULT_STAGE_MONTHLY_CAP
+
   // Obsada per produkcja
   const castByProd: Record<string, string[]> = {}
   for (const ap of (aps ?? []) as any[]) (castByProd[ap.production_id] ??= []).push(ap.artist_id)
@@ -106,6 +115,7 @@ export async function POST(request: Request) {
     theatres: ((theatres ?? []) as any[]).map(t => t.id),
     prods: optProds,
     lockedByProd, unavailByDate, finance: fp, stageRoom,
+    darkWeekdays, stageMonthlyCap,
   }
 
   // Usuń poprzednie wersje robocze tego miesiąca
