@@ -241,7 +241,7 @@ export default function FinancePage() {
             <div className={`grid md:grid-cols-2 gap-4 ${simOn ? '' : 'opacity-40 pointer-events-none'}`}>
               <div>
                 <div className="flex justify-between text-xs mb-1" style={{ color: '#7a7068' }}>
-                  <span>Założona frekwencja (★ Favourites zawsze 100%)</span><b style={{ color: '#1a1410' }}>{fmtPct(simAttendance)}</b>
+                  <span>Założona frekwencja (♥ Favourites zawsze 100%)</span><b style={{ color: '#1a1410' }}>{fmtPct(simAttendance)}</b>
                 </div>
                 <input type="range" min={0.3} max={1} step={0.05} value={simAttendance}
                   onChange={e => setSimAttendance(parseFloat(e.target.value))} className="w-full accent-[#c8102e]" />
@@ -281,7 +281,7 @@ export default function FinancePage() {
                         <span className="font-medium" style={{ color: '#1a1410' }}>{t.prod.title}</span>
                         {t.isFavourite ? (
                           <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: '#fff7ed', color: '#b45309' }}>
-                            <span style={{ color: '#f59e0b' }}>★</span> Favourites
+                            <span style={{ color: '#ef4444' }}>♥</span> Favourites
                           </span>
                         ) : (
                           <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#f2ede6', color: '#7a7068' }}>
@@ -317,7 +317,7 @@ export default function FinancePage() {
                 <div key={ev.id} className="flex items-center gap-3 px-4 py-2.5">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate" style={{ color: '#1a1410' }}>
-                      {prod.isFavourite && <span style={{ color: '#f59e0b' }}>★ </span>}{prod.title}
+                      {prod.isFavourite && <span style={{ color: '#ef4444' }}>♥ </span>}{prod.title}
                     </p>
                     <p className="text-[11px]" style={{ color: '#a89e92' }}>
                       {dayShort(ev.start_time)}{fc.weekend && ' · weekend'} · {fc.soldTickets}/{capacity} miejsc
