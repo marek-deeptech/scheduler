@@ -71,11 +71,21 @@ function getNextMonths(n: number) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function PlanningPage() {
-  const { selectedTheatreId } = useTheatre()
+  const { selectedTheatreId, setSelectedTheatreId } = useTheatre()
   const allMonths = getNextMonths(7)
   const [approvedMonths, setApprovedMonths] = useState<Set<string>>(new Set())
   const [monthsReady,    setMonthsReady]    = useState(false)
   const [theatreName,    setTheatreName]    = useState<string>('')
+
+  // Domyślnie planujemy dla Teatru Polonia — gdy wybrano „Wszystkie", przełącz na Polonię.
+  // KPA może zmienić na Och-Teatr w menu po lewej.
+  useEffect(() => {
+    if (selectedTheatreId) return
+    supabase.from('theatres').select('id, name').then(({ data }) => {
+      const polonia = (data ?? []).find((t: any) => /polonia/i.test(t.name)) ?? (data ?? [])[0]
+      if (polonia) setSelectedTheatreId(polonia.id)
+    })
+  }, [selectedTheatreId])
 
   // Fetch approved months + production cast data on mount
   useEffect(() => {
@@ -343,15 +353,9 @@ export default function PlanningPage() {
             4 opcje (Finanse)
           </button>
         </div>
-        {!selectedTheatreId ? (
-          <p className="text-[11px] -mt-2 font-medium px-3 py-2 rounded-lg" style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' }}>
-            Repertuar planowany jest <b>osobno dla każdego teatru</b>. Wybierz teatr (Teatr Polonia lub Och-Teatr) w menu po lewej, aby generować propozycje.
-          </p>
-        ) : (
-          <p className="text-[11px] -mt-2" style={{ color: '#a89e92' }}>
-            Planujesz: <b style={{ color: '#7a2020' }}>{theatreName}</b>. „4 opcje (Finanse)" bierze zatwierdzone dni Favourites jako stałe i dokłada resztę repertuaru pod 4 cele finansowe (uwzględnia zajętość wspólnych aktorów w drugim teatrze).
-          </p>
-        )}
+        <p className="text-[11px] -mt-2" style={{ color: '#a89e92' }}>
+          Planujesz: <b style={{ color: '#7a2020' }}>{theatreName || 'Teatr Polonia'}</b> (zmień teatr w menu po lewej). „4 opcje (Finanse)" bierze zatwierdzone dni Favourites jako stałe i dokłada resztę repertuaru pod 4 cele finansowe (uwzględnia zajętość wspólnych aktorów w drugim teatrze).
+        </p>
 
         {/* Generating banner */}
         {generating && (
