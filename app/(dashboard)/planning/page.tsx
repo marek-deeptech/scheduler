@@ -27,6 +27,12 @@ interface ProposalStats {
   total: number
   conflicts: number
   by_production: Record<string, number>
+  objective?: string
+  finance?: { revenue: number; cost: number; margin: number; attendance: number; locked: number }
+}
+
+function fmtPlnShort(n: number): string {
+  return new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', maximumFractionDigits: 0 }).format(n || 0)
 }
 
 interface Proposal {
@@ -171,6 +177,25 @@ export default function PlanningPage() {
     }
   }
 
+  async function generateOptions() {
+    setGenerating(true)
+    setError(null)
+    try {
+      const r = await fetch('/api/planning/generate-options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month: selectedMonth }),
+      })
+      const json = await r.json()
+      if (json.error) throw new Error(json.error)
+      await loadProposals()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Błąd generowania opcji')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   async function handleAction(proposalId: string, action: 'approve' | 'reject') {
     setActionLoading(proposalId + action)
     try {
@@ -277,7 +302,21 @@ export default function PlanningPage() {
               </>
             )}
           </button>
+
+          {/* Generate 4 finance-optimized options */}
+          <button
+            onClick={generateOptions}
+            disabled={generating}
+            className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors shrink-0"
+            style={{ background: '#1a1410', color: '#fff' }}
+          >
+            <span style={{ color: '#34d399' }}>◆</span>
+            4 opcje (Finanse)
+          </button>
         </div>
+        <p className="text-[11px] -mt-2" style={{ color: '#a89e92' }}>
+          „4 opcje (Finanse)" bierze zatwierdzone dni Favourites jako stałe i dokłada resztę repertuaru pod 4 cele: maks. przychód, maks. frekwencja, min. koszt, zbalansowana.
+        </p>
 
         {/* Generating banner */}
         {generating && (
@@ -401,6 +440,16 @@ function ProposalCard({
             )}
           </div>
         </div>
+
+        {/* Finance KPIs (opcje finansowe) */}
+        {stats.finance && (
+          <div className="grid grid-cols-4 gap-2 mt-3">
+            <FinKpi label="Przychód" value={fmtPlnShort(stats.finance.revenue)} color="#15803d" />
+            <FinKpi label="Koszt" value={fmtPlnShort(stats.finance.cost)} color="#b45309" />
+            <FinKpi label="Marża" value={fmtPlnShort(stats.finance.margin)} color={stats.finance.margin >= 0 ? '#15803d' : '#c8102e'} />
+            <FinKpi label="Śr. frekw." value={`${Math.round((stats.finance.attendance || 0) * 100)}%`} color="#1a1410" />
+          </div>
+        )}
 
         {/* Stats chips */}
         <div className="flex flex-wrap gap-1.5 mt-3">
@@ -573,5 +622,14 @@ function Chip({ value, label, warn }: { value: number; label: string; warn?: boo
       <span className="font-bold">{value}</span>
       <span>{label}</span>
     </span>
+  )
+}
+
+function FinKpi({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="rounded-lg px-2 py-1.5" style={{ background: '#faf8f5', border: '1px solid #f2ede6' }}>
+      <p className="text-[9px] uppercase tracking-wide" style={{ color: '#a89e92' }}>{label}</p>
+      <p className="text-xs font-bold leading-tight" style={{ color }}>{value}</p>
+    </div>
   )
 }
