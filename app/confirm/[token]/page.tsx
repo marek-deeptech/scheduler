@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useParams, useSearchParams } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -49,12 +50,9 @@ const STATUS_STYLES: Record<string, string> = {
   maybe:     'bg-amber-100 text-amber-800',
 }
 
-export default function ConfirmPage({ params, searchParams }: {
-  params: { token: string }
-  searchParams: { answer?: string }
-}) {
-  const { token } = params
-  const preAnswer = searchParams?.answer ?? null
+export default function ConfirmPage() {
+  const { token } = useParams<{ token: string }>()
+  const preAnswer = useSearchParams().get('answer')
 
   const [loading,   setLoading]   = useState(true)
   const [notFound,  setNotFound]  = useState(false)

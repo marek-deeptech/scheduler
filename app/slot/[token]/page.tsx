@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useParams } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { windowDates } from '@/lib/slots'
 
@@ -29,8 +30,8 @@ function fmtRange(a: string, b: string) {
   return `${s} – ${e}`
 }
 
-export default function SlotPollPage({ params }: { params: { token: string } }) {
-  const { token } = params
+export default function SlotPollPage() {
+  const { token } = useParams<{ token: string }>()
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [data, setData] = useState<SlotData | null>(null)
