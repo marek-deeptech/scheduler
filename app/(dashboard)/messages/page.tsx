@@ -377,6 +377,13 @@ export default function MessagesPage() {
   const [responsesOpen, setResponsesOpen] = useState(true)
   const [sentHistory, setSentHistory] = useState<SentMessage[]>([])
   const [historyOpen, setHistoryOpen] = useState(false)
+  // Tablica statusów: braki potwierdzeń + zastępstwa
+  const [pendingPart, setPendingPart] = useState<{ id: string; actorName: string; eventTitle: string; eventStart: string | null; sentAt: string | null; changed: boolean }[]>([])
+  const [noAvailResp, setNoAvailResp] = useState<{ id: string; actorName: string; title: string; range: string }[]>([])
+  const [subs, setSubs] = useState<{ id: string; actorName: string | null; subject: string; sentAt: string | null }[]>([])
+  const [pendingOpen, setPendingOpen] = useState(true)
+  const [availOpen, setAvailOpen] = useState(false)
+  const [subsOpen, setSubsOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [teamFilter, setTeamFilter] = useState<string>('all')
@@ -430,6 +437,54 @@ export default function MessagesPage() {
             body:       m.body ?? '',
             sentAt:     m.sent_at,
           }
+        }))
+      })
+
+    const nowIso = new Date().toISOString()
+
+    // Brak potwierdzenia udziału — pending event_confirmations na nadchodzące spektakle
+    Promise.all([
+      supabase.from('event_confirmations')
+        .select('id, event_id, artist_id, sent_at, artists(name), events(title, type, start_time)')
+        .eq('status', 'pending').limit(150),
+      supabase.from('actor_messages').select('artist_id, related_event_id').eq('kind', 'event_change'),
+    ]).then(([{ data: pend }, { data: chMsgs }]) => {
+      const changed = new Set((chMsgs ?? []).map((m: any) => `${m.related_event_id}:${m.artist_id}`))
+      const rows = ((pend ?? []) as any[])
+        .map(r => {
+          const a = Array.isArray(r.artists) ? r.artists[0] : r.artists
+          const e = Array.isArray(r.events) ? r.events[0] : r.events
+          return { id: r.id, event_id: r.event_id, artist_id: (r as any).artist_id, actorName: a?.name ?? '—',
+            eventTitle: e?.type ?? e?.title ?? 'Wydarzenie', eventStart: e?.start_time ?? null, sentAt: r.sent_at }
+        })
+        .filter(r => !r.eventStart || r.eventStart >= nowIso.slice(0, 10))
+        .sort((a, b) => (a.eventStart ?? '').localeCompare(b.eventStart ?? ''))
+        .map(r => ({ ...r, changed: changed.has(`${r.event_id}:${r.artist_id}`) }))
+      setPendingPart(rows)
+    })
+
+    // Brak odpowiedzi na zapytanie o dostępność — slot_invites bez submitted_at
+    supabase.from('slot_invites')
+      .select('id, artists(name), repertoire_slots(window_start, window_end, productions(title))')
+      .is('submitted_at', null).limit(120)
+      .then(({ data }) => {
+        setNoAvailResp(((data ?? []) as any[]).map(r => {
+          const a = Array.isArray(r.artists) ? r.artists[0] : r.artists
+          const s = Array.isArray(r.repertoire_slots) ? r.repertoire_slots[0] : r.repertoire_slots
+          const p = s ? (Array.isArray(s.productions) ? s.productions[0] : s.productions) : null
+          const range = s ? `${(s.window_start ?? '').slice(5)} – ${(s.window_end ?? '').slice(5)}` : ''
+          return { id: r.id, actorName: a?.name ?? '—', title: p?.title ?? 'Slot', range }
+        }))
+      })
+
+    // Zastępstwa
+    supabase.from('actor_messages')
+      .select('id, sent_at, subject, artists(name)')
+      .eq('kind', 'substitution').order('sent_at', { ascending: false }).limit(40)
+      .then(({ data }) => {
+        setSubs(((data ?? []) as any[]).map(m => {
+          const a = Array.isArray(m.artists) ? m.artists[0] : m.artists
+          return { id: m.id, actorName: a?.name ?? null, subject: m.subject ?? 'Zastępstwo', sentAt: m.sent_at }
         }))
       })
 
@@ -595,6 +650,89 @@ export default function MessagesPage() {
           </select>
         </div>
       </div>
+
+      {/* ── Brak potwierdzenia udziału ─────────────────────────────── */}
+      {pendingPart.length > 0 && (
+        <div className="mb-4 bg-white border rounded-2xl overflow-hidden" style={{ borderColor: '#fde0c8' }}>
+          <button onClick={() => setPendingOpen(v => !v)} className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-gray-900">Brak potwierdzenia udziału</span>
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#fff7ed', color: '#b45309' }}>{pendingPart.length}</span>
+              {pendingPart.some(p => p.changed) && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">{pendingPart.filter(p => p.changed).length} po zmianie</span>
+              )}
+            </div>
+            <span className="text-gray-400 text-sm">{pendingOpen ? '▲' : '▼'}</span>
+          </button>
+          {pendingOpen && (
+            <div className="border-t border-gray-100 divide-y divide-gray-50 max-h-72 overflow-y-auto">
+              {pendingPart.map(r => (
+                <div key={r.id} className="flex items-center gap-3 px-5 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{r.actorName}</p>
+                    <p className="text-xs text-gray-500 truncate">{r.eventTitle}{r.eventStart ? ` · ${fmtDate(r.eventStart)}` : ''}</p>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${r.changed ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
+                    {r.changed ? 'ZMIANA — BRAK POTW.' : 'BRAK POTWIERDZENIA'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Brak odpowiedzi na dostępność (zapytania KPA) ──────────────── */}
+      {noAvailResp.length > 0 && (
+        <div className="mb-4 bg-white border border-gray-200 rounded-2xl overflow-hidden">
+          <button onClick={() => setAvailOpen(v => !v)} className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-gray-900">Brak odpowiedzi na zapytanie o dostępność</span>
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{noAvailResp.length}</span>
+            </div>
+            <span className="text-gray-400 text-sm">{availOpen ? '▲' : '▼'}</span>
+          </button>
+          {availOpen && (
+            <div className="border-t border-gray-100 divide-y divide-gray-50 max-h-72 overflow-y-auto">
+              {noAvailResp.map(r => (
+                <div key={r.id} className="flex items-center gap-3 px-5 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{r.actorName}</p>
+                    <p className="text-xs text-gray-500 truncate">{r.title}{r.range ? ` · okno ${r.range}` : ''}</p>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-600">NIE ODPOWIEDZIAŁ</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Zastępstwa ─────────────────────────────────────────────── */}
+      {subs.length > 0 && (
+        <div className="mb-4 bg-white border border-gray-200 rounded-2xl overflow-hidden">
+          <button onClick={() => setSubsOpen(v => !v)} className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-gray-900">Zastępstwa</span>
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{subs.length}</span>
+            </div>
+            <span className="text-gray-400 text-sm">{subsOpen ? '▲' : '▼'}</span>
+          </button>
+          {subsOpen && (
+            <div className="border-t border-gray-100 divide-y divide-gray-50 max-h-72 overflow-y-auto">
+              {subs.map(s => (
+                <div key={s.id} className="flex items-center gap-3 px-5 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{s.actorName ?? '—'}</p>
+                    <p className="text-xs text-gray-500 truncate">{s.subject}</p>
+                  </div>
+                  <span className="text-[10px] text-gray-400 shrink-0">{s.sentAt ? fmtDate(s.sentAt) : ''}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Responses section ──────────────────────────────────────── */}
       {responses.length > 0 && (

@@ -162,7 +162,7 @@ export default function DashboardPage() {
   const [showsNMConflicts,  setShowsNMConflicts]  = useState(0)
   const [showsM2Conflicts,  setShowsM2Conflicts]  = useState(0)
   const [notConfirmedCount, setNotConfirmedCount] = useState(0)
-  const [notConfirmedNames, setNotConfirmedNames] = useState<string[]>([])
+  const [notConfBreakdown, setNotConfBreakdown] = useState<{ noAvail: string[]; noConfirm: string[]; change: string[] }>({ noAvail: [], noConfirm: [], change: [] })
   const [showsNMCount,      setShowsNMCount]      = useState(0)
   const [showsNMList,       setShowsNMList]       = useState<EventRow[]>([])
   const [showsM2Count,      setShowsM2Count]      = useState(0)
@@ -224,6 +224,11 @@ export default function DashboardPage() {
       .gte('start_time', `${m2StartStr}T00:00:00`)
       .lte('start_time', `${m2EndStr}T23:59:59`)
       .order('start_time')
+    // Tomorrow's shows (for participation-confirmation gaps)
+    const tomorrowStr = localDate(addDays(now, 1))
+    let tomorrowShowsQ = supabase.from('events').select('id, theatre_id, event_artists(artist_id)')
+      .in('type', Array.from(SHOW_TYPES))
+      .gte('start_time', `${tomorrowStr}T00:00:00`).lte('start_time', `${tomorrowStr}T23:59:59`)
 
     if (selectedTheatreId) {
       todayQ    = todayQ.eq('theatre_id', selectedTheatreId)
@@ -233,6 +238,7 @@ export default function DashboardPage() {
       conflictQ = conflictQ.eq('theatre_id', selectedTheatreId)
       showsNMQ  = showsNMQ.eq('theatre_id', selectedTheatreId)
       showsM2Q  = showsM2Q.eq('theatre_id', selectedTheatreId)
+      tomorrowShowsQ = tomorrowShowsQ.eq('theatre_id', selectedTheatreId)
     }
 
     let prodQ = supabase.from('productions').select('id, title, status, price_category')
@@ -263,6 +269,7 @@ export default function DashboardPage() {
       { data: showsM2Data },
       { data: tomorrowDsData },
       { data: vacNMData },
+      { data: tomorrowShowsData },
     ] = await Promise.all([
       // artist_productions included so we can scope artists to the selected theatre
       supabase.from('artists').select('id, name, status, role, teams(name), artist_productions(productions(theatre_id))'),
@@ -284,6 +291,7 @@ export default function DashboardPage() {
         .eq('status', 'Urlop')
         .gte('date', nmStartStr)
         .lte('date', nmEndStr),
+      tomorrowShowsQ,
     ])
 
     const allArtistsRaw = sortByLastName((artistData ?? []) as any[])
@@ -365,16 +373,46 @@ export default function DashboardPage() {
     setShowsM2Count(m2Shows.length)
     setShowsM2List(m2Shows)
 
-    // Not confirmed: Cast members who have NO actor_day_status entry for tomorrow
+    // ── Braki potwierdzeń NA JUTRO — trzy kategorie ──
     const allArtistsMap = new Map(allArtistsRaw.map((a: any) => [a.id, a.name as string]))
     const castArtists = allArtistsRaw.filter((a: any) => {
       const teams = Array.isArray(a.teams) ? a.teams : (a.teams ? [a.teams] : [])
       return teams.some((t: any) => t?.name === 'Cast')
     })
-    const tomorrowConfirmedIds = new Set((tomorrowDsData ?? []).map((r: any) => r.artist_id))
-    const notConfTomorrow = castArtists.filter((a: any) => !tomorrowConfirmedIds.has(a.id))
-    setNotConfirmedCount(notConfTomorrow.length)
-    setNotConfirmedNames(notConfTomorrow.map((a: any) => a.name as string))
+
+    // A: brak deklaracji dostępności (Cast bez wpisu w kalendarzu na jutro)
+    const tomorrowAvailIds = new Set((tomorrowDsData ?? []).map((r: any) => r.artist_id))
+    const noAvail = castArtists.filter((a: any) => !tomorrowAvailIds.has(a.id))
+
+    // B/C: brak potwierdzenia udziału w jutrzejszych spektaklach (event_confirmations = pending)
+    const tomorrowEventIds = ((tomorrowShowsData ?? []) as any[]).map(e => e.id)
+    const noConfirmIds = new Set<string>()
+    const changeIds    = new Set<string>()
+    if (tomorrowEventIds.length > 0) {
+      const [{ data: pendConf }, { data: changeMsgs }] = await Promise.all([
+        supabase.from('event_confirmations')
+          .select('event_id, artist_id, artists(name)')
+          .in('event_id', tomorrowEventIds).eq('status', 'pending'),
+        supabase.from('actor_messages')
+          .select('artist_id, related_event_id')
+          .eq('kind', 'event_change').in('related_event_id', tomorrowEventIds),
+      ])
+      // pary (event, artist) które dostały powiadomienie o zmianie → niepotwierdzona zmiana
+      const changed = new Set((changeMsgs ?? []).map((m: any) => `${m.related_event_id}:${m.artist_id}`))
+      for (const c of (pendConf ?? []) as any[]) {
+        const nm = (Array.isArray(c.artists) ? c.artists[0] : c.artists)?.name
+        if (!nm) continue
+        if (changed.has(`${c.event_id}:${c.artist_id}`)) changeIds.add(nm)
+        else noConfirmIds.add(nm)
+      }
+    }
+
+    const noAvailNames  = noAvail.map((a: any) => a.name as string)
+    const noConfirmNames = [...noConfirmIds]
+    const changeNames    = [...changeIds]
+    setNotConfBreakdown({ noAvail: noAvailNames, noConfirm: noConfirmNames, change: changeNames })
+    // łączna liczba unikalnych osób z jakimkolwiek brakiem
+    setNotConfirmedCount(new Set([...noAvailNames, ...noConfirmNames, ...changeNames]).size)
 
     // Vacations next month: unique artists
     const vacArtistIds = [...new Set((vacNMData ?? []).map((r: any) => r.artist_id))]
@@ -641,16 +679,38 @@ export default function DashboardPage() {
   const m2MonthLabel = MONTHS_PL[new Date(now.getFullYear(), now.getMonth() + 2, 1).getMonth()]
 
   /* ── Tooltip content for new tiles ── */
-  const notConfirmedTip = (
-    <>
-      <TipHeader>Brak statusu na jutro</TipHeader>
-      {notConfirmedNames.length === 0
-        ? <TipEmpty text="Wszyscy podali status" />
-        : notConfirmedNames.map(name => <TipRow key={name} label={name} dot="bg-orange-400" />)
-      }
-      <span className="block pb-1" />
-    </>
-  )
+  const notConfirmedTip = (() => {
+    const { noAvail, noConfirm, change } = notConfBreakdown
+    const empty = noAvail.length === 0 && noConfirm.length === 0 && change.length === 0
+    return (
+      <>
+        <TipHeader>Braki potwierdzeń na jutro</TipHeader>
+        {empty ? <TipEmpty text="Wszystko potwierdzone" /> : (
+          <>
+            {change.length > 0 && (
+              <>
+                <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#c8102e' }}>Niepotwierdzona zmiana ({change.length})</p>
+                {change.map(n => <TipRow key={'ch'+n} label={n} dot="bg-red-500" />)}
+              </>
+            )}
+            {noConfirm.length > 0 && (
+              <>
+                <p className="px-3 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#b45309' }}>Brak potwierdzenia udziału ({noConfirm.length})</p>
+                {noConfirm.map(n => <TipRow key={'nc'+n} label={n} dot="bg-amber-400" />)}
+              </>
+            )}
+            {noAvail.length > 0 && (
+              <>
+                <p className="px-3 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#7a7068' }}>Brak deklaracji dostępności ({noAvail.length})</p>
+                {noAvail.map(n => <TipRow key={'na'+n} label={n} dot="bg-gray-400" />)}
+              </>
+            )}
+          </>
+        )}
+        <span className="block pb-1" />
+      </>
+    )
+  })()
 
   function repertuarMonthTip(list: EventRow[], label: string) {
     const byTitle = new Map<string, EventRow[]>()
@@ -736,7 +796,13 @@ export default function DashboardPage() {
   const statCards = [
     {
       label: 'Nie potwierdzili na jutro', value: notConfirmedCount,
-      sub: notConfirmedCount > 0 ? `${notConfirmedCount} bez statusu` : 'wszyscy podali status',
+      sub: notConfirmedCount > 0
+        ? [
+            notConfBreakdown.change.length   ? `${notConfBreakdown.change.length}× zmiana` : null,
+            notConfBreakdown.noConfirm.length ? `${notConfBreakdown.noConfirm.length}× udział` : null,
+            notConfBreakdown.noAvail.length   ? `${notConfBreakdown.noAvail.length}× dostępność` : null,
+          ].filter(Boolean).join(' · ')
+        : 'wszystko potwierdzone',
       warn: notConfirmedCount > 0,
       tip: notConfirmedTip, tipAlign: 'left' as const,
       cta: notConfirmedCount > 0 ? { label: 'Wyślij przypomnienie', href: '/messages' } : undefined,
