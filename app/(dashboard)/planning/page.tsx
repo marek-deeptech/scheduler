@@ -78,7 +78,7 @@ export default function PlanningPage() {
   useEffect(() => {
     Promise.all([
       fetch('/api/planning/generate?status=approved').then(r => r.json()),
-      supabase.from('productions').select('title, is_favourite, artist_productions(artists(id, name))'),
+      supabase.from('productions').select('title, is_favourite, price_category, artist_productions(artists(id, name))'),
     ]).then(([json, castRes]) => {
       // Approved months
       const approved = new Set<string>((json.proposals ?? []).map((p: Proposal) => p.month))
@@ -89,6 +89,7 @@ export default function PlanningPage() {
       const castMap  = new Map<string, string[]>()
       const nameMap  = new Map<string, string>()
       const favSet   = new Set<string>()
+      const stages   = new Map<string, 'Duża' | 'Mała'>()
       for (const p of castRes.data ?? []) {
         const ids: string[] = []
         for (const ap of p.artist_productions ?? []) {
@@ -97,10 +98,12 @@ export default function PlanningPage() {
         }
         castMap.set(p.title, ids)
         if ((p as any).is_favourite) favSet.add(p.title)
+        stages.set(p.title, (p as any).price_category === 'mala' ? 'Mała' : 'Duża')
       }
       setProductionCastMap(castMap)
       setArtistNamesMap(nameMap)
       setFavouriteSet(favSet)
+      setStageMap(stages)
     }).catch(() => setMonthsReady(true))
   }, [])
 
@@ -111,7 +114,7 @@ export default function PlanningPage() {
   const [loading,       setLoading]       = useState(false)
   const [generating,    setGenerating]    = useState(false)
   const [constraints,   setConstraints]   = useState('')
-  const [expandedId,    setExpandedId]    = useState<string | null>(null)
+  const [expandedIds,   setExpandedIds]   = useState<Set<string>>(new Set())
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [error,         setError]         = useState<string | null>(null)
 
@@ -119,6 +122,7 @@ export default function PlanningPage() {
   const [productionCastMap, setProductionCastMap] = useState<Map<string, string[]>>(new Map())
   const [artistNamesMap,    setArtistNamesMap]     = useState<Map<string, string>>(new Map())
   const [favouriteSet,      setFavouriteSet]       = useState<Set<string>>(new Set())
+  const [stageMap,          setStageMap]           = useState<Map<string, 'Duża' | 'Mała'>>(new Map())
 
   const [conflictModal, setConflictModal] = useState<{
     artistId: string; artistName: string; conflictDate: string;
@@ -354,23 +358,38 @@ export default function PlanningPage() {
       ) : proposals.length === 0 ? (
         <EmptyState />
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-4">
-          {proposals.map(p => (
-            <ProposalCard
-              key={p.id}
-              proposal={p}
-              expanded={expandedId === p.id}
-              onToggle={() => setExpandedId(expandedId === p.id ? null : p.id)}
-              onApprove={() => handleAction(p.id, 'approve')}
-              onReject={() => handleAction(p.id, 'reject')}
-              actionLoading={actionLoading}
-              productionCastMap={productionCastMap}
-              artistNamesMap={artistNamesMap}
-              favouriteSet={favouriteSet}
-              onConflictClick={setConflictModal}
-            />
-          ))}
-        </div>
+        <>
+          {/* Porównanie harmonogramów — rozwiń/zwiń wszystkie naraz */}
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+            <p className="text-xs" style={{ color: '#a89e92' }}>
+              {proposals.length} {proposals.length === 1 ? 'propozycja' : 'propozycje'} — rozwiń harmonogramy, by porównać obok siebie
+            </p>
+            <button
+              onClick={() => setExpandedIds(prev => prev.size === proposals.length ? new Set() : new Set(proposals.map(p => p.id)))}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+              style={{ border: '1px solid #e4ddd4', color: '#7a7068' }}>
+              {expandedIds.size === proposals.length ? 'Zwiń wszystkie' : 'Rozwiń wszystkie (porównaj)'}
+            </button>
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-4 items-start">
+            {proposals.map(p => (
+              <ProposalCard
+                key={p.id}
+                proposal={p}
+                expanded={expandedIds.has(p.id)}
+                onToggle={() => setExpandedIds(prev => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n })}
+                onApprove={() => handleAction(p.id, 'approve')}
+                onReject={() => handleAction(p.id, 'reject')}
+                actionLoading={actionLoading}
+                productionCastMap={productionCastMap}
+                artistNamesMap={artistNamesMap}
+                favouriteSet={favouriteSet}
+                stageMap={stageMap}
+                onConflictClick={setConflictModal}
+              />
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
@@ -396,7 +415,7 @@ function EmptyState() {
 
 function ProposalCard({
   proposal, expanded, onToggle, onApprove, onReject, actionLoading,
-  productionCastMap, artistNamesMap, favouriteSet, onConflictClick,
+  productionCastMap, artistNamesMap, favouriteSet, stageMap, onConflictClick,
 }: {
   proposal: Proposal
   expanded: boolean
@@ -407,6 +426,7 @@ function ProposalCard({
   productionCastMap: Map<string, string[]>
   artistNamesMap:    Map<string, string>
   favouriteSet:      Set<string>
+  stageMap:          Map<string, 'Duża' | 'Mała'>
   onConflictClick: (params: {
     artistId: string; artistName: string; conflictDate: string;
     conflictStart?: string; conflictEnd?: string; productions: string[]
@@ -517,7 +537,15 @@ function ProposalCard({
                         <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
                       </svg>
                     )}
-                    {e.production_title}
+                    <span className="truncate">{e.production_title}</span>
+                    {stageMap.get(e.production_title) && (
+                      <span className="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide"
+                        style={stageMap.get(e.production_title) === 'Mała'
+                          ? { background: '#eef2ff', color: '#4338ca' }
+                          : { background: '#f2ede6', color: '#7a7068' }}>
+                        {stageMap.get(e.production_title)} scena
+                      </span>
+                    )}
                   </span>
                   {partnerConflict && (
                     <span className="text-[10px] shrink-0 font-medium flex items-center gap-0.5 flex-wrap" style={{ color: '#c8102e' }}>
