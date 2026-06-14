@@ -144,7 +144,10 @@ export default function ReportsPage() {
   const [eventsM2,    setEventsM2]    = useState<EventRow[]>([])
   const [hist12,      setHist12]      = useState<EventRow[]>([])
   const [assignments, setAssignments] = useState<{ artist_id: string; production_id: string; theatre_id: string | null }[]>([])
-  const [expandedArtist, setExpandedArtist] = useState<string | null>(null)
+  // Obciążenie zespołu — filtr po miesiącu/roku
+  const [wlMonth,     setWlMonth]     = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })
+  const [wlEvents,    setWlEvents]    = useState<EventRow[]>([])
+  const [wlVac,       setWlVac]       = useState<{ artist_id: string; start_time: string; end_time: string }[]>([])
   const [workloadSort, setWorkloadSort] = useState<'hours' | 'absence'>('hours')
 
   const today = localDate(new Date())
@@ -449,6 +452,65 @@ export default function ReportsPage() {
     return c
   }, [assignments, selectedTheatreId])
 
+  // ── Obciążenie zespołu — dane wybranego miesiąca ──
+  useEffect(() => {
+    const [y, m] = wlMonth.split('-').map(Number)
+    const mStart = `${wlMonth}-01`
+    const mEnd   = localDate(new Date(y, m, 0))
+    let eq = supabase.from('events')
+      .select('id,type,start_time,end_time,production_id,theatre_id,event_artists(artist_id)')
+      .gte('start_time', `${mStart}T00:00:00`).lte('start_time', `${mEnd}T23:59:59`)
+    if (selectedTheatreId) eq = eq.eq('theatre_id', selectedTheatreId)
+    const vq = supabase.from('availabilities').select('artist_id,start_time,end_time')
+      .eq('type', 'Urlop')
+      .lte('start_time', `${mEnd}T23:59:59`).gte('end_time', `${mStart}T00:00:00`)
+    Promise.all([eq, vq]).then(([{ data: ev }, { data: va }]) => {
+      setWlEvents((ev ?? []) as unknown as EventRow[])
+      setWlVac((va ?? []) as any)
+    })
+  }, [wlMonth, selectedTheatreId])
+
+  // Metryki per aktor dla wybranego miesiąca
+  const workloadRows = useMemo(() => {
+    const [y, m] = wlMonth.split('-').map(Number)
+    const daysInMonth = new Date(y, m, 0).getDate()
+    const monStart = new Date(y, m - 1, 1).getTime()
+    const monEnd   = new Date(y, m, 0).getTime() + 86_400_000
+    type Row = { id: string; name: string; shows: number; rehHours: number; titles: Set<string>; worked: Set<string>; vac: number }
+    const map: Record<string, Row> = {}
+    for (const a of artists) map[a.id] = { id: a.id, name: a.name, shows: 0, rehHours: 0, titles: new Set(), worked: new Set(), vac: 0 }
+
+    for (const ev of wlEvents) {
+      const isS = SHOW_TYPES.has(ev.type ?? '')
+      const isR = REHEARSAL_TYPES.has(ev.type ?? '')
+      if (!isS && !isR) continue
+      const day = String(ev.start_time).slice(0, 10)
+      const h = hours(ev.start_time, ev.end_time)
+      const explicit = ev.event_artists.map(e => e.artist_id)
+      const cast = explicit.length > 0 ? explicit : (prodToArtists[(ev as any).production_id] ?? [])
+      for (const aid of cast) {
+        const r = map[aid]; if (!r) continue
+        r.worked.add(day)
+        if (isS) { r.shows++; if ((ev as any).production_id) r.titles.add((ev as any).production_id) }
+        if (isR) r.rehHours += h
+      }
+    }
+    for (const v of wlVac) {
+      const r = map[v.artist_id]; if (!r) continue
+      const s = Math.max(new Date(v.start_time).getTime(), monStart)
+      const e = Math.min(new Date(v.end_time).getTime(), monEnd)
+      r.vac += Math.max(0, Math.round((e - s) / 86_400_000))
+    }
+    const rows = Object.values(map).map(r => ({
+      id: r.id, name: r.name, shows: r.shows, rehHours: Math.round(r.rehHours),
+      titles: r.titles.size, vac: r.vac, freeDays: Math.max(0, daysInMonth - r.worked.size),
+    }))
+    // tylko aktorzy istotni: obecnie przypisani lub z aktywnością w miesiącu
+    const relevant = rows.filter(r => (currentTitles[r.id] ?? 0) > 0 || r.shows > 0 || r.rehHours > 0 || r.titles > 0 || r.vac > 0)
+    relevant.sort((a, b) => b.shows - a.shows || b.rehHours - a.rehHours || b.titles - a.titles || a.name.localeCompare(b.name, 'pl'))
+    return relevant
+  }, [artists, wlEvents, wlVac, prodToArtists, currentTitles, wlMonth])
+
   const absenceList = useMemo(() => {
     return avails
       .map(av => {
@@ -685,114 +747,62 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Artist workload table */}
-      {!loading && artistTable.length > 0 && (() => {
+      {/* Obciążenie zespołu — per wybrany miesiąc */}
+      {!loading && (() => {
         const MONTHS_PL = td.months
-        const nowR  = new Date()
-        const m1Lbl = MONTHS_PL[new Date(nowR.getFullYear(), nowR.getMonth() - 1, 1).getMonth()]
-        const m2Lbl = MONTHS_PL[new Date(nowR.getFullYear(), nowR.getMonth() - 2, 1).getMonth()]
+        const [wy, wm] = wlMonth.split('-').map(Number)
+        const nowY = new Date().getFullYear()
+        const years = [nowY + 1, nowY, nowY - 1, nowY - 2]
+        const setYM = (yy: number, mm: number) => setWlMonth(`${yy}-${String(mm).padStart(2, '0')}`)
+        const selCls = 'rounded-lg px-3 py-1.5 text-sm bg-white'
+        const selStyle = { border: '1px solid #e4ddd4', color: '#3e3830' }
+        const cell = (v: number, suffix = '', muted = false) =>
+          v > 0 ? <span className={`text-sm font-bold ${muted ? 'text-gray-600' : 'text-gray-800'}`}>{v}{suffix}</span> : <span className="text-sm text-gray-300">—</span>
         return (
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
             <div>
               <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>{tr.workloadSection}</h3>
-              <p className="text-xs text-gray-500 mt-0.5">{tr.workloadSubtitle}</p>
+              <p className="text-xs text-gray-500 mt-0.5">Obciążenie aktorów w wybranym miesiącu</p>
             </div>
-            <span className="text-xs text-gray-500">{tr.workloadCount(artistTable.length)}</span>
+            <div className="flex items-center gap-2">
+              <select value={wm} onChange={e => setYM(wy, +e.target.value)} className={selCls} style={selStyle}>
+                {MONTHS_PL.map((mn: string, idx: number) => <option key={idx} value={idx + 1}>{mn}</option>)}
+              </select>
+              <select value={wy} onChange={e => setYM(+e.target.value, wm)} className={selCls} style={selStyle}>
+                {years.map(yy => <option key={yy} value={yy}>{yy}</option>)}
+              </select>
+            </div>
           </div>
           <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[560px]">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-8">{tr.colRank}</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colArtist}</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colProductions}</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider">
-                  <button
-                    onClick={() => setWorkloadSort(s => s === 'absence' ? 'hours' : 'absence')}
-                    className={`flex items-center gap-1 mx-auto transition-colors ${workloadSort === 'absence' ? '' : 'text-gray-400 hover:text-gray-600'}`}
-                    style={workloadSort === 'absence' ? { color: '#c8102e' } : undefined}
-                  >
-                    {tr.colAbsenceDays}
-                    <span className="text-[10px]">{workloadSort === 'absence' ? '↓' : '↕'}</span>
-                  </button>
-                </th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  <span className={`flex items-center gap-1 mx-auto ${workloadSort === 'hours' ? '' : 'text-gray-500'}`} style={workloadSort === 'hours' ? { color: '#c8102e' } : undefined}>
-                    Godz. {m1Lbl} {workloadSort === 'hours' && <span className="text-[10px]">↓</span>}
-                  </span>
-                </th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Godz. {m2Lbl}</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Tytuły</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Spektakle</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Godz. prób</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Dni wolne</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Urlop</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {artistTable.map((a, i) => {
-                const maxEvents = artistTable[0]?.eventCount ?? 1
-                const pct = Math.round((a.eventCount / maxEvents) * 100)
-                const fmtH = (h: number) => h === 0 ? '—' : Number.isInteger(h) ? `${h}h` : `${h.toFixed(1)}h`
-                const isExp = expandedArtist === a.id
-                return (
-                  <Fragment key={a.id}>
-                  <tr className="hover:bg-gray-50/50 transition-colors cursor-pointer" onClick={() => setExpandedArtist(isExp ? null : a.id)}>
-                    <td className="px-6 py-3 text-xs text-gray-500 font-medium">{i + 1}</td>
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
-                        <span className="text-[10px] text-gray-400 transition-transform" style={{ transform: isExp ? 'rotate(90deg)' : 'none' }}>▸</span>
-                        {a.name}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="text-sm font-bold text-gray-800">{currentTitles[a.id] ?? 0}</span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {a.absenceDays > 0
-                        ? <span className="text-sm font-bold text-amber-600">{a.absenceDays}</span>
-                        : <span className="text-sm text-gray-500">—</span>
-                      }
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`text-sm font-bold ${a.hoursM1 > 0 ? 'text-gray-700' : 'text-gray-400'}`}>
-                        {fmtH(a.hoursM1)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`text-sm font-bold ${a.hoursM2 > 0 ? 'text-gray-500' : 'text-gray-400'}`}>
-                        {fmtH(a.hoursM2)}
-                      </span>
-                    </td>
-                  </tr>
-                  {isExp && (
-                    <tr>
-                      <td colSpan={6} className="px-6 py-4" style={{ background: '#faf8f5' }}>
-                        <p className="text-xs font-semibold mb-2" style={{ color: '#7a7068' }}>Ostatnie 12 miesięcy — {a.name}</p>
-                        <div className="overflow-x-auto">
-                          <table className="text-xs border-collapse">
-                            <thead>
-                              <tr style={{ color: '#a89e92' }}>
-                                <th className="text-left font-medium px-2 py-1">Statystyka</th>
-                                {months12.map(m => <th key={m.key} className="text-center font-medium px-2 py-1 whitespace-nowrap">{m.label}</th>)}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {([['Spektakle', 'shows'], ['Godziny', 'hours'], ['Próby', 'rehearsals']] as const).map(([lbl, k]) => (
-                                <tr key={k} style={{ borderTop: '1px solid #f2ede6' }}>
-                                  <td className="text-left px-2 py-1.5 font-medium whitespace-nowrap" style={{ color: '#1a1410' }}>{lbl}</td>
-                                  {months12.map(m => {
-                                    const d = monthlyByArtist[a.id]?.[m.key]
-                                    const v = d ? (k === 'hours' ? Math.round(d.hours) : d[k]) : 0
-                                    return <td key={m.key} className="text-center px-2 py-1.5 tabular-nums" style={{ color: v ? '#1a1410' : '#cec5b8' }}>{v || '·'}</td>
-                                  })}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                  </Fragment>
-                )
-              })}
+              {workloadRows.length === 0 ? (
+                <tr><td colSpan={7} className="px-6 py-10 text-center text-sm text-gray-400">Brak danych dla wybranego miesiąca</td></tr>
+              ) : workloadRows.map((a, i) => (
+                <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-6 py-3 text-xs text-gray-500 font-medium">{i + 1}</td>
+                  <td className="px-4 py-3"><p className="font-semibold text-gray-900 text-sm">{a.name}</p></td>
+                  <td className="px-4 py-3 text-center">{cell(a.titles)}</td>
+                  <td className="px-4 py-3 text-center">{cell(a.shows)}</td>
+                  <td className="px-4 py-3 text-center">{cell(a.rehHours, 'h', true)}</td>
+                  <td className="px-4 py-3 text-center"><span className="text-sm font-bold text-gray-600">{a.freeDays}</span></td>
+                  <td className="px-4 py-3 text-center">
+                    {a.vac > 0 ? <span className="text-sm font-bold text-amber-600">{a.vac}</span> : <span className="text-sm text-gray-300">—</span>}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
           </div>
