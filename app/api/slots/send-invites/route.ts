@@ -18,7 +18,7 @@ function fmtRange(start: string, end: string): string {
 }
 
 export async function POST(request: Request) {
-  const { slotId } = await request.json() as { slotId: string }
+  const { slotId, artistId } = await request.json() as { slotId: string; artistId?: string }
   if (!slotId) return Response.json({ ok: false, error: 'Missing slotId' }, { status: 400 })
 
   const { data: slot } = await supabase
@@ -38,9 +38,12 @@ export async function POST(request: Request) {
     .select('artists(id, name, email, phone)')
     .eq('production_id', (slot as any).production_id)
 
-  const members = ((cast ?? []) as any[])
+  let members = ((cast ?? []) as any[])
     .map(r => (Array.isArray(r.artists) ? r.artists[0] : r.artists))
     .filter(Boolean) as { id: string; name: string; email: string | null; phone: string | null }[]
+
+  // Ponowienie do jednego aktora
+  if (artistId) members = members.filter(m => m.id === artistId)
 
   if (members.length === 0) return Response.json({ ok: true, sent: 0, total: 0 })
 

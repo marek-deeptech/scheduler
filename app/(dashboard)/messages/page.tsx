@@ -367,6 +367,19 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
+function RetryButton({ done, onClick }: { done: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={done}
+      className="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors disabled:opacity-60"
+      style={done ? { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' } : { background: '#1a1410', color: '#fff' }}
+    >
+      {done ? '✓ Wysłano' : '↻ Ponów'}
+    </button>
+  )
+}
+
 /* ── Main page ─────────────────────────────────────────────────── */
 export default function MessagesPage() {
   const { t } = useLanguage()
@@ -378,8 +391,9 @@ export default function MessagesPage() {
   const [sentHistory, setSentHistory] = useState<SentMessage[]>([])
   const [historyOpen, setHistoryOpen] = useState(false)
   // Tablica statusów: braki potwierdzeń + zastępstwa
-  const [pendingPart, setPendingPart] = useState<{ id: string; actorName: string; eventTitle: string; eventStart: string | null; sentAt: string | null; changed: boolean }[]>([])
-  const [noAvailResp, setNoAvailResp] = useState<{ id: string; actorName: string; title: string; range: string }[]>([])
+  const [pendingPart, setPendingPart] = useState<{ id: string; event_id: string; artist_id: string; actorName: string; eventTitle: string; eventStart: string | null; sentAt: string | null; changed: boolean; eventDetails: any }[]>([])
+  const [noAvailResp, setNoAvailResp] = useState<{ id: string; slotId: string; artistId: string; actorName: string; title: string; range: string }[]>([])
+  const [resent, setResent] = useState<Set<string>>(new Set())
   const [subs, setSubs] = useState<{ id: string; actorName: string | null; subject: string; sentAt: string | null }[]>([])
   const [pendingOpen, setPendingOpen] = useState(true)
   const [availOpen, setAvailOpen] = useState(false)
@@ -445,7 +459,7 @@ export default function MessagesPage() {
     // Brak potwierdzenia udziału — pending event_confirmations na nadchodzące spektakle
     Promise.all([
       supabase.from('event_confirmations')
-        .select('id, event_id, artist_id, sent_at, artists(name), events(title, type, start_time)')
+        .select('id, event_id, artist_id, sent_at, artists(name), events(title, type, start_time, end_time, productions(title), rooms(name))')
         .eq('status', 'pending').limit(150),
       supabase.from('actor_messages').select('artist_id, related_event_id').eq('kind', 'event_change'),
     ]).then(([{ data: pend }, { data: chMsgs }]) => {
@@ -454,8 +468,11 @@ export default function MessagesPage() {
         .map(r => {
           const a = Array.isArray(r.artists) ? r.artists[0] : r.artists
           const e = Array.isArray(r.events) ? r.events[0] : r.events
+          const prod = e ? (Array.isArray(e.productions) ? e.productions[0] : e.productions) : null
+          const room = e ? (Array.isArray(e.rooms) ? e.rooms[0] : e.rooms) : null
           return { id: r.id, event_id: r.event_id, artist_id: (r as any).artist_id, actorName: a?.name ?? '—',
-            eventTitle: e?.type ?? e?.title ?? 'Wydarzenie', eventStart: e?.start_time ?? null, sentAt: r.sent_at }
+            eventTitle: e?.type ?? e?.title ?? 'Wydarzenie', eventStart: e?.start_time ?? null, sentAt: r.sent_at,
+            eventDetails: e ? { title: e.title, type: e.type, start_time: e.start_time, end_time: e.end_time, production_title: prod?.title ?? null, room: room?.name ?? null } : null }
         })
         .filter(r => !r.eventStart || r.eventStart >= nowIso.slice(0, 10))
         .sort((a, b) => (a.eventStart ?? '').localeCompare(b.eventStart ?? ''))
@@ -465,7 +482,7 @@ export default function MessagesPage() {
 
     // Brak odpowiedzi na zapytanie o dostępność — slot_invites bez submitted_at
     supabase.from('slot_invites')
-      .select('id, artists(name), repertoire_slots(window_start, window_end, productions(title))')
+      .select('id, slot_id, artist_id, artists(name), repertoire_slots(window_start, window_end, productions(title))')
       .is('submitted_at', null).limit(120)
       .then(({ data }) => {
         setNoAvailResp(((data ?? []) as any[]).map(r => {
@@ -473,7 +490,7 @@ export default function MessagesPage() {
           const s = Array.isArray(r.repertoire_slots) ? r.repertoire_slots[0] : r.repertoire_slots
           const p = s ? (Array.isArray(s.productions) ? s.productions[0] : s.productions) : null
           const range = s ? `${(s.window_start ?? '').slice(5)} – ${(s.window_end ?? '').slice(5)}` : ''
-          return { id: r.id, actorName: a?.name ?? '—', title: p?.title ?? 'Slot', range }
+          return { id: r.id, slotId: r.slot_id, artistId: r.artist_id, actorName: a?.name ?? '—', title: p?.title ?? 'Slot', range }
         }))
       })
 
@@ -530,6 +547,24 @@ export default function MessagesPage() {
       setLoading(false)
     })
   }, [])
+
+  // CTA „Ponów" — ponów prośbę o potwierdzenie udziału
+  async function resendConfirmation(row: { id: string; event_id: string; artist_id: string; eventDetails: any }) {
+    if (!row.eventDetails) return
+    setResent(prev => new Set(prev).add('c' + row.id))
+    await fetch('/api/confirmations/send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventId: row.event_id, artistIds: [row.artist_id], eventDetails: row.eventDetails, channel: 'both' }),
+    })
+  }
+  // CTA „Ponów" — ponów zapytanie o dostępność (jeden aktor)
+  async function resendSlot(row: { id: string; slotId: string; artistId: string }) {
+    setResent(prev => new Set(prev).add('s' + row.id))
+    await fetch('/api/slots/send-invites', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slotId: row.slotId, artistId: row.artistId }),
+    })
+  }
 
   const filtered = useMemo(() => {
     let list = people
@@ -675,6 +710,7 @@ export default function MessagesPage() {
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${r.changed ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
                     {r.changed ? 'ZMIANA — BRAK POTW.' : 'BRAK POTWIERDZENIA'}
                   </span>
+                  <RetryButton done={resent.has('c' + r.id)} onClick={() => resendConfirmation(r)} />
                 </div>
               ))}
             </div>
@@ -701,6 +737,7 @@ export default function MessagesPage() {
                     <p className="text-xs text-gray-500 truncate">{r.title}{r.range ? ` · okno ${r.range}` : ''}</p>
                   </div>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-600">NIE ODPOWIEDZIAŁ</span>
+                  <RetryButton done={resent.has('s' + r.id)} onClick={() => resendSlot(r)} />
                 </div>
               ))}
             </div>
