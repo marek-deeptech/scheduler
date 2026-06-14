@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useTheatre } from '@/lib/theatre-context'
 import { supabase } from '@/lib/supabase'
 import ConflictResolutionModal from '@/components/ConflictResolutionModal'
@@ -602,6 +603,7 @@ export default function RepertuarPage() {
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState<string | null>(null)
   const [activeMonth, setActiveMonth] = useState<string | null>(null)
+  const monthParam = useSearchParams().get('month')
 
   // Conflict resolution modal
   const [conflictModal, setConflictModal] = useState<{
@@ -673,10 +675,11 @@ export default function RepertuarPage() {
         setTheatres(ths)
         setProdMap(map)
 
-        // Auto-select nearest upcoming (or first) month
+        // Wybór miesiąca: z URL (?month=), inaczej najbliższy nadchodzący
         const now    = new Date().toISOString().slice(0, 7)
         const sorted = [...props].sort((a, b) => a.month.localeCompare(b.month))
-        const target = sorted.find(p => p.month >= now) ?? sorted[0]
+        const fromParam = monthParam ? sorted.find(p => p.month === monthParam) : null
+        const target = fromParam ?? sorted.find(p => p.month >= now) ?? sorted[0]
         setActiveMonth(target?.month ?? null)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Błąd ładowania')

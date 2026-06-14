@@ -629,7 +629,9 @@ export default function DashboardPage() {
   }
 
   /* ── Month labels for new tiles ── */
-  const nmMonthLabel = MONTHS_PL[new Date(now.getFullYear(), now.getMonth() + 1, 1).getMonth()]
+  const nmDate = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  const nmMonthLabel = MONTHS_PL[nmDate.getMonth()]
+  const nmMonthKey   = `${nmDate.getFullYear()}-${String(nmDate.getMonth() + 1).padStart(2, '0')}`
   const m2MonthLabel = MONTHS_PL[new Date(now.getFullYear(), now.getMonth() + 2, 1).getMonth()]
 
   /* ── Tooltip content for new tiles ── */
@@ -743,6 +745,11 @@ export default function DashboardPage() {
       warn: false,
       badge: monthPlans.nm?.hasProposal ? { approved: monthPlans.nm.approved } : undefined,
       tip: repertuarMonthTip(showsNMList, nmMonthLabel), tipAlign: 'left' as const,
+      cta: monthPlans.nm?.approved
+        ? { label: `Zobacz ${nmMonthLabel}`, href: `/calendar?month=${nmMonthKey}` }
+        : monthPlans.nm?.hasProposal
+        ? { label: `Zatwierdź ${nmMonthLabel}`, href: '/planning' }
+        : undefined,
     },
     {
       label: `Repertuar – ${m2MonthLabel}`,
