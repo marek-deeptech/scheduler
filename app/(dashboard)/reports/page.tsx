@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, Fragment } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
 import { useLanguage } from '@/lib/language-context'
@@ -92,16 +92,6 @@ function shortName(name: string) {
   return p.length === 1 ? p[0] : `${p[0]} ${p[p.length-1][0]}.`
 }
 
-const MONTHS_PL_SHORT = ['sty','lut','mar','kwi','maj','cze','lip','sie','wrz','paź','lis','gru']
-// Ostatnie 12 miesięcy (bieżący + 11 wstecz), najnowszy pierwszy
-function last12Months(): { key: string; label: string }[] {
-  const now = new Date()
-  return Array.from({ length: 12 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    return { key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: `${MONTHS_PL_SHORT[d.getMonth()]} ${d.getFullYear()}` }
-  })
-}
-
 // ─── Custom tooltip ───────────────────────────────────────────────────────────
 
 function ChartTip({ active, payload, label }: any) {
@@ -140,15 +130,11 @@ export default function ReportsPage() {
   const [avails,      setAvails]      = useState<AvailRow[]>([])
   const [productions, setProductions] = useState<ProdMeta[]>([])
   const [loading,     setLoading]     = useState(true)
-  const [eventsM1,    setEventsM1]    = useState<EventRow[]>([])
-  const [eventsM2,    setEventsM2]    = useState<EventRow[]>([])
-  const [hist12,      setHist12]      = useState<EventRow[]>([])
   const [assignments, setAssignments] = useState<{ artist_id: string; production_id: string; theatre_id: string | null }[]>([])
   // Obciążenie zespołu — filtr po miesiącu/roku
   const [wlMonth,     setWlMonth]     = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })
   const [wlEvents,    setWlEvents]    = useState<EventRow[]>([])
   const [wlVac,       setWlVac]       = useState<{ artist_id: string; start_time: string; end_time: string }[]>([])
-  const [workloadSort, setWorkloadSort] = useState<'hours' | 'absence'>('hours')
 
   const today = localDate(new Date())
 
@@ -171,33 +157,6 @@ export default function ReportsPage() {
       .select('id,title,status,theatre_id,theatres(name)')
     if (selectedTheatreId) prodQ = prodQ.eq('theatre_id', selectedTheatreId)
 
-    // Previous 2 months for hours columns
-    const now2 = new Date()
-    const m1Start = new Date(now2.getFullYear(), now2.getMonth() - 1, 1)
-    const m1End   = new Date(now2.getFullYear(), now2.getMonth(),     0)
-    const m2Start = new Date(now2.getFullYear(), now2.getMonth() - 2, 1)
-    const m2End   = new Date(now2.getFullYear(), now2.getMonth() - 1, 0)
-
-    const histSel = 'id,type,start_time,end_time,theatre_id,production_id,event_artists(artist_id)'
-    let histM1Q = supabase.from('events').select(histSel)
-      .gte('start_time', `${localDate(m1Start)}T00:00:00`)
-      .lte('start_time', `${localDate(m1End)}T23:59:59`)
-    let histM2Q = supabase.from('events').select(histSel)
-      .gte('start_time', `${localDate(m2Start)}T00:00:00`)
-      .lte('start_time', `${localDate(m2End)}T23:59:59`)
-    if (selectedTheatreId) {
-      histM1Q = histM1Q.eq('theatre_id', selectedTheatreId)
-      histM2Q = histM2Q.eq('theatre_id', selectedTheatreId)
-    }
-
-    // Ostatnie 12 miesięcy — historia (spektakle, godziny, próby per miesiąc)
-    const h12Start = new Date(now2.getFullYear(), now2.getMonth() - 11, 1)
-    const h12End   = new Date(now2.getFullYear(), now2.getMonth() + 1, 0)
-    let hist12Q = supabase.from('events').select(histSel)
-      .gte('start_time', `${localDate(h12Start)}T00:00:00`)
-      .lte('start_time', `${localDate(h12End)}T23:59:59`)
-    if (selectedTheatreId) hist12Q = hist12Q.eq('theatre_id', selectedTheatreId)
-
     // Aktualne przypisania (w ilu tytułach gra obecnie) + mapa produkcja→aktorzy
     let assignQ = supabase.from('artist_productions').select('artist_id, production_id, productions(theatre_id)')
 
@@ -206,9 +165,6 @@ export default function ReportsPage() {
       { data: artData },
       { data: avData },
       { data: prodData },
-      { data: histM1Data },
-      { data: histM2Data },
-      { data: hist12Data },
       { data: assignData },
     ] = await Promise.all([
       evQ,
@@ -217,13 +173,9 @@ export default function ReportsPage() {
         .lte('start_time', `${end}T23:59:59`)
         .gte('end_time',   `${start}T00:00:00`),
       prodQ,
-      histM1Q,
-      histM2Q,
-      hist12Q,
       assignQ,
     ])
 
-    setHist12((hist12Data ?? []) as unknown as EventRow[])
     setAssignments(((assignData ?? []) as any[]).map(r => {
       const p = Array.isArray(r.productions) ? r.productions[0] : r.productions
       return { artist_id: r.artist_id, production_id: r.production_id, theatre_id: p?.theatre_id ?? null }
@@ -232,8 +184,6 @@ export default function ReportsPage() {
     setEvents((evData ?? []) as unknown as EventRow[])
     setArtists(sortByLastName((artData ?? []) as ArtistRow[]))
     setAvails(avData ?? [])
-    setEventsM1((histM1Data ?? []) as unknown as EventRow[])
-    setEventsM2((histM2Data ?? []) as unknown as EventRow[])
     setProductions(
       ((prodData ?? []) as unknown as { id: string; title: string; status: string | null; theatres: { name: string } | null }[])
         .map(p => ({
@@ -360,89 +310,12 @@ export default function ReportsPage() {
       .sort((a, b) => (b.rehearsals + b.shows) - (a.rehearsals + a.shows))
   }, [events, productions, today])
 
-  const artistTable = useMemo(() => {
-    const { start, end } = periodRange(period)
-    const map: Record<string, { id: string; name: string; status: string | null; eventCount: number; prodIds: Set<string>; absenceDays: number }> = {}
-
-    for (const a of artists) {
-      map[a.id] = { id: a.id, name: a.name, status: a.status, eventCount: 0, prodIds: new Set(), absenceDays: 0 }
-    }
-    for (const ev of events) {
-      for (const ea of ev.event_artists) {
-        if (!map[ea.artist_id]) continue
-        map[ea.artist_id].eventCount++
-        if (ev.production_id) map[ea.artist_id].prodIds.add(ev.production_id)
-      }
-    }
-
-    const periodStart = new Date(start).getTime()
-    const periodEnd   = new Date(end).getTime() + 86400000
-
-    for (const av of avails) {
-      if (!map[av.artist_id]) continue
-      const s = Math.max(new Date(av.start_time).getTime(), periodStart)
-      const e = Math.min(new Date(av.end_time).getTime(),   periodEnd)
-      const days = Math.max(0, Math.round((e - s) / 86400000))
-      map[av.artist_id].absenceDays += days
-    }
-
-    // Hours per artist for months -1 and -2
-    const hoursM1: Record<string, number> = {}
-    const hoursM2: Record<string, number> = {}
-    for (const ev of eventsM1.filter(e => SHOW_TYPES.has(e.type ?? ''))) {
-      const h = hours(ev.start_time, ev.end_time)
-      for (const ea of ev.event_artists) {
-        hoursM1[ea.artist_id] = (hoursM1[ea.artist_id] ?? 0) + h
-      }
-    }
-    for (const ev of eventsM2.filter(e => SHOW_TYPES.has(e.type ?? ''))) {
-      const h = hours(ev.start_time, ev.end_time)
-      for (const ea of ev.event_artists) {
-        hoursM2[ea.artist_id] = (hoursM2[ea.artist_id] ?? 0) + h
-      }
-    }
-
-    const rows = Object.values(map).map(a => ({
-      ...a,
-      prodCount: a.prodIds.size,
-      hoursM1: hoursM1[a.id] ?? 0,
-      hoursM2: hoursM2[a.id] ?? 0,
-    }))
-
-    if (workloadSort === 'absence') {
-      rows.sort((a, b) => b.absenceDays - a.absenceDays || (b.hoursM1 + b.hoursM2) - (a.hoursM1 + a.hoursM2))
-    } else {
-      rows.sort((a, b) => (b.hoursM1 + b.hoursM2) - (a.hoursM1 + a.hoursM2) || b.absenceDays - a.absenceDays)
-    }
-    return rows
-  }, [events, artists, avails, period, eventsM1, eventsM2, workloadSort])
-
-  // Ostatnie 12 miesięcy — rozbicie per aktor per miesiąc (spektakle/godziny/próby)
-  const months12 = useMemo(() => last12Months(), [])
+  // Mapa produkcja → aktorzy (obsada produkcji), do liczenia obciążenia
   const prodToArtists = useMemo(() => {
     const m: Record<string, string[]> = {}
     for (const a of assignments) (m[a.production_id] ??= []).push(a.artist_id)
     return m
   }, [assignments])
-  const monthlyByArtist = useMemo(() => {
-    const m: Record<string, Record<string, { shows: number; hours: number; rehearsals: number }>> = {}
-    for (const ev of hist12) {
-      const key = String(ev.start_time).slice(0, 7)
-      const isS = SHOW_TYPES.has(ev.type ?? '')
-      const isR = REHEARSAL_TYPES.has(ev.type ?? '')
-      if (!isS && !isR) continue
-      const h = hours(ev.start_time, ev.end_time)
-      // obsada: jawna (event_artists) albo z produkcji
-      const explicit = ev.event_artists.map(e => e.artist_id)
-      const cast = explicit.length > 0 ? explicit : (prodToArtists[(ev as any).production_id] ?? [])
-      for (const aid of cast) {
-        const cell = ((m[aid] ??= {})[key] ??= { shows: 0, hours: 0, rehearsals: 0 })
-        if (isS) { cell.shows++; cell.hours += h }
-        if (isR) cell.rehearsals++
-      }
-    }
-    return m
-  }, [hist12, prodToArtists])
   const currentTitles = useMemo(() => {
     const c: Record<string, number> = {}
     for (const a of assignments) {
