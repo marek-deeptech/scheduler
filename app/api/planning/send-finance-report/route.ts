@@ -23,14 +23,15 @@ async function financeDirectorEmail(): Promise<string | null> {
 }
 
 export async function POST(request: Request) {
-  const { month } = await request.json() as { month: string }
+  const { month, theatreId } = await request.json() as { month: string; theatreId?: string }
   if (!month?.match(/^\d{4}-\d{2}$/)) return Response.json({ ok: false, error: 'Invalid month' }, { status: 400 })
 
-  const { data: approved } = await supabase
+  let aq = supabase
     .from('repertoire_proposals')
     .select('id, label, stats')
     .eq('month', month).eq('status', 'approved')
-    .maybeSingle()
+  if (theatreId) aq = (aq as any).eq('theatre_id', theatreId)
+  const { data: approved } = await aq.maybeSingle()
   if (!approved) return Response.json({ ok: false, error: 'Brak zatwierdzonego repertuaru' }, { status: 404 })
 
   const stats = (approved.stats ?? {}) as any

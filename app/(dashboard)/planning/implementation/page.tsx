@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { useTheatre } from '@/lib/theatre-context'
 
 const MONTHS_PL = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień']
 function monthLabel(k: string) { const [y, m] = k.split('-'); return `${MONTHS_PL[+m - 1]} ${y}` }
@@ -20,6 +21,7 @@ interface Status {
 }
 
 export default function ImplementationPage() {
+  const { selectedTheatreId } = useTheatre()
   const [months, setMonths] = useState<string[]>([])
   const [month, setMonth] = useState('')
   const [status, setStatus] = useState<Status | null>(null)
@@ -27,29 +29,31 @@ export default function ImplementationPage() {
   const [sending, setSending] = useState(false)
 
   useEffect(() => {
-    supabase.from('repertoire_proposals').select('month').eq('status', 'approved').order('month', { ascending: false })
-      .then(({ data }) => {
-        const ms = [...new Set((data ?? []).map((r: any) => r.month))]
-        setMonths(ms)
-        setMonth(ms[0] ?? '')
-        if (ms.length === 0) setLoading(false)
-      })
-  }, [])
+    let q = supabase.from('repertoire_proposals').select('month').eq('status', 'approved').order('month', { ascending: false })
+    if (selectedTheatreId) q = q.eq('theatre_id', selectedTheatreId)
+    q.then(({ data }) => {
+      const ms = [...new Set((data ?? []).map((r: any) => r.month))]
+      setMonths(ms)
+      setMonth(ms[0] ?? '')
+      if (ms.length === 0) { setStatus(null); setLoading(false) }
+    })
+  }, [selectedTheatreId])
 
   const load = useCallback(async () => {
     if (!month) return
     setLoading(true)
-    const r = await fetch(`/api/planning/implementation-status?month=${month}`)
+    const tp = selectedTheatreId ? `&theatre=${selectedTheatreId}` : ''
+    const r = await fetch(`/api/planning/implementation-status?month=${month}${tp}`)
     setStatus(await r.json())
     setLoading(false)
-  }, [month])
+  }, [month, selectedTheatreId])
 
   useEffect(() => { if (month) load() }, [month, load])
 
   async function sendReport() {
     setSending(true)
     await fetch('/api/planning/send-finance-report', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month, theatreId: selectedTheatreId }),
     })
     setSending(false)
     load()

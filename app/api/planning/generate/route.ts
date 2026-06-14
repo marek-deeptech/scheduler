@@ -245,11 +245,13 @@ export async function GET(request: Request) {
     return Response.json({ proposal: data })
   }
 
-  const status = searchParams.get('status')
+  const status  = searchParams.get('status')
+  const theatre = searchParams.get('theatre')
 
   let q = supabase.from('repertoire_proposals').select('*').order('created_at', { ascending: false })
-  if (month)  q = (q as any).eq('month', month)
-  if (status) q = (q as any).eq('status', status)
+  if (month)   q = (q as any).eq('month', month)
+  if (status)  q = (q as any).eq('status', status)
+  if (theatre) q = (q as any).eq('theatre_id', theatre)
 
   // For planning view (month filter, no status filter): return only the 4 most recent drafts
   if (month && !status) {
@@ -266,13 +268,17 @@ export async function GET(request: Request) {
 // ── POST ─────────────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
-  const { month, constraints } = await request.json() as {
+  const { month, constraints, theatreId } = await request.json() as {
     month: string
     constraints?: string
+    theatreId?: string
   }
 
   if (!month?.match(/^\d{4}-\d{2}$/)) {
     return Response.json({ error: 'Invalid month format' }, { status: 400 })
+  }
+  if (!theatreId) {
+    return Response.json({ error: 'Wybierz teatr — repertuar planowany jest osobno dla każdego teatru.' }, { status: 400 })
   }
 
   const apiKey = getAnthropicKey()
@@ -291,10 +297,10 @@ export async function POST(request: Request) {
     { data: theatres },
     { data: dayStatuses },
   ] = await Promise.all([
-    supabase.from('productions').select('id, title, status, theatre_id').order('title'),
+    supabase.from('productions').select('id, title, status, theatre_id').eq('theatre_id', theatreId).order('title'),
     supabase.from('artist_productions').select('artist_id, production_id'),
     supabase.from('artists').select('id, name'),
-    supabase.from('rooms').select('id, name, theatre_id').limit(20),
+    supabase.from('rooms').select('id, name, theatre_id').eq('theatre_id', theatreId).limit(20),
     supabase.from('theatres').select('id, name'),
     supabase.from('actor_day_status')
       .select('artist_id, date, status, artists(name)')
@@ -464,6 +470,7 @@ ${constraints ? `Życzenia koordynatora: ${constraints}\n` : ''}Odpowiedz TYLKO 
     for (const e of s.shows) byProd[e.production_title] = (byProd[e.production_title] ?? 0) + 1
     return {
       month,
+      theatre_id:    theatreId,
       label:         s.label,
       status:        'draft',
       proposal_data: s.shows,
@@ -471,6 +478,10 @@ ${constraints ? `Życzenia koordynatora: ${constraints}\n` : ''}Odpowiedz TYLKO 
       stats:         { total: s.shows.length, conflicts: countConflicts(s.shows), by_production: byProd },
     }
   })
+
+  // Usuń poprzednie drafty tego miesiąca dla tego teatru
+  await supabase.from('repertoire_proposals').delete()
+    .eq('month', month).eq('status', 'draft').eq('theatre_id', theatreId)
 
   const { data: saved, error: dbErr } = await supabase
     .from('repertoire_proposals')

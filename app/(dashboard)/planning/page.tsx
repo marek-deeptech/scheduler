@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { useTheatre } from '@/lib/theatre-context'
 import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import {
   detectProposalConflicts,
@@ -70,9 +71,11 @@ function getNextMonths(n: number) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function PlanningPage() {
+  const { selectedTheatreId } = useTheatre()
   const allMonths = getNextMonths(7)
   const [approvedMonths, setApprovedMonths] = useState<Set<string>>(new Set())
   const [monthsReady,    setMonthsReady]    = useState(false)
+  const [theatreName,    setTheatreName]    = useState<string>('')
 
   // Fetch approved months + production cast data on mount
   useEffect(() => {
@@ -107,6 +110,20 @@ export default function PlanningPage() {
     }).catch(() => setMonthsReady(true))
   }, [])
 
+  // Zatwierdzone miesiące + nazwa — PER TEATR
+  useEffect(() => {
+    const url = selectedTheatreId
+      ? `/api/planning/generate?status=approved&theatre=${selectedTheatreId}`
+      : '/api/planning/generate?status=approved'
+    fetch(url).then(r => r.json()).then(json => {
+      setApprovedMonths(new Set<string>((json.proposals ?? []).map((p: Proposal) => p.month)))
+    }).catch(() => {})
+    if (selectedTheatreId) {
+      supabase.from('theatres').select('name').eq('id', selectedTheatreId).single()
+        .then(({ data }) => setTheatreName(data?.name ?? ''))
+    } else setTheatreName('')
+  }, [selectedTheatreId])
+
   const months = allMonths.filter(mo => !approvedMonths.has(mo.value))
 
   const [selectedMonth, setSelectedMonth] = useState<string>('')
@@ -138,13 +155,14 @@ export default function PlanningPage() {
 
   useEffect(() => {
     if (selectedMonth) loadProposals()
-  }, [selectedMonth])   // eslint-disable-line
+  }, [selectedMonth, selectedTheatreId])   // eslint-disable-line
 
   async function loadProposals() {
     setLoading(true)
     setError(null)
     try {
-      const r = await fetch(`/api/planning/generate?month=${selectedMonth}`)
+      const theatreParam = selectedTheatreId ? `&theatre=${selectedTheatreId}` : ''
+      const r = await fetch(`/api/planning/generate?month=${selectedMonth}${theatreParam}`)
       const json = await r.json()
       if (json.error) throw new Error(json.error)
       // Sort by numeric label: "Propozycja 1" → 1, "Propozycja 2" → 2, …
@@ -168,7 +186,7 @@ export default function PlanningPage() {
       const r = await fetch('/api/planning/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month: selectedMonth, constraints: constraints.trim() || undefined }),
+        body: JSON.stringify({ month: selectedMonth, constraints: constraints.trim() || undefined, theatreId: selectedTheatreId }),
       })
       const json = await r.json()
       if (json.error) throw new Error(json.error)
@@ -188,7 +206,7 @@ export default function PlanningPage() {
       const r = await fetch('/api/planning/generate-options', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month: selectedMonth }),
+        body: JSON.stringify({ month: selectedMonth, theatreId: selectedTheatreId }),
       })
       const json = await r.json()
       if (json.error) throw new Error(json.error)
@@ -290,7 +308,7 @@ export default function PlanningPage() {
           {/* Generate button */}
           <button
             onClick={generate}
-            disabled={generating}
+            disabled={generating || !selectedTheatreId}
             className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors shrink-0"
             style={{ background: '#c8102e', color: '#fff' }}
             onMouseOver={e => !e.currentTarget.disabled && (e.currentTarget.style.background = '#9e0c24')}
@@ -317,7 +335,7 @@ export default function PlanningPage() {
           {/* Generate 4 finance-optimized options */}
           <button
             onClick={generateOptions}
-            disabled={generating}
+            disabled={generating || !selectedTheatreId}
             className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors shrink-0"
             style={{ background: '#1a1410', color: '#fff' }}
           >
@@ -325,9 +343,15 @@ export default function PlanningPage() {
             4 opcje (Finanse)
           </button>
         </div>
-        <p className="text-[11px] -mt-2" style={{ color: '#a89e92' }}>
-          „4 opcje (Finanse)" bierze zatwierdzone dni Favourites jako stałe i dokłada resztę repertuaru pod 4 cele: maks. przychód, maks. frekwencja, min. koszt, zbalansowana.
-        </p>
+        {!selectedTheatreId ? (
+          <p className="text-[11px] -mt-2 font-medium px-3 py-2 rounded-lg" style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' }}>
+            Repertuar planowany jest <b>osobno dla każdego teatru</b>. Wybierz teatr (Teatr Polonia lub Och-Teatr) w menu po lewej, aby generować propozycje.
+          </p>
+        ) : (
+          <p className="text-[11px] -mt-2" style={{ color: '#a89e92' }}>
+            Planujesz: <b style={{ color: '#7a2020' }}>{theatreName}</b>. „4 opcje (Finanse)" bierze zatwierdzone dni Favourites jako stałe i dokłada resztę repertuaru pod 4 cele finansowe (uwzględnia zajętość wspólnych aktorów w drugim teatrze).
+          </p>
+        )}
 
         {/* Generating banner */}
         {generating && (

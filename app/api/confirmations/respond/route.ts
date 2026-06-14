@@ -20,21 +20,22 @@ function lastDay(month: string): string {
 // do Dyrektora Finansowego (guard: report_sent_at na zatwierdzonej propozycji).
 async function maybeTriggerFinanceReport(eventId: string) {
   try {
-    const { data: ev } = await supabase.from('events').select('start_time').eq('id', eventId).single()
+    const { data: ev } = await supabase.from('events').select('start_time, theatre_id').eq('id', eventId).single()
     if (!ev?.start_time) return
     const month = monthOf(ev.start_time)
+    const theatreId = ev.theatre_id as string | null
 
-    const { data: approved } = await supabase
-      .from('repertoire_proposals')
-      .select('id, stats')
+    let aq = supabase.from('repertoire_proposals').select('id, stats')
       .eq('month', month).eq('status', 'approved')
-      .maybeSingle()
+    if (theatreId) aq = (aq as any).eq('theatre_id', theatreId)
+    const { data: approved } = await aq.maybeSingle()
     if (!approved) return
     if ((approved.stats as any)?.report_sent_at) return // już wysłany
 
-    const { data: events } = await supabase
-      .from('events').select('id')
+    let eq = supabase.from('events').select('id')
       .gte('start_time', `${month}-01T00:00:00`).lte('start_time', `${lastDay(month)}T23:59:59`)
+    if (theatreId) eq = (eq as any).eq('theatre_id', theatreId)
+    const { data: events } = await eq
     const ids = (events ?? []).map((e: any) => e.id)
     if (ids.length === 0) return
 
@@ -42,10 +43,10 @@ async function maybeTriggerFinanceReport(eventId: string) {
     const all = confs ?? []
     if (all.length === 0 || !all.every((c: any) => c.status === 'confirmed')) return
 
-    // 100% potwierdzeń — wyślij raport
+    // 100% potwierdzeń dla teatru — wyślij raport
     await fetch(`${APP_URL}/api/planning/send-finance-report`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ month }),
+      body: JSON.stringify({ month, theatreId }),
     })
   } catch (e) {
     console.error('maybeTriggerFinanceReport:', e)

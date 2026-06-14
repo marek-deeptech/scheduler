@@ -14,24 +14,26 @@ function daysInMonth(month: string): string[] {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const month = searchParams.get('month')
+  const theatre = searchParams.get('theatre')
   if (!month?.match(/^\d{4}-\d{2}$/)) return Response.json({ error: 'Invalid month' }, { status: 400 })
 
-  // Zatwierdzona propozycja miesiąca
-  const { data: approved } = await supabase
+  // Zatwierdzona propozycja miesiąca (per teatr)
+  let aq = supabase
     .from('repertoire_proposals')
     .select('id, label, stats, approved_at')
     .eq('month', month).eq('status', 'approved')
-    .maybeSingle()
+  if (theatre) aq = (aq as any).eq('theatre_id', theatre)
+  const { data: approved } = await aq.maybeSingle()
 
   if (!approved) return Response.json({ ok: true, approved: null })
 
-  // Wydarzenia miesiąca
+  // Wydarzenia miesiąca (per teatr)
   const monthStart = `${month}-01T00:00:00`
   const monthEnd = `${daysInMonth(month).slice(-1)[0]}T23:59:59`
-  const { data: events } = await supabase
-    .from('events')
-    .select('id')
+  let eq = supabase.from('events').select('id')
     .gte('start_time', monthStart).lte('start_time', monthEnd)
+  if (theatre) eq = (eq as any).eq('theatre_id', theatre)
+  const { data: events } = await eq
   const eventIds = (events ?? []).map((e: any) => e.id)
 
   // Potwierdzenia

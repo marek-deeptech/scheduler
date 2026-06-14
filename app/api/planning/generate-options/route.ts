@@ -37,22 +37,27 @@ async function loadFinanceParams(): Promise<FinanceParams> {
 }
 
 export async function POST(request: Request) {
-  const { month } = await request.json() as { month: string }
+  const { month, theatreId } = await request.json() as { month: string; theatreId?: string }
   if (!month?.match(/^\d{4}-\d{2}$/)) return Response.json({ error: 'Invalid month' }, { status: 400 })
+  if (!theatreId) return Response.json({ error: 'Wybierz teatr (Polonia lub Och) — repertuar planowany jest osobno dla każdego teatru.' }, { status: 400 })
 
   const monthStart = `${month}-01`
   const monthEnd = daysInMonth(month).slice(-1)[0]
 
   const [
     { data: prods }, { data: aps }, { data: theatres }, { data: rooms },
-    { data: slots }, { data: dayStatuses }, fp,
+    { data: slots }, { data: dayStatuses }, { data: otherEvents }, fp,
   ] = await Promise.all([
     supabase.from('productions').select('id, title, theatre_id, is_favourite, price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost'),
     supabase.from('artist_productions').select('artist_id, production_id'),
     supabase.from('theatres').select('id'),
     supabase.from('rooms').select('id, name, theatre_id'),
-    supabase.from('repertoire_slots').select('production_id, locked_dates').eq('month', month).eq('status', 'planned'),
+    supabase.from('repertoire_slots').select('production_id, locked_dates, productions(theatre_id)').eq('month', month).eq('status', 'planned'),
     supabase.from('actor_day_status').select('artist_id, date, status').gte('date', monthStart).lte('date', monthEnd),
+    // Wydarzenia INNYCH teatrów w tym miesiącu — zajętość wspólnych aktorów
+    supabase.from('events').select('start_time, production_id, theatre_id')
+      .gte('start_time', `${monthStart}T00:00:00`).lte('start_time', `${monthEnd}T23:59:59`)
+      .neq('theatre_id', theatreId),
     loadFinanceParams(),
   ])
 
@@ -80,9 +85,9 @@ export async function POST(request: Request) {
   }
   const stageRoom = (tid: string, stage: 'duza' | 'mala') => stageRoomMap[tid]?.[stage] ?? null
 
-  // Produkcje z parametrami finansowymi
+  // Produkcje z parametrami finansowymi — TYLKO wybrany teatr
   const optProds: OptProduction[] = ((prods ?? []) as any[])
-    .filter(p => (castByProd[p.id]?.length ?? 0) > 0 && p.theatre_id)
+    .filter(p => (castByProd[p.id]?.length ?? 0) > 0 && p.theatre_id === theatreId)
     .map(p => {
       const cat = (p.price_category as PriceCategory) || 'standard'
       const def = CATEGORY_DEFAULTS[cat] ?? CATEGORY_DEFAULTS.standard
@@ -98,28 +103,46 @@ export async function POST(request: Request) {
       }
     })
 
-  // Zablokowane Favourites
-  const lockedByProd: Record<string, string[]> = {}
-  for (const s of (slots ?? []) as any[]) {
-    if (Array.isArray(s.locked_dates) && s.locked_dates.length) lockedByProd[s.production_id] = s.locked_dates
-  }
-
-  // Niedostępności
+  // Niedostępności (urlop/choroba)
   const unavailByDate: Record<string, Set<string>> = {}
   for (const s of (dayStatuses ?? []) as any[]) {
     if (BLOCKING.has(s.status)) (unavailByDate[s.date] ??= new Set()).add(s.artist_id)
   }
 
+  // Zablokowane Favourites — TEGO teatru placujemy; INNYCH teatrów = zajętość krzyżowa
+  const lockedByProd: Record<string, string[]> = {}
+  for (const s of (slots ?? []) as any[]) {
+    if (!Array.isArray(s.locked_dates) || !s.locked_dates.length) continue
+    const prodTheatre = (Array.isArray(s.productions) ? s.productions[0] : s.productions)?.theatre_id
+    if (prodTheatre === theatreId) {
+      lockedByProd[s.production_id] = s.locked_dates
+    } else {
+      // wspólni aktorzy zajęci w innym teatrze w te dni
+      for (const aid of castByProd[s.production_id] ?? []) {
+        for (const d of s.locked_dates) (unavailByDate[d] ??= new Set()).add(aid)
+      }
+    }
+  }
+
+  // Zatwierdzony repertuar innych teatrów (wydarzenia) — zajętość wspólnych aktorów
+  for (const ev of (otherEvents ?? []) as any[]) {
+    const date = String(ev.start_time).slice(0, 10)
+    for (const aid of castByProd[ev.production_id] ?? []) {
+      (unavailByDate[date] ??= new Set()).add(aid)
+    }
+  }
+
   const inp: OptInputs = {
     days: daysInMonth(month),
-    theatres: ((theatres ?? []) as any[]).map(t => t.id),
+    theatres: [theatreId],            // generujemy TYLKO dla wybranego teatru
     prods: optProds,
     lockedByProd, unavailByDate, finance: fp, stageRoom,
     darkWeekdays, stageMonthlyCap,
   }
 
-  // Usuń poprzednie wersje robocze tego miesiąca
-  await supabase.from('repertoire_proposals').delete().eq('month', month).eq('status', 'draft')
+  // Usuń poprzednie wersje robocze tego miesiąca DLA TEGO TEATRU
+  await supabase.from('repertoire_proposals').delete()
+    .eq('month', month).eq('status', 'draft').eq('theatre_id', theatreId)
 
   const lockedCount = Object.values(lockedByProd).reduce((a, d) => a + d.length, 0)
   const summaries: any[] = []
@@ -139,7 +162,7 @@ export async function POST(request: Request) {
     }))
 
     const { data: inserted } = await supabase.from('repertoire_proposals').insert({
-      month, label: OBJECTIVE_LABEL[objective], status: 'draft',
+      month, theatre_id: theatreId, label: OBJECTIVE_LABEL[objective], status: 'draft',
       proposal_data, reasoning,
       stats: {
         total: t.count, conflicts: 0, by_production: res.byProduction,
