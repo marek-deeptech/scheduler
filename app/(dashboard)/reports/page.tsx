@@ -723,20 +723,10 @@ export default function ReportsPage() {
                   </span>
                 </th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Godz. {m2Lbl}</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{tr.colStatus}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {artistTable.map((a, i) => {
-                const statusColors: Record<string, string> = {
-                  'Dostępny':                   'bg-green-600 text-white',
-                  'Dostępny tylko w Warszawie': 'bg-emerald-900 text-white',
-                  'Niepewny':                   'bg-orange-500 text-white',
-                  'Niedostępny':                'bg-red-600 text-white',
-                  'Urlop':                      'bg-amber-400 text-black',
-                  'Choroba':                    'bg-gray-900 text-white',
-                }
-                const sc = statusColors[a.status ?? ''] ?? 'bg-gray-100 text-gray-500'
                 const maxEvents = artistTable[0]?.eventCount ?? 1
                 const pct = Math.round((a.eventCount / maxEvents) * 100)
                 const fmtH = (h: number) => h === 0 ? '—' : Number.isInteger(h) ? `${h}h` : `${h.toFixed(1)}h`
@@ -770,13 +760,10 @@ export default function ReportsPage() {
                         {fmtH(a.hoursM2)}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${sc}`}>{a.status ?? '—'}</span>
-                    </td>
                   </tr>
                   {isExp && (
                     <tr>
-                      <td colSpan={7} className="px-6 py-4" style={{ background: '#faf8f5' }}>
+                      <td colSpan={6} className="px-6 py-4" style={{ background: '#faf8f5' }}>
                         <p className="text-xs font-semibold mb-2" style={{ color: '#7a7068' }}>Ostatnie 12 miesięcy — {a.name}</p>
                         <div className="overflow-x-auto">
                           <table className="text-xs border-collapse">
