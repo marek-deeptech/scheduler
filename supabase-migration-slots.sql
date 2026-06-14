@@ -37,3 +37,16 @@ CREATE TABLE IF NOT EXISTS slot_availability (
 CREATE INDEX IF NOT EXISTS idx_slots_month ON repertoire_slots (month);
 CREATE INDEX IF NOT EXISTS idx_slot_invites_token ON slot_invites (token);
 CREATE INDEX IF NOT EXISTS idx_slot_avail ON slot_availability (slot_id, date);
+
+-- Dostęp przez klucz anon (model aplikacji — jak pozostałe tabele).
+ALTER TABLE repertoire_slots  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE slot_invites      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE slot_availability ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS anon_all ON repertoire_slots;
+DROP POLICY IF EXISTS anon_all ON slot_invites;
+DROP POLICY IF EXISTS anon_all ON slot_availability;
+
+CREATE POLICY anon_all ON repertoire_slots  FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY anon_all ON slot_invites      FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY anon_all ON slot_availability FOR ALL USING (true) WITH CHECK (true);
