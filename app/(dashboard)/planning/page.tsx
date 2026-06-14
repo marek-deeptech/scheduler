@@ -236,11 +236,18 @@ export default function PlanningPage() {
           <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>Planowanie repertuaru</h1>
           <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>Stefan analizuje obsadę i dostępność, generuje propozycje układu spektakli</p>
         </div>
-        <Link href="/planning/slots"
-          className="shrink-0 flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl transition-colors"
-          style={{ background: '#fff', border: '1px solid #e4ddd4', color: '#7a2020' }}>
-          <span className="text-red-500">♥</span> Sloty Favourites
-        </Link>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link href="/planning/slots"
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl transition-colors"
+            style={{ background: '#fff', border: '1px solid #e4ddd4', color: '#7a2020' }}>
+            <span className="text-red-500">♥</span> Sloty Favourites
+          </Link>
+          <Link href="/planning/implementation"
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl transition-colors"
+            style={{ background: '#fff', border: '1px solid #e4ddd4', color: '#7a7068' }}>
+            ✓ Wdrożenie
+          </Link>
+        </div>
       </div>
 
       {/* ── Controls ── */}
