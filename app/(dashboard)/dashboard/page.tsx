@@ -149,6 +149,7 @@ export default function DashboardPage() {
   const [slidingEvents, setSlidingEvents] = useState<EventRow[]>([])
   const [dayOffset,     setDayOffset]     = useState(0)
   const [upcoming,      setUpcoming]      = useState<EventRow[]>([])
+  const [stageByTitle,  setStageByTitle]  = useState<Map<string, 'Duża' | 'Mała'>>(new Map())
   const [alertArtists,  setAlertArtists]  = useState<ArtistRow[]>([])
   const [artistAvails,  setArtistAvails]  = useState<AvailRow[]>([])
   const [availCounts,   setAvailCounts]   = useState({ dostepni: 0, urlop: 0, niedostepni: 0 })
@@ -234,7 +235,7 @@ export default function DashboardPage() {
       showsM2Q  = showsM2Q.eq('theatre_id', selectedTheatreId)
     }
 
-    let prodQ = supabase.from('productions').select('id, title, status')
+    let prodQ = supabase.from('productions').select('id, title, status, price_category')
     if (selectedTheatreId) prodQ = prodQ.eq('theatre_id', selectedTheatreId)
 
     // Fetch all current Urlop/Choroba records upfront (small table — trivial cost)
@@ -312,6 +313,11 @@ export default function DashboardPage() {
     setUnavailList(unavail)
     setActiveProd(prods.filter(p => p.status === 'Bieżące').length)
     setInPrepList(prods.filter(p => p.status === 'Planowane'))
+
+    // Mapa scena per tytuł (z kategorii cenowej): mala → Mała, inaczej Duża
+    const stages = new Map<string, 'Duża' | 'Mała'>()
+    for (const p of prods as any[]) stages.set(p.title, p.price_category === 'mala' ? 'Mała' : 'Duża')
+    setStageByTitle(stages)
 
     setAllRooms(roomsData ?? [])
     setAllTheatres(theatresData ?? [])
@@ -1031,12 +1037,12 @@ export default function DashboardPage() {
                           {(() => { const th = theatreLabel(ev, allTheatres, selectedTheatreId); return th ? (
                             <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{th}</span>
                           ) : null })()}
-                          {ev.type && (
+                          {(() => { const stage = stageByTitle.get(ev.production_title ?? ev.title); return stage ? (
                             <span className="text-[11px] font-medium px-2 py-0.5 rounded-full"
-                              style={{ background: '#fdf0f2', color: '#9e0c24' }}>
-                              {ev.type}
+                              style={stage === 'Mała' ? { background: '#eef2ff', color: '#4338ca' } : { background: '#f2ede6', color: '#7a7068' }}>
+                              {stage} Scena
                             </span>
-                          )}
+                          ) : null })()}
                         </div>
                       </div>
                     </div>
