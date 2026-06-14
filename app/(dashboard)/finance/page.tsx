@@ -280,8 +280,8 @@ export default function FinancePage() {
                       <td className="px-4 py-2.5">
                         <span className="font-medium" style={{ color: '#1a1410' }}>{t.prod.title}</span>
                         {t.isFavourite ? (
-                          <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: '#fff7ed', color: '#b45309' }}>
-                            <span style={{ color: '#ef4444' }}>♥</span> Favourites
+                          <span className="ml-2 inline-flex items-center text-[11px] px-1.5 py-0.5 rounded" style={{ background: '#fff1f2' }} title="Favourite">
+                            <span style={{ color: '#ef4444' }}>♥</span>
                           </span>
                         ) : (
                           <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#f2ede6', color: '#7a7068' }}>

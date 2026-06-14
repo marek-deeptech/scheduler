@@ -7,6 +7,7 @@ import ArtistModal from '@/components/ArtistModal'
 import { IconMail, IconPhone, IconTheatre, IconSun, IconHeart } from '@/lib/icons'
 import { useLanguage } from '@/lib/language-context'
 import { sortByLastName } from '@/lib/names'
+import { SHOW_TYPES } from '@/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,6 +21,7 @@ interface ArtistRow {
   actor_type: string | null
   avatar_url: string | null
   productionCount: number
+  playedHours: number      // zagrane godziny w ost. 12 mies. (przeszłe spektakle)
 }
 
 interface ProductionRef {
@@ -105,7 +107,8 @@ const STATUS_STYLE: Record<string, { badge: string; dot: string }> = {
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
 function StatusBadge({ status, size = 'sm' }: { status: string | null; size?: 'sm' | 'md' }) {
-  const s = status ?? 'Dostępny'
+  // 'active' to redundantna pozostałość — traktujemy jak Dostępny
+  const s = (!status || status === 'active') ? 'Dostępny' : status
   const style = STATUS_STYLE[s] ?? STATUS_STYLE['Dostępny']
   const cls = size === 'md'
     ? `text-[11px] font-semibold px-2.5 py-1 rounded-full ${style.badge}`
@@ -186,7 +189,10 @@ function ArtistCard({ artist, isSelected, onClick }: {
           </span>
         )}
         {artist.productionCount > 0 && (
-          <span className="text-[10px]" style={{ color: '#a89e92' }}>{artist.productionCount} prod.</span>
+          <span className="text-[10px]" style={{ color: '#a89e92' }}>{artist.productionCount} {artist.productionCount === 1 ? 'tytuł' : artist.productionCount < 5 ? 'tytuły' : 'tytułów'}</span>
+        )}
+        {artist.playedHours > 0 && (
+          <span className="text-[10px] font-medium" style={{ color: '#7a7068' }}>{artist.playedHours} godz. zagrane</span>
         )}
       </div>
     </div>
@@ -253,20 +259,20 @@ function ArtistWeekView({ artistId, localeStr, ta }: {
     const rangeStart = toDateStr(addWeeks(getMonday(new Date()), -4))
     const rangeEnd   = toDateStr(addWeeks(getMonday(new Date()), +12))
 
-    const { data: eaData } = await supabase
-      .from('event_artists').select('event_id').eq('artist_id', id)
+    // Wydarzenia z jawnej obsady (event_artists) + spektakle z produkcji aktora (artist_productions)
+    const [{ data: eaData }, { data: apData }] = await Promise.all([
+      supabase.from('event_artists').select('event_id').eq('artist_id', id),
+      supabase.from('artist_productions').select('production_id').eq('artist_id', id),
+    ])
+    const eventIds = [...new Set(((eaData ?? []) as any[]).map(r => r.event_id))]
+    const prodIds  = [...new Set(((apData ?? []) as any[]).map(r => r.production_id))]
 
-    const eventIds = ((eaData ?? []) as any[]).map(r => r.event_id)
+    const evSelect = 'id, title, type, start_time, end_time, rooms(name), productions(title)'
+    const inRange = (q: any) => q.gte('start_time', `${rangeStart}T00:00:00`).lte('start_time', `${rangeEnd}T23:59:59`)
 
-    const [evData, avData] = await Promise.all([
-      eventIds.length > 0
-        ? supabase.from('events')
-            .select('id, title, type, start_time, end_time, rooms(name), productions(title)')
-            .in('id', eventIds)
-            .gte('start_time', `${rangeStart}T00:00:00`)
-            .lte('start_time', `${rangeEnd}T23:59:59`)
-            .order('start_time')
-        : Promise.resolve({ data: [] }),
+    const [byEvent, byProd, avData] = await Promise.all([
+      eventIds.length > 0 ? inRange(supabase.from('events').select(evSelect).in('id', eventIds)) : Promise.resolve({ data: [] }),
+      prodIds.length  > 0 ? inRange(supabase.from('events').select(evSelect).in('production_id', prodIds)) : Promise.resolve({ data: [] }),
       supabase.from('availabilities')
         .select('id, type, start_time, end_time, note')
         .eq('artist_id', id)
@@ -274,7 +280,12 @@ function ArtistWeekView({ artistId, localeStr, ta }: {
         .order('start_time'),
     ])
 
-    setEvents(((evData.data ?? []) as any[]).map(e => {
+    // Scal i odduplikuj po id
+    const evMap = new Map<string, any>()
+    for (const e of [...((byEvent.data ?? []) as any[]), ...((byProd.data ?? []) as any[])]) evMap.set(e.id, e)
+    const mergedEvents = [...evMap.values()].sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)))
+
+    setEvents(mergedEvents.map(e => {
       const rm   = Array.isArray(e.rooms)       ? e.rooms[0]       : e.rooms
       const prod = Array.isArray(e.productions)  ? e.productions[0] : e.productions
       return { id: e.id, title: e.title, type: e.type, start_time: e.start_time,
@@ -777,6 +788,18 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
           )}
         </div>
 
+        {/* Podsumowanie — statystyki */}
+        <div className="grid grid-cols-2 gap-2 mt-3">
+          <div className="rounded-xl px-3 py-2" style={{ background: '#faf8f5', border: '1px solid #e4ddd4' }}>
+            <p className="text-[10px] uppercase tracking-wide" style={{ color: '#a89e92' }}>Tytuły</p>
+            <p className="text-lg font-bold leading-tight" style={{ color: '#1a1410' }}>{artist.productionCount}</p>
+          </div>
+          <div className="rounded-xl px-3 py-2" style={{ background: '#faf8f5', border: '1px solid #e4ddd4' }}>
+            <p className="text-[10px] uppercase tracking-wide" style={{ color: '#a89e92' }}>Zagrane godz. (12 mies.)</p>
+            <p className="text-lg font-bold leading-tight" style={{ color: '#1a1410' }}>{artist.playedHours}</p>
+          </div>
+        </div>
+
         {/* Contact action buttons */}
         {(artist.email || artist.phone) && (
           <div className="flex gap-2 mt-3">
@@ -1089,18 +1112,42 @@ export default function ArtistsPage() {
     setLoading(true)
     const today = new Date().toISOString().slice(0, 10)
 
-    const [{ data: aData }, { data: pData }, { data: dsData }] = await Promise.all([
+    // Okno „zeszłych miesięcy" — ostatnie 12 miesięcy, przeszłe spektakle
+    const yearAgo = new Date(); yearAgo.setMonth(yearAgo.getMonth() - 12)
+    const yearAgoStr = yearAgo.toISOString().slice(0, 10)
+
+    const [{ data: aData }, { data: pData }, { data: dsData }, { data: pastEv }] = await Promise.all([
       supabase.from('artists')
         .select('id, name, email, phone, role, birth_date, actor_type, avatar_url, teams!inner(name), artist_productions(production_id)')
         .eq('teams.name', 'Cast')
         .order('name'),
       supabase.from('productions').select('id, title, theatres(name)').order('title'),
       supabase.from('actor_day_status').select('artist_id, status').eq('date', today),
+      supabase.from('events')
+        .select('start_time, end_time, production_id, type, event_artists(artist_id)')
+        .in('type', Array.from(SHOW_TYPES))
+        .gte('start_time', `${yearAgoStr}T00:00:00`)
+        .lt('start_time', `${today}T00:00:00`),
     ])
 
     const todayStatus: Record<string, string> = {}
     for (const r of ((dsData ?? []) as any[])) {
       todayStatus[r.artist_id] = r.status
+    }
+
+    // Produkcja → aktorzy (z obsady produkcji), do liczenia godzin gdy brak jawnej obsady wydarzenia
+    const prodToArtists: Record<string, string[]> = {}
+    for (const a of ((aData ?? []) as any[])) {
+      for (const ap of (a.artist_productions ?? [])) (prodToArtists[ap.production_id] ??= []).push(a.id)
+    }
+    // Suma zagranych godzin per aktor
+    const hoursByArtist: Record<string, number> = {}
+    for (const ev of ((pastEv ?? []) as any[])) {
+      const dur = (new Date(ev.end_time).getTime() - new Date(ev.start_time).getTime()) / 3.6e6
+      if (!(dur > 0)) continue
+      const explicit = (ev.event_artists ?? []).map((e: any) => e.artist_id)
+      const cast = explicit.length > 0 ? explicit : (prodToArtists[ev.production_id] ?? [])
+      for (const aid of cast) hoursByArtist[aid] = (hoursByArtist[aid] ?? 0) + dur
     }
 
     setArtists(((aData ?? []) as any[]).map(a => ({
@@ -1113,6 +1160,7 @@ export default function ArtistsPage() {
       actor_type:      a.actor_type ?? null,
       avatar_url:      a.avatar_url ?? null,
       productionCount: (a.artist_productions ?? []).length,
+      playedHours:     Math.round(hoursByArtist[a.id] ?? 0),
     })))
     setProductions(((pData ?? []) as any[]).map(p => ({
       id: p.id, title: p.title,
