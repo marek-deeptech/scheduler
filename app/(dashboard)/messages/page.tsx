@@ -509,7 +509,6 @@ export default function MessagesPage() {
       supabase
         .from('artists')
         .select('id, name, email, phone, role, status, birth_date, avatar_url, teams!inner(name), artist_productions(productions(theatre_id))')
-        .eq('teams.name', 'Cast')
         .order('name'),
       supabase.from('theatres').select('id, name').order('name'),
     ]).then(([{ data: artistData }, { data: theatreData }]) => {
