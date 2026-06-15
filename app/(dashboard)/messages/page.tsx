@@ -685,6 +685,53 @@ export default function MessagesPage() {
         </div>
       </div>
 
+      {/* Person list — odbiorcy (filtrowani / sortowani powyżej) */}
+      {loading ? (
+        <p className="text-sm text-gray-500 text-center py-16">{tm.loading}</p>
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden mb-6">
+          {/* List header */}
+          <div className={`${ROW} border-b border-gray-100`} style={{ background: '#faf8f5' }}>
+            <input
+              type="checkbox"
+              checked={allFilteredSelected}
+              onChange={e => toggleAll(e.target.checked)}
+              className="w-4 h-4 rounded accent-gray-900 cursor-pointer"
+            />
+            <div />{/* avatar placeholder */}
+            <span className="text-xs text-gray-500 font-medium">
+              {selected.size > 0
+                ? <>{tm.nSelected(selected.size)} <button onClick={() => setSelected(new Set())} className="underline decoration-dotted hover:text-gray-700 ml-1">{tm.clearSelection}</button></>
+                : `${filtered.length}`}
+            </span>
+            <span className="hidden md:block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colTeam}</span>
+            <span className="hidden md:block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colStatus}</span>
+            <span className="hidden md:block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colContact}</span>
+            <div />
+          </div>
+
+          {/* Rows */}
+          {filtered.length === 0 ? (
+            <div className="py-16 text-center text-sm text-gray-500 italic">
+              {tm.noPeople}
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {filtered.map(person => (
+                <PersonRow
+                  key={person.id}
+                  person={person}
+                  checked={selected.has(person.id)}
+                  onToggle={() => togglePerson(person.id)}
+                  onEmail={() => setCompose({ type: 'email', ids: [person.id] })}
+                  onSms={() => setCompose({ type: 'sms', ids: [person.id] })}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Brak potwierdzenia udziału ─────────────────────────────── */}
       {pendingPart.length > 0 && (
         <div className="mb-4 bg-white border rounded-2xl overflow-hidden" style={{ borderColor: '#fde0c8' }}>
@@ -856,53 +903,6 @@ export default function MessagesPage() {
                     <span className="text-[10px] text-gray-400">{fmtDate(m.sentAt)}</span>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Person list */}
-      {loading ? (
-        <p className="text-sm text-gray-500 text-center py-16">{tm.loading}</p>
-      ) : (
-        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-          {/* List header */}
-          <div className={`${ROW} border-b border-gray-100`} style={{ background: '#faf8f5' }}>
-            <input
-              type="checkbox"
-              checked={allFilteredSelected}
-              onChange={e => toggleAll(e.target.checked)}
-              className="w-4 h-4 rounded accent-gray-900 cursor-pointer"
-            />
-            <div />{/* avatar placeholder */}
-            <span className="text-xs text-gray-500 font-medium">
-              {selected.size > 0
-                ? <>{tm.nSelected(selected.size)} <button onClick={() => setSelected(new Set())} className="underline decoration-dotted hover:text-gray-700 ml-1">{tm.clearSelection}</button></>
-                : `${filtered.length}`}
-            </span>
-            <span className="hidden md:block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colTeam}</span>
-            <span className="hidden md:block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colStatus}</span>
-            <span className="hidden md:block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colContact}</span>
-            <div />
-          </div>
-
-          {/* Rows */}
-          {filtered.length === 0 ? (
-            <div className="py-16 text-center text-sm text-gray-500 italic">
-              {tm.noPeople}
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-50">
-              {filtered.map(person => (
-                <PersonRow
-                  key={person.id}
-                  person={person}
-                  checked={selected.has(person.id)}
-                  onToggle={() => togglePerson(person.id)}
-                  onEmail={() => setCompose({ type: 'email', ids: [person.id] })}
-                  onSms={() => setCompose({ type: 'sms', ids: [person.id] })}
-                />
               ))}
             </div>
           )}
