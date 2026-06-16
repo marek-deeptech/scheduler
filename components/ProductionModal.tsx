@@ -646,7 +646,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
             {/* Podgląd na żywo */}
             <div className="rounded-xl p-4 grid grid-cols-3 gap-3" style={{ background: '#faf8f5', border: '1px solid #e4ddd4' }}>
               <Stat label="Śr. cena (ASP)" value={fmtPln(previewAsp)} />
-              <Stat label={`Marża/spektakl (${previewCapacity} miejsc)`} value={fmtPln(previewMargin)} accent={previewMargin >= 0 ? '#15803d' : '#c8102e'} />
+              <Stat label={`Dochód/spektakl (${previewCapacity} miejsc)`} value={fmtPln(previewMargin)} accent={previewMargin >= 0 ? '#15803d' : '#c8102e'} />
               <Stat label="Próg rentowności" value={fmtPct(previewBreakEven)} accent={previewBreakEven <= (parseFloat(fin.attendancePct) / 100) ? '#15803d' : '#c8102e'} />
             </div>
             <p className="text-[11px] text-gray-400 -mt-2">
