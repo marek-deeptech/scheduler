@@ -222,6 +222,13 @@ export default function FinancePage() {
           </div>
 
           {/* Symulacja */}
+          <style>{`
+            .fin-slider { -webkit-appearance: none; appearance: none; height: 3px; border-radius: 9999px; outline: none; cursor: pointer; }
+            .fin-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 13px; height: 13px; border-radius: 9999px; background: #fff; border: 1.5px solid #c8102e; box-shadow: 0 1px 2px rgba(0,0,0,.12); transition: transform .12s ease, box-shadow .12s ease; }
+            .fin-slider::-webkit-slider-thumb:hover { transform: scale(1.18); box-shadow: 0 2px 5px rgba(200,16,46,.28); }
+            .fin-slider::-moz-range-thumb { width: 13px; height: 13px; border-radius: 9999px; background: #fff; border: 1.5px solid #c8102e; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+            .fin-slider::-moz-range-thumb:hover { transform: scale(1.18); }
+          `}</style>
           <div className="mb-6 rounded-2xl p-4" style={{ background: '#fff', border: '1px solid #e4ddd4' }}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
@@ -244,14 +251,16 @@ export default function FinancePage() {
                   <span>Założona frekwencja (♥ Favourites zawsze 100%)</span><b style={{ color: '#1a1410' }}>{fmtPct(simAttendance)}</b>
                 </div>
                 <input type="range" min={0.3} max={1} step={0.05} value={simAttendance}
-                  onChange={e => setSimAttendance(parseFloat(e.target.value))} className="w-full accent-[#c8102e]" />
+                  onChange={e => setSimAttendance(parseFloat(e.target.value))} className="fin-slider w-full"
+                  style={{ background: `linear-gradient(to right, #c8102e 0%, #c8102e ${(simAttendance - 0.3) / 0.7 * 100}%, #ece7df ${(simAttendance - 0.3) / 0.7 * 100}%, #ece7df 100%)` }} />
               </div>
               <div>
                 <div className="flex justify-between text-xs mb-1" style={{ color: '#7a7068' }}>
                   <span>Dopałka weekendowa (pt/sob/nd)</span><b style={{ color: '#1a1410' }}>+{Math.round(simWeekend * 100)}%</b>
                 </div>
                 <input type="range" min={0} max={0.4} step={0.05} value={simWeekend}
-                  onChange={e => setSimWeekend(parseFloat(e.target.value))} className="w-full accent-[#c8102e]" />
+                  onChange={e => setSimWeekend(parseFloat(e.target.value))} className="fin-slider w-full"
+                  style={{ background: `linear-gradient(to right, #c8102e 0%, #c8102e ${simWeekend / 0.4 * 100}%, #ece7df ${simWeekend / 0.4 * 100}%, #ece7df 100%)` }} />
               </div>
             </div>
           </div>
@@ -280,9 +289,7 @@ export default function FinancePage() {
                       <td className="px-4 py-2.5">
                         <span className="font-medium" style={{ color: '#1a1410' }}>{t.prod.title}</span>
                         {t.isFavourite ? (
-                          <span className="ml-2 inline-flex items-center text-[11px] px-1.5 py-0.5 rounded" style={{ background: '#fff1f2' }} title="Favourite">
-                            <span style={{ color: '#ef4444' }}>♥</span>
-                          </span>
+                          <span className="ml-2 text-[11px]" style={{ color: '#ef4444' }} title="Favourite">♥</span>
                         ) : (
                           <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#f2ede6', color: '#7a7068' }}>
                             {CATEGORY_DEFAULTS[t.prod.priceCategory]?.label ?? t.prod.priceCategory}
