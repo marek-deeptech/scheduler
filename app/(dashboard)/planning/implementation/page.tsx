@@ -20,6 +20,15 @@ interface Status {
   reportSentAt?: string | null
 }
 
+// Działy do powiadomienia po zatwierdzeniu repertuaru.
+// Na razie bez przypisanych osób — same przyciski + pole powiadomienia.
+const DEPARTMENTS: { key: string; label: string; icon: string }[] = [
+  { key: 'sprzedaz',   label: 'Sprzedaż',   icon: '🎫' },
+  { key: 'pr',         label: 'PR',         icon: '📣' },
+  { key: 'inspicjent', label: 'Inspicjent', icon: '🎬' },
+  { key: 'scena',      label: 'Scena',      icon: '🎭' },
+]
+
 export default function ImplementationPage() {
   const { selectedTheatreId } = useTheatre()
   const [months, setMonths] = useState<string[]>([])
@@ -27,6 +36,8 @@ export default function ImplementationPage() {
   const [status, setStatus] = useState<Status | null>(null)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
+  const [openDept, setOpenDept] = useState<string | null>(null)
+  const [deptMsg, setDeptMsg] = useState<Record<string, string>>({})
 
   useEffect(() => {
     let q = supabase.from('repertoire_proposals').select('month').eq('status', 'approved').order('month', { ascending: false })
@@ -149,6 +160,53 @@ export default function ImplementationPage() {
                 {sending ? 'Wysyłam…' : status.reportSentAt ? 'Wyślij ponownie' : 'Wyślij raport'}
               </button>
             </div>
+          </div>
+
+          {/* Powiadomienia działów */}
+          <div className="rounded-2xl p-5" style={{ background: '#fff', border: '1px solid #e4ddd4' }}>
+            <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>Powiadom działy</p>
+            <p className="text-[11px] mt-0.5 mb-3" style={{ color: '#a89e92' }}>
+              Po zatwierdzeniu repertuaru poinformuj zespoły o planie na {monthLabel(month)}.
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {DEPARTMENTS.map(d => (
+                <button key={d.key} onClick={() => setOpenDept(openDept === d.key ? null : d.key)}
+                  className="flex items-center justify-center gap-1.5 text-sm font-medium px-3 py-2.5 rounded-xl transition-colors"
+                  style={{
+                    background: openDept === d.key ? '#1a1410' : '#faf8f5',
+                    color: openDept === d.key ? '#fff' : '#3e3830',
+                    border: '1px solid #e4ddd4',
+                  }}>
+                  <span>{d.icon}</span>{d.label}
+                </button>
+              ))}
+            </div>
+
+            {openDept && (() => {
+              const dept = DEPARTMENTS.find(d => d.key === openDept)!
+              return (
+                <div className="mt-3 rounded-xl p-3" style={{ background: '#faf8f5', border: '1px solid #f2ede6' }}>
+                  <p className="text-[11px] font-semibold mb-1.5" style={{ color: '#7a7068' }}>
+                    {dept.icon} Powiadomienie — {dept.label}
+                  </p>
+                  <textarea
+                    value={deptMsg[openDept] ?? ''}
+                    onChange={e => setDeptMsg(m => ({ ...m, [openDept]: e.target.value }))}
+                    rows={3}
+                    placeholder={`Treść powiadomienia dla działu „${dept.label}" o repertuarze na ${monthLabel(month)}…`}
+                    className="w-full rounded-lg px-3 py-2 text-sm resize-y"
+                    style={{ border: '1px solid #e4ddd4', color: '#3e3830', background: '#fff' }} />
+                  <div className="flex items-center justify-between gap-3 mt-2">
+                    <span className="text-[11px]" style={{ color: '#a89e92' }}>Brak przypisanych osób w dziale.</span>
+                    <button disabled title="Najpierw dodaj osoby do działu"
+                      className="text-sm font-medium px-4 py-2 rounded-xl text-white opacity-40 cursor-not-allowed"
+                      style={{ background: '#16a34a' }}>
+                      Wyślij powiadomienie
+                    </button>
+                  </div>
+                </div>
+              )
+            })()}
           </div>
         </div>
       )}
