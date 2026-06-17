@@ -101,7 +101,7 @@ export default function ImplementationPage() {
               <div className="grid grid-cols-4 gap-2 mt-3">
                 <Kpi label="Przychód" value={fmtPln(status.approved.finance.revenue)} color="#15803d" />
                 <Kpi label="Koszt" value={fmtPln(status.approved.finance.cost)} color="#b45309" />
-                <Kpi label="Marża" value={fmtPln(status.approved.finance.margin)} color="#15803d" />
+                <Kpi label="Dochód" value={fmtPln(status.approved.finance.margin)} color="#15803d" />
                 <Kpi label="Śr. frekw." value={`${Math.round((status.approved.finance.attendance || 0) * 100)}%`} color="#1a1410" />
               </div>
             )}

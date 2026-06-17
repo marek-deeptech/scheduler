@@ -217,7 +217,7 @@ export default function FinancePage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
             <KpiTile label="Prognoza przychodu" value={fmtPln(totals.revenue)} accent="#15803d" sub={`${totals.count} spektakli`} />
             <KpiTile label="Koszty (ryczałt)" value={fmtPln(totals.cost)} accent="#b45309" sub={`${fmtPln(totals.count ? totals.cost / totals.count : 0)}/spektakl`} />
-            <KpiTile label="Marża" value={fmtPln(margin)} accent={margin >= 0 ? '#15803d' : '#c8102e'} sub={totals.revenue > 0 ? `${Math.round(margin / totals.revenue * 100)}% przychodu` : '—'} />
+            <KpiTile label="Dochód" value={fmtPln(margin)} accent={margin >= 0 ? '#15803d' : '#c8102e'} sub={totals.revenue > 0 ? `${Math.round(margin / totals.revenue * 100)}% przychodu` : '—'} />
             <KpiTile label="Śr. frekwencja" value={fmtPct(avgAttendance)} accent="#1a1410" sub={`${totals.sold} / ${totals.cap} miejsc`} />
           </div>
 
@@ -270,7 +270,7 @@ export default function FinancePage() {
                     <th className="text-right font-medium px-3 py-2">Śr. frekw.</th>
                     <th className="text-right font-medium px-3 py-2">ASP</th>
                     <th className="text-right font-medium px-3 py-2">Przychód</th>
-                    <th className="text-right font-medium px-3 py-2">Marża</th>
+                    <th className="text-right font-medium px-3 py-2">Dochód</th>
                     <th className="text-right font-medium px-4 py-2">Próg rent.</th>
                   </tr>
                 </thead>

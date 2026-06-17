@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       <tr><td style="padding:8px 0;font-size:13px;color:#6b7280;width:160px">Wariant</td><td style="padding:8px 0;font-size:13px;font-weight:600">${approved.label}</td></tr>
       <tr style="border-top:1px solid #f3f4f6"><td style="padding:8px 0;font-size:13px;color:#6b7280">Prognoza przychodu</td><td style="padding:8px 0;font-size:14px;font-weight:700;color:#15803d">${fmtPln(fin.revenue)}</td></tr>
       <tr style="border-top:1px solid #f3f4f6"><td style="padding:8px 0;font-size:13px;color:#6b7280">Koszty</td><td style="padding:8px 0;font-size:13px;font-weight:600;color:#b45309">${fmtPln(fin.cost)}</td></tr>
-      <tr style="border-top:1px solid #f3f4f6"><td style="padding:8px 0;font-size:13px;color:#6b7280">Marża</td><td style="padding:8px 0;font-size:14px;font-weight:700;color:${fin.margin >= 0 ? '#15803d' : '#dc2626'}">${fmtPln(fin.margin)}</td></tr>
+      <tr style="border-top:1px solid #f3f4f6"><td style="padding:8px 0;font-size:13px;color:#6b7280">Dochód</td><td style="padding:8px 0;font-size:14px;font-weight:700;color:${fin.margin >= 0 ? '#15803d' : '#dc2626'}">${fmtPln(fin.margin)}</td></tr>
       <tr style="border-top:1px solid #f3f4f6"><td style="padding:8px 0;font-size:13px;color:#6b7280">Śr. frekwencja</td><td style="padding:8px 0;font-size:13px;font-weight:600">${Math.round((fin.attendance || 0) * 100)}%</td></tr>
       <tr style="border-top:1px solid #f3f4f6"><td style="padding:8px 0;font-size:13px;color:#6b7280">Liczba spektakli</td><td style="padding:8px 0;font-size:13px;font-weight:600">${stats.total ?? 0}</td></tr>
     </table>
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
   if (ok) {
     await logMessages(supabase, [{
       artist_id: null, type: 'email', direction: 'to_coordinator', kind: 'message',
-      subject, body: `Repertuar ${label} (${approved.label}): przychód ${fmtPln(fin.revenue)}, koszt ${fmtPln(fin.cost)}, marża ${fmtPln(fin.margin)}.`,
+      subject, body: `Repertuar ${label} (${approved.label}): przychód ${fmtPln(fin.revenue)}, koszt ${fmtPln(fin.cost)}, dochód ${fmtPln(fin.margin)}.`,
     }])
     await supabase.from('repertoire_proposals')
       .update({ stats: { ...stats, report_sent_at: new Date().toISOString() } })

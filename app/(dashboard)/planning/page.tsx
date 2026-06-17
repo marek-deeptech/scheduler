@@ -501,7 +501,7 @@ function ProposalCard({
           <div className="grid grid-cols-4 gap-2 mt-3">
             <FinKpi label="Przychód" value={fmtPlnShort(stats.finance.revenue)} color="#15803d" />
             <FinKpi label="Koszt" value={fmtPlnShort(stats.finance.cost)} color="#b45309" />
-            <FinKpi label="Marża" value={fmtPlnShort(stats.finance.margin)} color={stats.finance.margin >= 0 ? '#15803d' : '#c8102e'} />
+            <FinKpi label="Dochód" value={fmtPlnShort(stats.finance.margin)} color={stats.finance.margin >= 0 ? '#15803d' : '#c8102e'} />
             <FinKpi label="Śr. frekw." value={`${Math.round((stats.finance.attendance || 0) * 100)}%`} color="#1a1410" />
           </div>
         )}
