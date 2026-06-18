@@ -77,7 +77,9 @@ interface ApprovedEntry { month: string; label: string; reportSent: boolean }
 
 export default function PlanningPage() {
   const { selectedTheatreId, setSelectedTheatreId } = useTheatre()
-  const allMonths = getNextMonths(7)
+  const allMonths = getNextMonths(8)
+  // Bieżący miesiąc (YYYY-MM) — planujemy tylko miesiące przyszłe.
+  const thisMonthKey = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })()
   const [approvedMonths, setApprovedMonths] = useState<Set<string>>(new Set())
   const [approvedList,   setApprovedList]   = useState<ApprovedEntry[]>([])
   const [monthsReady,    setMonthsReady]    = useState(false)
@@ -151,7 +153,8 @@ export default function PlanningPage() {
     } else setTheatreName('')
   }, [selectedTheatreId])
 
-  const months = allMonths.filter(mo => !approvedMonths.has(mo.value))
+  // Pomijamy miesiące przeszłe/bieżący oraz te z zatwierdzonym repertuarem.
+  const months = allMonths.filter(mo => mo.value > thisMonthKey && !approvedMonths.has(mo.value))
 
   const [selectedMonth, setSelectedMonth] = useState<string>('')
   const [proposals,     setProposals]     = useState<Proposal[]>([])
