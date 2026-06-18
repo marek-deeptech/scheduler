@@ -125,7 +125,9 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
   const [saving,   setSaving]   = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error,    setError]    = useState<string | null>(null)
-  const [tab,      setTab]      = useState<'details' | 'finance'>('details')
+  const [tab,      setTab]      = useState<'details' | 'team' | 'calendar' | 'finance'>('details')
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [delText,       setDelText]       = useState('')
 
   // Parametry finansowe (ładowane z bazy w trybie edycji)
   const [fin, setFin] = useState({
@@ -178,7 +180,8 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
         ? await supabase.from('productions').select(sel(false)).eq('id', production.id).single()
         : first
       if (!data) return
-      const cat = ((data as any).price_category as PriceCategory) || 'standard'
+      // Kategoria 'mala' wycofana — mapujemy na 'standard' (scena jest osobnym polem).
+      const cat: PriceCategory = (data as any).price_category === 'premium' ? 'premium' : 'standard'
       const stage: Stage = (data as any).stage === 'mala' ? 'mala' : 'duza'
       const def = CATEGORY_DEFAULTS[cat] ?? CATEGORY_DEFAULTS.standard
       setFin({
@@ -288,7 +291,8 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
   }
 
   async function handleDelete() {
-    if (!production || !confirm('Usunąć ten tytuł?')) return
+    // Świadome potwierdzenie: tytuł musi być wpisany dokładnie.
+    if (!production || delText.trim() !== production.title.trim()) return
     setDeleting(true)
     const pid = production.id
     // Delete child records in order: event_artists → events → artist_productions → production
@@ -328,7 +332,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
 
         {/* Tabs */}
         <div className="flex gap-1 px-6 pt-3 shrink-0 border-b border-gray-100">
-          {([['details', 'Szczegóły'], ['finance', 'Finanse']] as const).map(([key, label]) => (
+          {([['details', 'Szczegóły'], ['team', 'Zespół'], ['calendar', 'Kalendarz'], ['finance', 'Finanse']] as const).map(([key, label]) => (
             <button
               key={key}
               type="button"
@@ -480,8 +484,21 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
             </div>
           </div>
 
-          {/* ── People ── */}
-          {artists.length === 0 ? (
+          {/* ── Comment ── */}
+          <div>
+            <label className={labelCls}>Komentarz / notatki</label>
+            <textarea
+              value={form.comment}
+              onChange={e => setForm(f => ({ ...f, comment: e.target.value }))}
+              rows={3}
+              className={inputCls + ' resize-none'}
+              placeholder="Dodatkowe informacje o produkcji..."
+            />
+          </div>
+         </>)}
+
+         {tab === 'team' && (
+          artists.length === 0 ? (
             <p className="text-xs text-gray-500 italic">Brak osób w bazie</p>
           ) : (
             <div className="space-y-5">
@@ -535,13 +552,16 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
                 )
               })}
             </div>
-          )}
+          )
+         )}
 
-          {/* ── Events (edit mode only) ── */}
-          {isEdit && (
+         {tab === 'calendar' && (
+          !isEdit ? (
+            <p className="text-xs text-gray-500 italic">Zapisz tytuł, aby dodawać próby, spektakle i wydarzenia.</p>
+          ) : (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className={labelCls + ' mb-0'}>Próby i wydarzenia</label>
+                <label className={labelCls + ' mb-0'}>Spektakle, próby i wydarzenia</label>
                 <button
                   type="button"
                   onClick={() => setEventModal(null)}
@@ -591,20 +611,8 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
                 </div>
               )}
             </div>
-          )}
-
-          {/* ── Comment ── */}
-          <div>
-            <label className={labelCls}>Komentarz / notatki</label>
-            <textarea
-              value={form.comment}
-              onChange={e => setForm(f => ({ ...f, comment: e.target.value }))}
-              rows={3}
-              className={inputCls + ' resize-none'}
-              placeholder="Dodatkowe informacje o produkcji..."
-            />
-          </div>
-         </>)}
+          )
+         )}
 
          {tab === 'finance' && (
           <div className="space-y-5">
@@ -615,7 +623,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
                 <span className="ml-2 font-normal text-gray-400">Scena: {STAGE_LABEL[fin.stage]} ({previewCapacity} miejsc) — zmień w „Szczegóły"</span>
               </label>
               <div className="flex p-0.5 bg-gray-100 rounded-xl">
-                {(['premium', 'standard', 'mala'] as PriceCategory[]).map(cat => (
+                {(['premium', 'standard'] as PriceCategory[]).map(cat => (
                   <button
                     key={cat}
                     type="button"
@@ -694,16 +702,50 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
             </div>
           )}
 
+          {/* Potwierdzenie usunięcia — świadome (wpisz tytuł) */}
+          {isEdit && confirmDelete && production && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 space-y-2.5">
+              <p className="text-sm font-semibold text-red-700">Usunąć „{production.title}" na stałe?</p>
+              <p className="text-xs text-red-600">
+                Usuniesz tytuł wraz z przypisaną obsadą i wszystkimi jego wydarzeniami (próby, spektakle).
+                Tej operacji nie można cofnąć. Aby potwierdzić, wpisz dokładny tytuł.
+              </p>
+              <input
+                value={delText}
+                onChange={e => setDelText(e.target.value)}
+                placeholder={production.title}
+                autoFocus
+                className="w-full border border-red-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-400"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setConfirmDelete(false); setDelText('') }}
+                  className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-white transition-colors"
+                >
+                  Anuluj
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleting || delText.trim() !== production.title.trim()}
+                  className="px-3 py-1.5 text-xs font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {deleting ? 'Usuwanie…' : 'Usuń na stałe'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Footer */}
           <div className="flex items-center justify-between pt-1">
-            {isEdit ? (
+            {isEdit && !confirmDelete ? (
               <button
                 type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="px-4 py-2 text-sm font-medium text-red-500 border border-red-200 rounded-xl hover:bg-red-50 disabled:opacity-50 transition-colors"
+                onClick={() => setConfirmDelete(true)}
+                className="px-4 py-2 text-sm font-medium text-red-500 border border-red-200 rounded-xl hover:bg-red-50 transition-colors"
               >
-                {deleting ? 'Usuwanie...' : 'Usuń tytuł'}
+                Usuń tytuł
               </button>
             ) : <div />}
             <div className="flex gap-2">
