@@ -5,8 +5,8 @@ import { supabase } from '@/lib/supabase'
 import EventModal from '@/components/EventModal'
 import { EVENT_TYPE_CATEGORIES } from '@/types'
 import {
-  CATEGORY_DEFAULTS, DEFAULT_PARAMS, stageCapacity, costForCategory, asp, fmtPln, fmtPct,
-  type PriceCategory,
+  CATEGORY_DEFAULTS, DEFAULT_PARAMS, stageCapacity, costForStage, STAGE_LABEL, asp, fmtPln, fmtPct,
+  type PriceCategory, type Stage,
 } from '@/lib/finance'
 
 interface Theatre { id: string; name: string }
@@ -129,6 +129,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
 
   // Parametry finansowe (ładowane z bazy w trybie edycji)
   const [fin, setFin] = useState({
+    stage:         'duza' as Stage,
     priceCategory: 'standard' as PriceCategory,
     priceNormal:     '' as string,
     priceReduced:    '' as string,
@@ -138,7 +139,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
   })
 
   // Pojemność sceny tytułu — do podglądu progu rentowności
-  const previewCapacity = stageCapacity(fin.priceCategory, form.theatre_id || null)
+  const previewCapacity = stageCapacity(fin.stage, form.theatre_id || null)
 
   const previewAsp = asp(
     { priceNormal: parseFloat(fin.priceNormal) || 0, priceReduced: parseFloat(fin.priceReduced) || 0, priceLastMinute: parseFloat(fin.priceLastMinute) || 0 },
@@ -169,27 +170,30 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
   // Load financial params in edit mode (tolerant — gdy brak migracji finansowej)
   useEffect(() => {
     if (!production) return
-    supabase
-      .from('productions')
-      .select('price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost')
-      .eq('id', production.id)
-      .single()
-      .then(({ data }) => {
-        if (!data) return
-        const cat = ((data as any).price_category as PriceCategory) || 'standard'
-        const def = CATEGORY_DEFAULTS[cat] ?? CATEGORY_DEFAULTS.standard
-        setFin({
-          priceCategory:   cat,
-          priceNormal:     String((data as any).price_normal      ?? def.normal),
-          priceReduced:    String((data as any).price_reduced     ?? def.reduced),
-          priceLastMinute: String((data as any).price_last_minute ?? def.lastMinute),
-          attendancePct:   String(Math.round(((data as any).assumed_attendance ?? 0.75) * 100)),
-          fixedCost:       String((data as any).fixed_cost ?? 8000),
-        })
+    // Tolerancyjnie na brak migracji 'stage' — ponów bez tej kolumny.
+    ;(async () => {
+      const sel = (withStage: boolean): string => `${withStage ? 'stage, ' : ''}price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost`
+      const first = await supabase.from('productions').select(sel(true)).eq('id', production.id).single()
+      const { data } = first.error
+        ? await supabase.from('productions').select(sel(false)).eq('id', production.id).single()
+        : first
+      if (!data) return
+      const cat = ((data as any).price_category as PriceCategory) || 'standard'
+      const stage: Stage = (data as any).stage === 'mala' ? 'mala' : 'duza'
+      const def = CATEGORY_DEFAULTS[cat] ?? CATEGORY_DEFAULTS.standard
+      setFin({
+        stage,
+        priceCategory:   cat,
+        priceNormal:     String((data as any).price_normal      ?? def.normal),
+        priceReduced:    String((data as any).price_reduced     ?? def.reduced),
+        priceLastMinute: String((data as any).price_last_minute ?? def.lastMinute),
+        attendancePct:   String(Math.round(((data as any).assumed_attendance ?? 0.75) * 100)),
+        fixedCost:       String((data as any).fixed_cost ?? 8000),
       })
+    })()
   }, [production?.id])
 
-  // Zmiana sceny/kategorii ustawia ceny i sugerowany koszt sceny
+  // Zmiana kategorii cenowej podstawia domyślne ceny biletów
   function applyCategory(cat: PriceCategory) {
     const def = CATEGORY_DEFAULTS[cat]
     setFin(f => ({
@@ -198,8 +202,12 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
       priceNormal:     String(def.normal),
       priceReduced:    String(def.reduced),
       priceLastMinute: String(def.lastMinute),
-      fixedCost:       String(costForCategory(cat)),
     }))
+  }
+
+  // Zmiana sceny podstawia sugerowany koszt ryczałtowy (pojemność liczy się automatycznie)
+  function applyStage(stage: Stage) {
+    setFin(f => ({ ...f, stage, fixedCost: String(costForStage(stage)) }))
   }
 
   async function loadEvents() {
@@ -263,6 +271,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
     // Zapis parametrów finansowych — osobno, tolerancyjnie (gdy brak migracji)
     if (productionId) {
       const financePayload = {
+        stage:              fin.stage,
         price_category:     fin.priceCategory,
         price_normal:       parseFloat(fin.priceNormal)     || null,
         price_reduced:      parseFloat(fin.priceReduced)    || null,
@@ -579,9 +588,32 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
 
          {tab === 'finance' && (
           <div className="space-y-5">
-            {/* Scena i kategoria cenowa */}
+            {/* Scena — twardy atrybut tytułu (scenografia) */}
             <div>
-              <label className={labelCls}>Scena i kategoria cenowa</label>
+              <label className={labelCls}>Scena</label>
+              <div className="flex p-0.5 bg-gray-100 rounded-xl">
+                {(['duza', 'mala'] as Stage[]).map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => applyStage(s)}
+                    className={`flex-1 py-2 text-xs font-semibold rounded-[10px] transition-colors ${
+                      fin.stage === s ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {STAGE_LABEL[s]} Scena
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px] text-gray-400">
+                Tytuł gra na jednej scenie (unikalna scenografia). Scena ustawia pojemność widowni
+                ({previewCapacity} miejsc) i sugerowany koszt ryczałtowy.
+              </p>
+            </div>
+
+            {/* Kategoria cenowa */}
+            <div>
+              <label className={labelCls}>Kategoria cenowa</label>
               <div className="flex p-0.5 bg-gray-100 rounded-xl">
                 {(['premium', 'standard', 'mala'] as PriceCategory[]).map(cat => (
                   <button
@@ -597,8 +629,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
                 ))}
               </div>
               <p className="mt-1 text-[11px] text-gray-400">
-                Tytuł gra na jednej scenie. <b>Premium</b> i <b>Standard</b> to kategorie Dużej Sceny;
-                <b> Mała Scena</b> ma jednolitą cenę. Scena ustawia pojemność i sugerowany koszt — ceny możesz nadpisać.
+                Podstawia domyślne ceny biletów — możesz je nadpisać poniżej.
               </p>
             </div>
 

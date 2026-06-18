@@ -241,8 +241,17 @@ export default function DashboardPage() {
       tomorrowShowsQ = tomorrowShowsQ.eq('theatre_id', selectedTheatreId)
     }
 
-    let prodQ = supabase.from('productions').select('id, title, status, price_category')
-    if (selectedTheatreId) prodQ = prodQ.eq('theatre_id', selectedTheatreId)
+    // Tolerancyjnie na brak migracji 'stage' — ponów bez tej kolumny.
+    const buildProdQ = (withStage: boolean) => {
+      const cols: string = `id, title, status, ${withStage ? 'stage, ' : ''}price_category`
+      let q = supabase.from('productions').select(cols)
+      if (selectedTheatreId) q = q.eq('theatre_id', selectedTheatreId)
+      return q
+    }
+    const prodQ = (async () => {
+      const r = await buildProdQ(true)
+      return r.error ? await buildProdQ(false) : r
+    })()
 
     // Fetch all current Urlop/Choroba records upfront (small table — trivial cost)
     const availQ = supabase.from('availabilities')
@@ -314,7 +323,7 @@ export default function DashboardPage() {
         return team?.name === 'Technique'
       }).map((a: any) => a.id)
     )
-    const prods   = (prodsData ?? []) as ProdRow[]
+    const prods   = (prodsData ?? []) as unknown as ProdRow[]
     const unavail = artists.filter(a => a.status && a.status !== 'Aktywny')
 
     setArtistCount(artists.length)
@@ -322,9 +331,9 @@ export default function DashboardPage() {
     setActiveProd(prods.filter(p => p.status === 'Bieżące').length)
     setInPrepList(prods.filter(p => p.status === 'Planowane'))
 
-    // Mapa scena per tytuł (z kategorii cenowej): mala → Mała, inaczej Duża
+    // Mapa scena per tytuł — z twardego pola stage: mala → Mała, inaczej Duża
     const stages = new Map<string, 'Duża' | 'Mała'>()
-    for (const p of prods as any[]) stages.set(p.title, p.price_category === 'mala' ? 'Mała' : 'Duża')
+    for (const p of prods as any[]) stages.set(p.title, p.stage === 'mala' ? 'Mała' : 'Duża')
     setStageByTitle(stages)
 
     setAllRooms(roomsData ?? [])

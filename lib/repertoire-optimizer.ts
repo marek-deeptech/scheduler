@@ -5,7 +5,7 @@
 
 import {
   stageCapacity, asp, isWeekend,
-  type PriceCategory, type FinanceParams,
+  type PriceCategory, type Stage, type FinanceParams,
 } from './finance'
 
 export type Objective = 'max_revenue' | 'max_attendance' | 'min_cost' | 'balanced'
@@ -21,6 +21,7 @@ export interface OptProduction {
   id: string
   title: string
   theatreId: string
+  stage: Stage
   category: PriceCategory
   isFavourite: boolean
   castIds: string[]
@@ -71,12 +72,8 @@ export interface OptionResult {
 const NONFAV_CAP_DEFAULT = 8
 const NONFAV_CAP_MINCOST = 4
 
-function stageOf(cat: PriceCategory): 'duza' | 'mala' {
-  return cat === 'mala' ? 'mala' : 'duza'
-}
-
 function perfFinance(p: OptProduction, date: string, fp: FinanceParams) {
-  const cap = stageCapacity(p.category, p.theatreId)
+  const cap = stageCapacity(p.stage, p.theatreId)
   const attendance = p.isFavourite
     ? 1
     : Math.min(1, p.assumedAttendance * (isWeekend(date + 'T12:00:00') ? 1 + fp.weekendUplift : 1))
@@ -108,7 +105,7 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
     ids.forEach(i => s.add(i))
   }
   function place(p: OptProduction, date: string) {
-    const stage = stageOf(p.category)
+    const stage = p.stage
     perfs.push({
       date, production_id: p.id, production_title: p.title,
       theatre_id: p.theatreId, room_id: inp.stageRoom(p.theatreId, stage),
@@ -145,7 +142,7 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
         const cands = inp.prods.filter(p =>
           !p.isFavourite &&
           p.theatreId === theatre &&
-          stageOf(p.category) === stage &&
+          p.stage === stage &&
           p.castIds.length > 0 &&
           (titleCount.get(p.id) ?? 0) < cap &&
           p.castIds.every(a => !busy.has(a)) &&        // brak konfliktu tego dnia

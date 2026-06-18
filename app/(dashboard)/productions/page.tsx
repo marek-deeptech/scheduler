@@ -8,6 +8,7 @@ import ProductionModal from '@/components/ProductionModal'
 import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import { IconWarning, IconTheatre } from '@/lib/icons'
 import { sortByLastName } from '@/lib/names'
+import { STAGE_LABEL, type Stage } from '@/lib/finance'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +36,7 @@ interface ProductionRow {
   end_date: string | null
   theatre_id: string | null
   theatreName: string | null
+  stage: Stage
   status: string
   comment: string | null
   is_favourite: boolean
@@ -189,9 +191,16 @@ function ProductionCard({ prod, isSelected, onClick, onEdit, onConflictClick }: 
 
       <div className="p-5 flex flex-col flex-1 gap-3">
 
-        {/* Theatre + status */}
+        {/* Theatre + scene + status */}
         <div className="flex items-start justify-between gap-2">
-          <span className="text-xs font-medium text-gray-500 truncate">{prod.theatreName ?? '—'}</span>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-xs font-medium text-gray-500 truncate">{prod.theatreName ?? '—'}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0"
+              style={prod.stage === 'mala' ? { background: '#eef2ff', color: '#4338ca' } : { background: '#f2ede6', color: '#7a7068' }}
+              title={`${STAGE_LABEL[prod.stage]} Scena`}>
+              {STAGE_LABEL[prod.stage]}
+            </span>
+          </div>
           <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${style.badge}`}>
             {prod.status}
           </span>
@@ -334,6 +343,7 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
         </div>
         <p className="text-xs text-gray-500">
           {prod.theatreName ?? ''}
+          {` · ${STAGE_LABEL[prod.stage]} Scena`}
           {prod.director ? ` · reż. ${prod.director}` : ''}
         </p>
 
@@ -562,17 +572,25 @@ export default function ProductionsPage() {
   async function fetchData() {
     setLoading(true)
 
-    let query = supabase.from('productions').select(`
-      id, title, director, premiere_date, start_date, end_date, theatre_id, status, comment, is_favourite,
+    // Tolerancyjnie na brak migracji 'stage' — ponów bez tej kolumny.
+    const prodSelect = (withStage: boolean): string => `
+      id, title, director, premiere_date, start_date, end_date, theatre_id, ${withStage ? 'stage, ' : ''}status, comment, is_favourite,
       theatres(name),
       artist_productions(artists(id, name, role, avatar_url)),
       events(id, title, type, start_time, end_time, room_id, rooms(name), event_artists(artist_id))
-    `).order('title')
-
-    if (selectedTheatreId) query = query.eq('theatre_id', selectedTheatreId)
+    `
+    const buildProdQuery = (withStage: boolean) => {
+      let q = supabase.from('productions').select(prodSelect(withStage)).order('title')
+      if (selectedTheatreId) q = q.eq('theatre_id', selectedTheatreId)
+      return q
+    }
+    const prodPromise = (async () => {
+      const r = await buildProdQuery(true)
+      return r.error ? await buildProdQuery(false) : r
+    })()
 
     const [{ data: prodData }, { data: thData }, { data: artistData }, { data: roomData }] = await Promise.all([
-      query,
+      prodPromise,
       supabase.from('theatres').select('id, name').order('name'),
       supabase.from('artists').select('id, name, role, teams!inner(name)').eq('teams.name', 'Cast').order('name'),
       supabase.from('rooms').select('id, theatre_id, name').order('name'),
@@ -587,7 +605,7 @@ export default function ProductionsPage() {
       (p.events ?? []).map((e: any) => ({ ...e, _prodId: p.id, _prodTitle: p.title }))
     )
     const castByProd = new Map<string, Set<string>>()
-    for (const p of prodData ?? []) {
+    for (const p of (prodData ?? []) as any[]) {
       castByProd.set(p.id, new Set(
         ((p as any).artist_productions ?? [])
           .map((ap: any) => (Array.isArray(ap.artists) ? ap.artists[0] : ap.artists)?.id)
@@ -630,6 +648,7 @@ export default function ProductionsPage() {
         end_date:      p.end_date ?? null,
         theatre_id:    p.theatre_id ?? null,
         theatreName:   th?.name ?? null,
+        stage:         p.stage === 'mala' ? 'mala' : 'duza',
         status:        p.status ?? 'Bieżące',
         comment:       p.comment ?? null,
         is_favourite:  p.is_favourite ?? false,

@@ -5,8 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
 import {
   DEFAULT_PARAMS, CATEGORY_DEFAULTS, FAVOURITE_ATTENDANCE, forecastEvent, breakEvenAttendance,
-  stageCapacity, asp, fmtPln, fmtPct, isWeekend,
-  type FinanceParams, type ProductionFinance, type PriceCategory,
+  stageCapacity, asp, fmtPln, fmtPct, isWeekend, STAGE_LABEL,
+  type FinanceParams, type ProductionFinance, type PriceCategory, type Stage,
 } from '@/lib/finance'
 
 /* ── Stałe ─────────────────────────────────────────────────────── */
@@ -71,7 +71,7 @@ export default function FinancePage() {
     if (prodIds.length > 0) {
       let { data: pData, error } = await supabase
         .from('productions')
-        .select('id, title, price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost, is_favourite')
+        .select('id, title, stage, price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost, is_favourite')
         .in('id', prodIds)
       if (error) {
         migration = true
@@ -83,6 +83,7 @@ export default function FinancePage() {
         const def = CATEGORY_DEFAULTS[cat] ?? CATEGORY_DEFAULTS.standard
         prodMap[p.id] = {
           id: p.id, title: p.title,
+          stage: p.stage === 'mala' ? 'mala' : 'duza',
           priceCategory: cat,
           priceNormal:     p.price_normal      ?? def.normal,
           priceReduced:    p.price_reduced     ?? def.reduced,
@@ -137,7 +138,7 @@ export default function FinancePage() {
         : prodBase
       // Pojemność ze sceny tytułu (kategoria + teatr), nie z sali wydarzenia —
       // tytuł gra na jednej, stałej scenie (unikalna scenografia).
-      const capacity = stageCapacity(prod.priceCategory, ev.theatre_id)
+      const capacity = stageCapacity(prod.stage, ev.theatre_id)
       const fc = forecastEvent(prod, capacity, ev.start_time, effParams)
       return { ev, prod, capacity, fc }
     }).filter(Boolean) as { ev: EvRow; prod: ProductionFinance; capacity: number; fc: ReturnType<typeof forecastEvent> }[]
@@ -288,6 +289,11 @@ export default function FinancePage() {
                     <tr key={t.prod.id} style={{ borderTop: '1px solid #f7f4ef' }}>
                       <td className="px-4 py-2.5">
                         <span className="font-medium" style={{ color: '#1a1410' }}>{t.prod.title}</span>
+                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded"
+                          style={t.prod.stage === 'mala' ? { background: '#eef2ff', color: '#4338ca' } : { background: '#f2ede6', color: '#7a7068' }}
+                          title={`${STAGE_LABEL[t.prod.stage]} Scena`}>
+                          {STAGE_LABEL[t.prod.stage]}
+                        </span>
                         {t.isFavourite ? (
                           <span className="ml-2 text-[11px]" style={{ color: '#ef4444' }} title="Favourite">♥</span>
                         ) : (

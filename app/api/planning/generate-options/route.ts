@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import {
   DEFAULT_PARAMS, CATEGORY_DEFAULTS, fmtPln, fmtPct,
-  type FinanceParams, type PriceCategory,
+  type FinanceParams, type PriceCategory, type Stage,
 } from '@/lib/finance'
 import {
   generateOption, OBJECTIVE_LABEL, DEFAULT_DARK_WEEKDAYS, DEFAULT_STAGE_MONTHLY_CAP,
@@ -48,7 +48,12 @@ export async function POST(request: Request) {
     { data: prods }, { data: aps }, { data: theatres }, { data: rooms },
     { data: slots }, { data: dayStatuses }, { data: otherEvents }, fp,
   ] = await Promise.all([
-    supabase.from('productions').select('id, title, theatre_id, is_favourite, price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost'),
+    (async () => {
+      // Tolerancyjnie na brak migracji 'stage' — ponów bez tej kolumny.
+      const sel = (withStage: boolean): string => `id, title, theatre_id, is_favourite, ${withStage ? 'stage, ' : ''}price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost`
+      const r = await supabase.from('productions').select(sel(true))
+      return r.error ? await supabase.from('productions').select(sel(false)) : r
+    })(),
     supabase.from('artist_productions').select('artist_id, production_id'),
     supabase.from('theatres').select('id'),
     supabase.from('rooms').select('id, name, theatre_id'),
@@ -90,10 +95,11 @@ export async function POST(request: Request) {
     .filter(p => (castByProd[p.id]?.length ?? 0) > 0 && p.theatre_id === theatreId)
     .map(p => {
       const cat = (p.price_category as PriceCategory) || 'standard'
+      const stage: Stage = p.stage === 'mala' ? 'mala' : 'duza'
       const def = CATEGORY_DEFAULTS[cat] ?? CATEGORY_DEFAULTS.standard
       return {
         id: p.id, title: p.title, theatreId: p.theatre_id,
-        category: cat, isFavourite: !!p.is_favourite,
+        stage, category: cat, isFavourite: !!p.is_favourite,
         castIds: castByProd[p.id] ?? [],
         priceNormal: p.price_normal ?? def.normal,
         priceReduced: p.price_reduced ?? def.reduced,

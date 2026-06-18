@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
 
@@ -46,6 +47,8 @@ const DEPARTMENTS: { key: keyof typeof DEPT_ICON; label: string }[] = [
 
 export default function ImplementationPage() {
   const { selectedTheatreId } = useTheatre()
+  const searchParams = useSearchParams()
+  const monthParam = searchParams.get('month')
   const [months, setMonths] = useState<string[]>([])
   const [month, setMonth] = useState('')
   const [status, setStatus] = useState<Status | null>(null)
@@ -60,10 +63,10 @@ export default function ImplementationPage() {
     q.then(({ data }) => {
       const ms = [...new Set((data ?? []).map((r: any) => r.month))]
       setMonths(ms)
-      setMonth(ms[0] ?? '')
+      setMonth(monthParam && ms.includes(monthParam) ? monthParam : (ms[0] ?? ''))
       if (ms.length === 0) { setStatus(null); setLoading(false) }
     })
-  }, [selectedTheatreId])
+  }, [selectedTheatreId, monthParam])
 
   const load = useCallback(async () => {
     if (!month) return

@@ -68,12 +68,18 @@ function getNextMonths(n: number) {
   })
 }
 
+const MONTHS_PL = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień']
+function monthLabelPl(key: string) { const [y, m] = key.split('-'); return `${MONTHS_PL[+m - 1]} ${y}` }
+
+interface ApprovedEntry { month: string; label: string; reportSent: boolean }
+
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function PlanningPage() {
   const { selectedTheatreId, setSelectedTheatreId } = useTheatre()
   const allMonths = getNextMonths(7)
   const [approvedMonths, setApprovedMonths] = useState<Set<string>>(new Set())
+  const [approvedList,   setApprovedList]   = useState<ApprovedEntry[]>([])
   const [monthsReady,    setMonthsReady]    = useState(false)
   const [theatreName,    setTheatreName]    = useState<string>('')
 
@@ -91,7 +97,12 @@ export default function PlanningPage() {
   useEffect(() => {
     Promise.all([
       fetch('/api/planning/generate?status=approved').then(r => r.json()),
-      supabase.from('productions').select('title, is_favourite, price_category, artist_productions(artists(id, name))'),
+      // Tolerancyjnie na brak migracji 'stage' — ponów bez tej kolumny.
+      (async () => {
+        const sel = (withStage: boolean): string => `title, is_favourite, ${withStage ? 'stage, ' : ''}price_category, artist_productions(artists(id, name))`
+        const r = await supabase.from('productions').select(sel(true))
+        return r.error ? await supabase.from('productions').select(sel(false)) : r
+      })(),
     ]).then(([json, castRes]) => {
       // Approved months
       const approved = new Set<string>((json.proposals ?? []).map((p: Proposal) => p.month))
@@ -103,7 +114,7 @@ export default function PlanningPage() {
       const nameMap  = new Map<string, string>()
       const favSet   = new Set<string>()
       const stages   = new Map<string, 'Duża' | 'Mała'>()
-      for (const p of castRes.data ?? []) {
+      for (const p of (castRes.data ?? []) as any[]) {
         const ids: string[] = []
         for (const ap of p.artist_productions ?? []) {
           const a = Array.isArray(ap.artists) ? ap.artists[0] : ap.artists
@@ -111,7 +122,7 @@ export default function PlanningPage() {
         }
         castMap.set(p.title, ids)
         if ((p as any).is_favourite) favSet.add(p.title)
-        stages.set(p.title, (p as any).price_category === 'mala' ? 'Mała' : 'Duża')
+        stages.set(p.title, (p as any).stage === 'mala' ? 'Mała' : 'Duża')
       }
       setProductionCastMap(castMap)
       setArtistNamesMap(nameMap)
@@ -126,7 +137,13 @@ export default function PlanningPage() {
       ? `/api/planning/generate?status=approved&theatre=${selectedTheatreId}`
       : '/api/planning/generate?status=approved'
     fetch(url).then(r => r.json()).then(json => {
-      setApprovedMonths(new Set<string>((json.proposals ?? []).map((p: Proposal) => p.month)))
+      const props = (json.proposals ?? []) as Proposal[]
+      setApprovedMonths(new Set<string>(props.map(p => p.month)))
+      setApprovedList(
+        props
+          .map(p => ({ month: p.month, label: p.label, reportSent: !!(p.stats as any)?.report_sent_at }))
+          .sort((a, b) => a.month.localeCompare(b.month))
+      )
     }).catch(() => {})
     if (selectedTheatreId) {
       supabase.from('theatres').select('name').eq('id', selectedTheatreId).single()
@@ -369,6 +386,35 @@ export default function PlanningPage() {
           </div>
         )}
       </div>
+
+      {/* ── Zatwierdzone repertuary — do wdrożenia ── */}
+      {approvedList.length > 0 && (
+        <div className="bg-white rounded-2xl border border-[#e4ddd4] p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>Zatwierdzone — do wdrożenia</p>
+            <span className="text-[11px]" style={{ color: '#a89e92' }}>{theatreName || 'Teatr Polonia'}</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {approvedList.map(a => (
+              <Link key={a.month} href={`/planning/implementation?month=${a.month}`}
+                className="flex items-center justify-between gap-2 rounded-xl px-3.5 py-3 border transition-colors hover:bg-[#faf8f5]"
+                style={{ borderColor: '#e4ddd4' }}>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>{monthLabelPl(a.month)}</p>
+                  <p className="text-[11px] truncate" style={{ color: '#a89e92' }}>{a.label}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                    style={a.reportSent ? { background: '#dcfce7', color: '#15803d' } : { background: '#fef9c3', color: '#854d0e' }}>
+                    {a.reportSent ? 'Wdrożony' : 'Zatwierdzony'}
+                  </span>
+                  <span className="text-xs font-medium" style={{ color: '#7a2020' }}>Wdróż →</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Error ── */}
       {error && (
