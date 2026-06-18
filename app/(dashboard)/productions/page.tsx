@@ -79,6 +79,13 @@ function fmtDayShort(iso: string) {
   const d = new Date(iso)
   return d.toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short' })
 }
+// Polska odmiana słowa „konflikt": 1 konflikt, 2–4 konflikty, 5+ konfliktów
+function konfliktNoun(n: number): string {
+  const d = n % 10, h = n % 100
+  if (n === 1) return 'konflikt'
+  if (d >= 2 && d <= 4 && !(h >= 12 && h <= 14)) return 'konflikty'
+  return 'konfliktów'
+}
 function initials(name: string) {
   return name.split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase()
 }
@@ -260,9 +267,9 @@ function ProductionCard({ prod, isSelected, onClick, onEdit, onConflictClick }: 
             <button
               onClick={e => { e.stopPropagation(); onConflictClick() }}
               className="text-[11px] font-semibold text-red-500 flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-red-700 transition-colors"
-              title="Kliknij, aby rozwiązać konflikt"
+              title="Kliknij, aby rozwiązać konflikty"
             >
-              <IconWarning size={12} className="text-red-500" /> Konflikt
+              <IconWarning size={12} className="text-red-500" /> {prod.conflicts.length} {konfliktNoun(prod.conflicts.length)}
             </button>
           )}
           <button
