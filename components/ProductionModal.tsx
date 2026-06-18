@@ -400,6 +400,26 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
                 {theatres.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Scena</label>
+              <div className="flex p-0.5 bg-gray-100 rounded-xl">
+                {(['duza', 'mala'] as Stage[]).map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => applyStage(s)}
+                    className={`flex-1 py-2 text-xs font-semibold rounded-[10px] transition-colors ${
+                      fin.stage === s ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {STAGE_LABEL[s]} Scena
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px] text-gray-400">
+                Tytuł gra na jednej scenie (unikalna scenografia) — ustawia pojemność widowni i sugerowany koszt.
+              </p>
+            </div>
             <div>
               <label className={labelCls}>Status</label>
               <select
@@ -588,32 +608,12 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
 
          {tab === 'finance' && (
           <div className="space-y-5">
-            {/* Scena — twardy atrybut tytułu (scenografia) */}
-            <div>
-              <label className={labelCls}>Scena</label>
-              <div className="flex p-0.5 bg-gray-100 rounded-xl">
-                {(['duza', 'mala'] as Stage[]).map(s => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => applyStage(s)}
-                    className={`flex-1 py-2 text-xs font-semibold rounded-[10px] transition-colors ${
-                      fin.stage === s ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {STAGE_LABEL[s]} Scena
-                  </button>
-                ))}
-              </div>
-              <p className="mt-1 text-[11px] text-gray-400">
-                Tytuł gra na jednej scenie (unikalna scenografia). Scena ustawia pojemność widowni
-                ({previewCapacity} miejsc) i sugerowany koszt ryczałtowy.
-              </p>
-            </div>
-
             {/* Kategoria cenowa */}
             <div>
-              <label className={labelCls}>Kategoria cenowa</label>
+              <label className={labelCls}>
+                Kategoria cenowa
+                <span className="ml-2 font-normal text-gray-400">Scena: {STAGE_LABEL[fin.stage]} ({previewCapacity} miejsc) — zmień w „Szczegóły"</span>
+              </label>
               <div className="flex p-0.5 bg-gray-100 rounded-xl">
                 {(['premium', 'standard', 'mala'] as PriceCategory[]).map(cat => (
                   <button
