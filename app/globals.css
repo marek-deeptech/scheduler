@@ -101,7 +101,7 @@ a:hover { text-decoration: none; }
 .sidebar-link.active {
   color: #1a1410;
   background: #e8e0d6;
-  font-weight: 600;
+  font-weight: 700;
 }
 .sidebar-link.active::before {
   content: '';

@@ -85,6 +85,69 @@ const icons = {
   ),
 }
 
+// ── Breadcrumbs (desktop top bar) ───────────────────────────────────────────
+
+function Breadcrumbs() {
+  const { t } = useLanguage()
+  const pathname = usePathname()
+
+  const labelFor = (href: string, seg: string): string => {
+    const map: Record<string, string> = {
+      '/dashboard': t.nav.dashboard,
+      '/calendar': t.nav.calendar,
+      '/planning': 'Planowanie',
+      '/planning/implementation': 'Wdrożenie',
+      '/planning/slots': 'Sloty Favourites',
+      '/artists': t.nav.artists,
+      '/productions': t.nav.productions,
+      '/events': t.nav.events,
+      '/finance': 'Finanse',
+      '/messages': t.nav.messages,
+      '/reports': t.nav.reports,
+      '/settings': t.nav.settings,
+      '/assistant': 'Stefan',
+      '/actor': 'Aktor',
+      '/actor/calendar': 'Kalendarz',
+      '/actor/messages': 'Wiadomości',
+    }
+    if (map[href]) return map[href]
+    if (/^[0-9a-f]{8}-/i.test(seg)) return 'Szczegóły'
+    return seg.charAt(0).toUpperCase() + seg.slice(1)
+  }
+
+  const segs = pathname.split('/').filter(Boolean)
+  const isActorArea = pathname.startsWith('/actor')
+
+  const crumbs: { href: string; label: string }[] = []
+  // „Pulpit" jako korzeń ścieżki dla obszaru koordynatora
+  if (!isActorArea && pathname !== '/dashboard') crumbs.push({ href: '/dashboard', label: t.nav.dashboard })
+  let acc = ''
+  for (const s of segs) { acc += '/' + s; crumbs.push({ href: acc, label: labelFor(acc, s) }) }
+
+  // Segmenty bez własnej strony (nie linkujemy)
+  const nonLink = new Set(['/actor'])
+
+  return (
+    <nav aria-label="Ścieżka" className="flex items-center gap-1.5 text-[13px] min-w-0">
+      {crumbs.map((c, i) => {
+        const last = i === crumbs.length - 1
+        return (
+          <span key={c.href} className="flex items-center gap-1.5 min-w-0">
+            {i > 0 && <span style={{ color: '#cec5b8' }}>›</span>}
+            {last ? (
+              <span className="font-bold truncate" style={{ color: '#1a1410' }}>{c.label}</span>
+            ) : nonLink.has(c.href) ? (
+              <span className="truncate" style={{ color: '#a89e92' }}>{c.label}</span>
+            ) : (
+              <Link href={c.href} className="truncate hover:underline" style={{ color: '#7a7068' }}>{c.label}</Link>
+            )}
+          </span>
+        )
+      })}
+    </nav>
+  )
+}
+
 // ── Profile switcher ────────────────────────────────────────────────────────
 
 function ProfileSwitcher() {
@@ -201,7 +264,7 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
       })
   }, [])
 
-  const isActive = (href: string) => pathname === href
+  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
   const lnk      = (href: string) => `sidebar-link${isActive(href) ? ' active' : ''}`
 
   const theatreBtnCls = (id: string | null) => {
@@ -559,6 +622,14 @@ function Shell({ children }: { children: React.ReactNode }) {
           {/* Logged-in user + Zaloguj/Wyloguj */}
           <MobileUserChip onOpenDrawer={() => setDrawerOpen(true)} />
         </header>
+
+        {/* Desktop breadcrumb bar */}
+        <div
+          className="hidden md:flex items-center px-8 shrink-0 no-print"
+          style={{ minHeight: 44, background: '#fff', borderBottom: '1px solid #e4ddd4' }}
+        >
+          <Breadcrumbs />
+        </div>
 
         <main className="flex-1 overflow-y-auto overscroll-contain">
           <div className="px-4 py-4 md:px-8 md:py-8 max-w-[1400px]">
