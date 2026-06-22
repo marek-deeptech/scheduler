@@ -780,7 +780,8 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
             </a>
           )}
           {artist.phone && (
-            <a href={`tel:${artist.phone}`}
+            // TRYB TESTOWY: link „tel" celuje w numer testowy, by nie dzwonić do prawdziwych osób.
+            <a href="tel:60849442"
               className="flex items-center gap-2 text-xs transition-colors group"
               style={{ color: '#7a7068' }}>
               <IconPhone size={12} />

@@ -30,6 +30,11 @@ function sanitizeForSms(message: string): string {
     .trim()
 }
 
+// ⚠️ TRYB TESTOWY — wszystkie SMS-y przekierowane na jeden numer testowy,
+// żeby nic nie trafiło do prawdziwych odbiorców. Aby wrócić do realnej
+// wysyłki, ustaw TEST_REDIRECT_PHONE = '' (pusty string).
+export const TEST_REDIRECT_PHONE = '60849442'
+
 export async function sendSms(phone: string, message: string): Promise<boolean> {
   const token = process.env.SMSAPI_TOKEN
   if (!token) {
@@ -37,7 +42,12 @@ export async function sendSms(phone: string, message: string): Promise<boolean> 
     return false
   }
 
-  const normalizedPhone = normalizePhone(phone)
+  let targetPhone = phone
+  if (TEST_REDIRECT_PHONE) {
+    console.info(`[TEST] SMS przekierowany (oryg. numer: ${phone}) → ${TEST_REDIRECT_PHONE}`)
+    targetPhone = TEST_REDIRECT_PHONE
+  }
+  const normalizedPhone = normalizePhone(targetPhone)
   const text = sanitizeForSms(message)
 
   // Endpoint sms.do wymaga form-urlencoded i jawnego encoding=utf-8,
