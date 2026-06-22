@@ -771,7 +771,8 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
         {/* Contact info */}
         <div className="mt-3 space-y-1">
           {artist.email && (
-            <a href={`mailto:${artist.email}`}
+            // TRYB TESTOWY: link „mailto" celuje w adresy testowe, by nie pisać do prawdziwych osób.
+            <a href="mailto:Marek@veryniceworks.com,k.szustow@szustow.com"
               className="flex items-center gap-2 text-xs transition-colors group"
               style={{ color: '#7a7068' }}>
               <IconMail size={12} />

@@ -8,13 +8,24 @@ function getResend() {
   return new Resend(key)
 }
 
+// ⚠️ TRYB TESTOWY — wszystkie maile przekierowane na adresy testowe,
+// żeby nic nie trafiło do prawdziwych odbiorców. Aby wrócić do realnej
+// wysyłki, ustaw TEST_REDIRECT_EMAILS = [] (lub usuń override poniżej).
+export const TEST_REDIRECT_EMAILS = ['Marek@veryniceworks.com', 'k.szustow@szustow.com']
+
 export async function sendEmail(to: string | string[], subject: string, html: string) {
   const resend = getResend()
   if (!resend) {
     console.warn('Resend not configured — email skipped')
     return false
   }
-  const { error } = await resend.emails.send({ from: FROM, to, subject, html })
+  let recipients: string | string[] = to
+  if (TEST_REDIRECT_EMAILS.length > 0) {
+    const original = Array.isArray(to) ? to.join(', ') : to
+    console.info(`[TEST] Mail przekierowany (oryg. odbiorca: ${original}) → ${TEST_REDIRECT_EMAILS.join(', ')}`)
+    recipients = TEST_REDIRECT_EMAILS
+  }
+  const { error } = await resend.emails.send({ from: FROM, to: recipients, subject, html })
   if (error) console.error('Resend error:', error)
   return !error
 }
