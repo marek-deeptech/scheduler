@@ -54,11 +54,14 @@ export default function SlotsPage() {
     favs.sort((a, b) => a.title.localeCompare(b.title, 'pl'))
     setFavourites(favs)
 
-    // Sloty miesiąca
+    // Sloty miesiąca — wg faktycznego okna grania (window_start), nie kolumny month,
+    // żeby nawigator miesięcy pokazywał sloty z danego miesiąca.
     const { data: slotData, error: slotErr } = await supabase
       .from('repertoire_slots')
       .select('id, month, production_id, window_start, window_end, target_performances, status, locked_dates')
-      .eq('month', month)
+      .gte('window_start', firstOfMonth(month))
+      .lte('window_start', lastOfMonth(month))
+      .order('window_start')
     if (slotErr) {
       setMigrationNeeded(true); setSlots([]); setLoading(false); return
     }
@@ -170,7 +173,8 @@ function SlotCreator({ month, favs, onCreated }: { month: string; favs: FavProd[
     if (!prodId || !start || !end) return
     setSaving(true)
     await supabase.from('repertoire_slots').insert({
-      month, production_id: prodId, window_start: start, window_end: end,
+      // month wynika z okna grania (window_start), nie z aktualnie oglądanego miesiąca
+      month: start.slice(0, 7), production_id: prodId, window_start: start, window_end: end,
       target_performances: parseInt(target) || 4, status: 'collecting',
     })
     setSaving(false)
