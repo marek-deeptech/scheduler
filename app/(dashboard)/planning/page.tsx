@@ -370,11 +370,11 @@ export default function PlanningPage() {
             style={{ background: '#1a1410', color: '#fff' }}
           >
             <span style={{ color: '#34d399' }}>◆</span>
-            4 opcje (Finanse)
+            Uwzględnij założenia finansowe
           </button>
         </div>
         <p className="text-[11px] -mt-2" style={{ color: '#a89e92' }}>
-          Planujesz: <b style={{ color: '#7a2020' }}>{theatreName || 'Teatr Polonia'}</b> (zmień teatr w menu po lewej). „4 opcje (Finanse)" bierze zatwierdzone dni Favourites jako stałe i dokłada resztę repertuaru pod 4 cele finansowe (uwzględnia zajętość wspólnych aktorów w drugim teatrze).
+          Planujesz: <b style={{ color: '#7a2020' }}>{theatreName || 'Teatr Polonia'}</b> (zmień teatr w menu po lewej). „Uwzględnij założenia finansowe" bierze zatwierdzone dni Favourites jako stałe i dokłada resztę repertuaru pod 4 cele finansowe (uwzględnia zajętość wspólnych aktorów w drugim teatrze).
         </p>
 
         {/* Generating banner */}
