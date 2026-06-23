@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
+import { CategoryMarks } from '@/components/CategoryMarks'
 import {
   DEFAULT_PARAMS, CATEGORY_DEFAULTS, FAVOURITE_ATTENDANCE, forecastEvent, breakEvenAttendance,
   stageCapacity, asp, fmtPln, fmtPct, isWeekend, STAGE_LABEL,
@@ -71,7 +72,7 @@ export default function FinancePage() {
     if (prodIds.length > 0) {
       let { data: pData, error } = await supabase
         .from('productions')
-        .select('id, title, stage, price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost, is_favourite')
+        .select('id, title, stage, favourite_level, hit_level, price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost, is_favourite')
         .in('id', prodIds)
       if (error) {
         migration = true
@@ -91,6 +92,8 @@ export default function FinancePage() {
           assumedAttendance: p.assumed_attendance ?? DEFAULT_PARAMS.defaultAttendance,
           fixedCost:         p.fixed_cost          ?? DEFAULT_PARAMS.defaultFixedCost,
           isFavourite:       p.is_favourite        ?? false,
+          favLevel:          p.favourite_level     ?? (p.is_favourite ? 1 : 0),
+          hitLevel:          p.hit_level           ?? 0,
         }
       }
     }
@@ -294,9 +297,8 @@ export default function FinancePage() {
                           title={`${STAGE_LABEL[t.prod.stage]} Scena`}>
                           {STAGE_LABEL[t.prod.stage]}
                         </span>
-                        {t.isFavourite ? (
-                          <span className="ml-2 text-[11px]" style={{ color: '#ef4444' }} title="Favourite">♥</span>
-                        ) : (
+                        <CategoryMarks favLevel={t.prod.favLevel ?? 0} hitLevel={t.prod.hitLevel ?? 0} size={13} className="ml-2 align-middle" />
+                        {!t.isFavourite && (t.prod.hitLevel ?? 0) === 0 && (
                           <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#f2ede6', color: '#7a7068' }}>
                             {CATEGORY_DEFAULTS[t.prod.priceCategory]?.label ?? t.prod.priceCategory}
                           </span>

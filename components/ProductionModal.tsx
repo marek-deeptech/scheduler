@@ -31,6 +31,8 @@ interface ProductionRecord {
   location_type?: string | null
   comment?: string | null
   is_favourite?: boolean | null
+  favourite_level?: number | null
+  hit_level?: number | null
 }
 
 interface EventRecord {
@@ -92,6 +94,46 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   )
 }
 
+/* ── Wybór poziomu kategorii (Favourite / Hit Kasowy) ──────────── */
+function LevelPicker({ kind, label, hint, value, onChange }: {
+  kind: 'fav' | 'hit'; label: string; hint: string; value: number; onChange: (v: number) => void
+}) {
+  const color  = kind === 'fav' ? '#ef4444' : '#15803d'
+  const active = value > 0
+  const iconColor = active ? color : '#cbd5e1'
+  return (
+    <div className="flex items-center gap-3 rounded-xl px-3 py-2"
+      style={{ border: active ? `1.5px solid ${kind === 'fav' ? '#fca5a5' : '#86efac'}` : '1px solid #e5e7eb', background: active ? (kind === 'fav' ? '#fff1f2' : '#f0fdf4') : '#f9fafb' }}>
+      <span className="shrink-0">
+        {kind === 'fav' ? (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill={active ? iconColor : 'none'} stroke={iconColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+          </svg>
+        ) : (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2v20"/>
+            <path d="M17 6.5C17 4.6 14.8 3.5 12 3.5S7 4.7 7 6.8c0 5 10 2.6 10 7.7 0 2.1-2.2 3.3-5 3.3s-5-1.1-5-3.2"/>
+          </svg>
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>{label}</p>
+        <p className="text-[11px]" style={{ color: '#9ca3af' }}>{hint}</p>
+      </div>
+      <div className="flex p-0.5 bg-gray-100 rounded-lg shrink-0">
+        {[0, 1, 2, 3].map(lvl => (
+          <button key={lvl} type="button" onClick={() => onChange(lvl)}
+            title={lvl === 0 ? 'Brak kategorii' : `Poziom ${lvl}`}
+            className={`w-8 py-1.5 text-xs font-bold rounded-md transition-colors ${value === lvl ? 'bg-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+            style={value === lvl && lvl > 0 ? { color } : undefined}>
+            {lvl === 0 ? '—' : lvl}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function fmtDate(iso: string) {
   const d = new Date(iso)
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
@@ -116,7 +158,8 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
     start_date:    production?.start_date    ?? '',
     end_date:      production?.end_date      ?? '',
     comment:       production?.comment       ?? '',
-    is_favourite:  production?.is_favourite  ?? false,
+    favourite_level: production?.favourite_level ?? (production?.is_favourite ? 1 : 0),
+    hit_level:       production?.hit_level       ?? 0,
   })
   const [assignedIds, setAssignedIds] = useState<string[]>([])
   const [events,      setEvents]      = useState<EventRecord[]>([])
@@ -196,6 +239,20 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
     })()
   }, [production?.id])
 
+  // Poziomy kategorii (tolerancyjnie na brak migracji categories)
+  useEffect(() => {
+    if (!production) return
+    supabase.from('productions').select('favourite_level, hit_level').eq('id', production.id).single()
+      .then(({ data, error }) => {
+        if (error || !data) return
+        setForm(f => ({
+          ...f,
+          favourite_level: (data as any).favourite_level ?? f.favourite_level,
+          hit_level:       (data as any).hit_level       ?? 0,
+        }))
+      })
+  }, [production?.id])
+
   // Zmiana kategorii cenowej podstawia domyślne ceny biletów
   function applyCategory(cat: PriceCategory) {
     const def = CATEGORY_DEFAULTS[cat]
@@ -244,7 +301,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
       start_date:    form.start_date    || null,
       end_date:      form.end_date      || null,
       comment:       form.comment       || null,
-      is_favourite:  form.is_favourite,
+      is_favourite:  form.favourite_level > 0,   // zsynchronizowane z poziomem (zgodność z planowaniem)
     }
 
     let productionId = production?.id ?? null
@@ -284,6 +341,11 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
       }
       const { error: finErr } = await supabase.from('productions').update(financePayload).eq('id', productionId)
       if (finErr) console.warn('Zapis parametrów finansowych pominięty (czy migracja finansowa uruchomiona?):', finErr.message)
+
+      // Poziomy kategorii — osobno i tolerancyjnie (gdy brak migracji categories)
+      const { error: catErr } = await supabase.from('productions')
+        .update({ favourite_level: form.favourite_level, hit_level: form.hit_level }).eq('id', productionId)
+      if (catErr) console.warn('Zapis kategorii (favourite_level/hit_level) pominięty — uruchom supabase-migration-categories.sql:', catErr.message)
     }
 
     setSaving(false)
@@ -354,35 +416,22 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className={labelCls}>Tytuł *</label>
-              <div className="flex gap-2">
-                <input
-                  required
-                  value={form.title}
-                  onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  className={inputCls}
-                  placeholder="np. Hamlet"
-                />
-                <button
-                  type="button"
-                  onClick={() => setForm(f => ({ ...f, is_favourite: !f.is_favourite }))}
-                  title={form.is_favourite ? 'Usuń z ulubionych' : 'Oznacz jako Favourite'}
-                  className="shrink-0 w-11 h-11 flex items-center justify-center rounded-xl border transition-all"
-                  style={{
-                    border: form.is_favourite ? '1.5px solid #fca5a5' : '1px solid #e5e7eb',
-                    background: form.is_favourite ? '#fff1f2' : '#f9fafb',
-                  }}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill={form.is_favourite ? '#ef4444' : 'none'} stroke={form.is_favourite ? '#ef4444' : '#9ca3af'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
-                  </svg>
-                </button>
+              <input
+                required
+                value={form.title}
+                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                className={inputCls}
+                placeholder="np. Hamlet"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Kategorie <span className="font-normal text-gray-400">— poziom 1–3 ustawia koordynator</span></label>
+              <div className="space-y-2">
+                <LevelPicker kind="fav" label="Favourite" hint="prestiżowy tytuł — priorytet w planowaniu"
+                  value={form.favourite_level} onChange={v => setForm(f => ({ ...f, favourite_level: v }))} />
+                <LevelPicker kind="hit" label="Hit Kasowy" hint="najbardziej dochodowy tytuł"
+                  value={form.hit_level} onChange={v => setForm(f => ({ ...f, hit_level: v }))} />
               </div>
-              {form.is_favourite && (
-                <p className="mt-1.5 text-xs font-medium flex items-center gap-1" style={{ color: '#ef4444' }}>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="#ef4444" stroke="none"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
-                  Favourite — tytuł priorytetowy przy planowaniu repertuaru
-                </p>
-              )}
             </div>
             <div>
               <label className={labelCls}>Reżyser</label>

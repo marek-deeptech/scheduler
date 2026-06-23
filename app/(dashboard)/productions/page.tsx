@@ -7,6 +7,7 @@ import { useTheatre } from '@/lib/theatre-context'
 import ProductionModal from '@/components/ProductionModal'
 import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import SendConfirmModal from '@/components/SendConfirmModal'
+import { CategoryMarks } from '@/components/CategoryMarks'
 import { IconWarning, IconTheatre } from '@/lib/icons'
 import { sortByLastName } from '@/lib/names'
 import { STAGE_LABEL, type Stage } from '@/lib/finance'
@@ -41,6 +42,8 @@ interface ProductionRow {
   status: string
   comment: string | null
   is_favourite: boolean
+  favLevel: number
+  hitLevel: number
   cast: CastMember[]
   events: EventRow[]
   hasConflict: boolean
@@ -218,13 +221,7 @@ function ProductionCard({ prod, isSelected, onClick, onEdit, onConflictClick }: 
         <div>
           <div className="flex items-start gap-2">
             <h3 className="text-lg font-bold leading-tight flex-1" style={{ color: '#1a1410' }}>{prod.title}</h3>
-            {prod.is_favourite && (
-              <span title="Favourite" className="shrink-0 mt-0.5">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="#ef4444" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
-                </svg>
-              </span>
-            )}
+            <CategoryMarks favLevel={prod.favLevel} hitLevel={prod.hitLevel} size={17} className="shrink-0 mt-0.5" />
           </div>
           {prod.director && <p className="text-xs text-gray-500 mt-0.5">reż. {prod.director}</p>}
         </div>
@@ -346,7 +343,10 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
       {/* Panel header */}
       <div className="px-5 py-4 border-b border-gray-100 shrink-0">
         <div className="flex items-start justify-between gap-2 mb-1">
-          <h2 className="text-base font-bold text-gray-900 leading-tight">{prod.title}</h2>
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="text-base font-bold text-gray-900 leading-tight">{prod.title}</h2>
+            <CategoryMarks favLevel={prod.favLevel} hitLevel={prod.hitLevel} size={15} />
+          </div>
           <button onClick={onClose}
             className="w-7 h-7 flex items-center justify-center rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0 text-lg leading-none">
             ×
@@ -598,7 +598,7 @@ export default function ProductionsPage() {
 
     // Tolerancyjnie na brak migracji 'stage' — ponów bez tej kolumny.
     const prodSelect = (withStage: boolean): string => `
-      id, title, director, premiere_date, start_date, end_date, theatre_id, ${withStage ? 'stage, ' : ''}status, comment, is_favourite,
+      id, title, director, premiere_date, start_date, end_date, theatre_id, ${withStage ? 'stage, favourite_level, hit_level, ' : ''}status, comment, is_favourite,
       theatres(name),
       artist_productions(artists(id, name, role, avatar_url)),
       events(id, title, type, start_time, end_time, room_id, rooms(name), event_artists(artist_id))
@@ -676,6 +676,8 @@ export default function ProductionsPage() {
         status:        p.status ?? 'Bieżące',
         comment:       p.comment ?? null,
         is_favourite:  p.is_favourite ?? false,
+        favLevel:      p.favourite_level ?? (p.is_favourite ? 1 : 0),
+        hitLevel:      p.hit_level ?? 0,
         cast: sortedCast,
         events,
         conflicts,

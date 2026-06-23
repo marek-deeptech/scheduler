@@ -48,6 +48,8 @@ export interface ProductionFinance {
   assumedAttendance: number
   fixedCost: number
   isFavourite: boolean
+  favLevel?: number
+  hitLevel?: number
 }
 
 // Tytuły ulubione traktujemy jako pewny komplet — frekwencja 100%.
