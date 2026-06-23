@@ -639,21 +639,40 @@ export default function ProductionsPage() {
       return r
     })()
 
-    const [{ data: prodData }, { data: thData }, { data: artistData }, { data: roomData }] = await Promise.all([
+    const [{ data: prodData }, { data: thData }, { data: artistData }, { data: roomData }, { data: apprData }] = await Promise.all([
       prodPromise,
       supabase.from('theatres').select('id, name').order('name'),
       supabase.from('artists').select('id, name, role, teams!inner(name)').eq('teams.name', 'Cast').order('name'),
       supabase.from('rooms').select('id, theatre_id, name').order('name'),
+      // Zatwierdzone repertuary (status approved = też wdrożone) — ich miesiące są „zamknięte"
+      supabase.from('repertoire_proposals').select('month, theatre_id').eq('status', 'approved'),
     ])
 
     // Only show Cast team members in production casts
     const castIdSet = new Set((artistData ?? []).map((a: any) => a.id))
 
+    // Konflikty pokazujemy TYLKO dla spektakli w repertuarach niezaakceptowanych:
+    // pomijamy miesiące przeszłe/bieżący oraz miesiące z zatwierdzonym (lub wdrożonym)
+    // repertuarem — tam konflikt nie może wystąpić (został rozwiązany przy zatwierdzeniu).
+    const approvedGlobalMonths = new Set<string>()   // proposale bez teatru = globalne
+    const approvedKeys = new Set<string>()            // `${theatre}|${month}`
+    for (const r of (apprData ?? []) as any[]) {
+      if (r.theatre_id) approvedKeys.add(`${r.theatre_id}|${r.month}`)
+      else approvedGlobalMonths.add(r.month)
+    }
+    const now = new Date()
+    const curKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const monthOf = (iso: string) => String(iso).slice(0, 7)
+    const conflictEligible = (e: any) => {
+      const m = monthOf(e.start_time)
+      return m > curKey && !approvedGlobalMonths.has(m) && !approvedKeys.has(`${e._theatreId}|${m}`)
+    }
+
     // Flat list of all fetched events + cast per production, for
-    // cross-production conflict detection
+    // cross-production conflict detection (tylko spektakle „w grze")
     const allEvs = (prodData ?? []).flatMap((p: any) =>
-      (p.events ?? []).map((e: any) => ({ ...e, _prodId: p.id, _prodTitle: p.title }))
-    )
+      (p.events ?? []).map((e: any) => ({ ...e, _prodId: p.id, _prodTitle: p.title, _theatreId: p.theatre_id }))
+    ).filter(conflictEligible)
     const castByProd = new Map<string, Set<string>>()
     for (const p of (prodData ?? []) as any[]) {
       castByProd.set(p.id, new Set(
