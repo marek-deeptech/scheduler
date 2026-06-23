@@ -289,6 +289,7 @@ export default function PlanningPage() {
           note="Repertuar zostanie oznaczony jako zatwierdzony, a wydarzenia trafią do kalendarza."
           confirmLabel="Zatwierdź i powiadom obsadę"
           sending={actionLoading === approveConfirm.id + 'approve'}
+          allowEmpty
           onConfirm={() => handleAction(approveConfirm.id, 'approve')}
           onCancel={() => setApproveConfirm(null)}
         />

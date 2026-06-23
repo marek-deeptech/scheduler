@@ -18,6 +18,7 @@ export default function SendConfirmModal({
   note,
   confirmLabel,
   sending = false,
+  allowEmpty = false,
   onConfirm,
   onCancel,
 }: {
@@ -28,6 +29,7 @@ export default function SendConfirmModal({
   note?: string
   confirmLabel?: string
   sending?: boolean
+  allowEmpty?: boolean
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -91,7 +93,7 @@ export default function SendConfirmModal({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={sending || count === 0}
+            disabled={sending || (count === 0 && !allowEmpty)}
             className="px-5 py-2 text-sm font-semibold text-white rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             style={{ background: '#16a34a' }}
           >
