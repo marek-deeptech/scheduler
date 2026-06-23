@@ -622,7 +622,7 @@ export default function ProductionsPage() {
 
     // Tolerancyjnie na brak migracji — 'stage' i poziomy kategorii niezależnie.
     const prodSelect = (withStage: boolean, withLevels: boolean): string => `
-      id, title, director, premiere_date, start_date, end_date, theatre_id, poster_url, ${withStage ? 'stage, ' : ''}${withLevels ? 'favourite_level, hit_level, ' : ''}status, comment, is_favourite,
+      id, title, director, premiere_date, start_date, end_date, theatre_id, poster_url, price_category, ${withStage ? 'stage, ' : ''}${withLevels ? 'favourite_level, hit_level, ' : ''}status, comment, is_favourite,
       theatres(name),
       artist_productions(artists(id, name, role, avatar_url)),
       events(id, title, type, start_time, end_time, room_id, rooms(name), event_artists(artist_id))
@@ -717,7 +717,7 @@ export default function ProductionsPage() {
         end_date:      p.end_date ?? null,
         theatre_id:    p.theatre_id ?? null,
         theatreName:   th?.name ?? null,
-        stage:         p.stage === 'mala' ? 'mala' : 'duza',
+        stage:         (p.stage === 'mala' || (!p.stage && p.price_category === 'mala')) ? 'mala' : 'duza',
         status:        p.status ?? 'Bieżące',
         comment:       p.comment ?? null,
         is_favourite:  p.is_favourite ?? false,

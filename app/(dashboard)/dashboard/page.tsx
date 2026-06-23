@@ -335,11 +335,12 @@ export default function DashboardPage() {
     setActiveProd(prods.filter(p => p.status === 'Bieżące').length)
     setInPrepList(prods.filter(p => p.status === 'Planowane'))
 
-    // Mapa scena per tytuł — z twardego pola stage: mala → Mała, inaczej Duża
+    // Mapa scena per tytuł — pole stage, a gdy brak migracji: fallback z price_category ('mala').
     const stages = new Map<string, 'Duża' | 'Mała'>()
     const cats = new Map<string, { fav: number; hit: number }>()
     for (const p of prods as any[]) {
-      stages.set(p.title, p.stage === 'mala' ? 'Mała' : 'Duża')
+      const isMala = p.stage ? p.stage === 'mala' : p.price_category === 'mala'
+      stages.set(p.title, isMala ? 'Mała' : 'Duża')
       cats.set(p.title, { fav: p.favourite_level ?? 0, hit: p.hit_level ?? 0 })
     }
     setStageByTitle(stages)

@@ -225,7 +225,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
       if (!data) return
       // Kategoria 'mala' wycofana — mapujemy na 'standard' (scena jest osobnym polem).
       const cat: PriceCategory = (data as any).price_category === 'premium' ? 'premium' : 'standard'
-      const stage: Stage = (data as any).stage === 'mala' ? 'mala' : 'duza'
+      const stage: Stage = ((data as any).stage === 'mala' || (!(data as any).stage && (data as any).price_category === 'mala')) ? 'mala' : 'duza'
       const def = CATEGORY_DEFAULTS[cat] ?? CATEGORY_DEFAULTS.standard
       setFin({
         stage,

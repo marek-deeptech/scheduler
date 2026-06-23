@@ -84,7 +84,7 @@ export default function FinancePage() {
         const def = CATEGORY_DEFAULTS[cat] ?? CATEGORY_DEFAULTS.standard
         prodMap[p.id] = {
           id: p.id, title: p.title,
-          stage: p.stage === 'mala' ? 'mala' : 'duza',
+          stage: (p.stage === 'mala' || (!p.stage && p.price_category === 'mala')) ? 'mala' : 'duza',
           priceCategory: cat,
           priceNormal:     p.price_normal      ?? def.normal,
           priceReduced:    p.price_reduced     ?? def.reduced,

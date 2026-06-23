@@ -129,7 +129,7 @@ export default function PlanningPage() {
         }
         castMap.set(p.title, ids)
         if ((p as any).is_favourite) favSet.add(p.title)
-        stages.set(p.title, (p as any).stage === 'mala' ? 'Mała' : 'Duża')
+        stages.set(p.title, ((p as any).stage === 'mala' || (!(p as any).stage && (p as any).price_category === 'mala')) ? 'Mała' : 'Duża')
         cats.set(p.title, {
           fav: (p as any).favourite_level ?? ((p as any).is_favourite ? 1 : 0),
           hit: (p as any).hit_level ?? 0,
