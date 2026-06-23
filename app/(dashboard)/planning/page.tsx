@@ -73,7 +73,7 @@ function getNextMonths(n: number) {
 const MONTHS_PL = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień']
 function monthLabelPl(key: string) { const [y, m] = key.split('-'); return `${MONTHS_PL[+m - 1]} ${y}` }
 
-interface ApprovedEntry { month: string; label: string; reportSent: boolean }
+interface ApprovedEntry { id: string; month: string; label: string; reportSent: boolean }
 
 // ── Main page ────────────────────────────────────────────────────────────────
 
@@ -153,7 +153,7 @@ export default function PlanningPage() {
       setApprovedMonths(new Set<string>(props.map(p => p.month)))
       setApprovedList(
         props
-          .map(p => ({ month: p.month, label: p.label, reportSent: !!(p.stats as any)?.report_sent_at }))
+          .map(p => ({ id: p.id, month: p.month, label: p.label, reportSent: !!(p.stats as any)?.report_sent_at }))
           .sort((a, b) => a.month.localeCompare(b.month))
       )
     }).catch(() => {})
@@ -436,21 +436,26 @@ export default function PlanningPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {approvedList.map(a => (
-              <Link key={a.month} href={`/planning/implementation?month=${a.month}`}
-                className="flex items-center justify-between gap-2 rounded-xl px-3.5 py-3 border transition-colors hover:bg-[#faf8f5]"
+              <div key={a.month}
+                className="flex items-center justify-between gap-2 rounded-xl px-3.5 py-3 border"
                 style={{ borderColor: '#e4ddd4' }}>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>{monthLabelPl(a.month)}</p>
                   <p className="text-[11px] truncate" style={{ color: '#a89e92' }}>{a.label}</p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2.5 shrink-0">
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                     style={a.reportSent ? { background: '#dcfce7', color: '#15803d' } : { background: '#fef9c3', color: '#854d0e' }}>
                     {a.reportSent ? 'Wdrożony' : 'Zatwierdzony'}
                   </span>
-                  <span className="text-xs font-medium" style={{ color: '#7a2020' }}>Wdróż →</span>
+                  <Link href={`/planning/${a.id}`} className="text-xs font-medium hover:underline" style={{ color: '#7a7068' }}>
+                    Podgląd
+                  </Link>
+                  <Link href={`/planning/implementation?month=${a.month}`} className="text-xs font-medium hover:underline" style={{ color: '#7a2020' }}>
+                    Wdróż →
+                  </Link>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         </div>
