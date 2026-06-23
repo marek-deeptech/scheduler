@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
 import ConflictResolutionModal from '@/components/ConflictResolutionModal'
+import SendConfirmModal from '@/components/SendConfirmModal'
 import {
   detectProposalConflicts,
   conflictedTitles,
@@ -164,6 +165,7 @@ export default function PlanningPage() {
   const [expandedIds,   setExpandedIds]   = useState<Set<string>>(new Set())
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [error,         setError]         = useState<string | null>(null)
+  const [approveConfirm, setApproveConfirm] = useState<Proposal | null>(null)
 
   // Cast data for real conflict detection
   const [productionCastMap, setProductionCastMap] = useState<Map<string, string[]>>(new Map())
@@ -258,6 +260,7 @@ export default function PlanningPage() {
       })
       const json = await r.json()
       if (json.error) throw new Error(json.error)
+      setApproveConfirm(null)
       await loadProposals()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Błąd')
@@ -266,8 +269,31 @@ export default function PlanningPage() {
     }
   }
 
+  // Odbiorcy powiadomienia po zatwierdzeniu — cała obsada tytułów z propozycji
+  function recipientsFor(p: Proposal): { name: string }[] {
+    const titles = new Set((p.proposal_data ?? []).map(e => e.production_title))
+    const ids = new Set<string>()
+    titles.forEach(t => (productionCastMap.get(t) ?? []).forEach(id => ids.add(id)))
+    return [...ids].map(id => ({ name: artistNamesMap.get(id) ?? '—' })).sort((a, b) => a.name.localeCompare(b.name, 'pl'))
+  }
+
   return (
     <div className="space-y-6">
+      {/* Potwierdzenie zatwierdzenia repertuaru (wysyłka planu do obsady) */}
+      {approveConfirm && (
+        <SendConfirmModal
+          title={`Zatwierdź repertuar — ${monthLabelPl(approveConfirm.month)}`}
+          channelLabel="Powiadomienie do obsady (e-mail / SMS)"
+          recipients={recipientsFor(approveConfirm)}
+          content={`Po zatwierdzeniu „${approveConfirm.label}" plan spektakli na ${monthLabelPl(approveConfirm.month)} zostanie rozesłany do obsady z prośbą o potwierdzenie udziału.`}
+          note="Repertuar zostanie oznaczony jako zatwierdzony, a wydarzenia trafią do kalendarza."
+          confirmLabel="Zatwierdź i powiadom obsadę"
+          sending={actionLoading === approveConfirm.id + 'approve'}
+          onConfirm={() => handleAction(approveConfirm.id, 'approve')}
+          onCancel={() => setApproveConfirm(null)}
+        />
+      )}
+
       {/* Conflict resolution modal */}
       {conflictModal && (
         <ConflictResolutionModal
@@ -455,7 +481,7 @@ export default function PlanningPage() {
                 proposal={p}
                 expanded={expandedIds.has(p.id)}
                 onToggle={() => setExpandedIds(prev => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n })}
-                onApprove={() => handleAction(p.id, 'approve')}
+                onApprove={() => setApproveConfirm(p)}
                 onReject={() => handleAction(p.id, 'reject')}
                 actionLoading={actionLoading}
                 productionCastMap={productionCastMap}

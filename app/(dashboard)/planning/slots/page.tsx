@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
 import { sortByLastName } from '@/lib/names'
+import SendConfirmModal from '@/components/SendConfirmModal'
 import {
   windowDates, dayCoverage, suggestDays, fmtDayShort,
   type SlotRow, type DayFeasibility,
@@ -245,6 +246,7 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
   onChanged: () => void
 }) {
   const [sending, setSending] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const [chosen, setChosen] = useState<Set<string>>(new Set(slot.locked_dates ?? []))
   const [saving, setSaving] = useState(false)
 
@@ -265,6 +267,7 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
       body: JSON.stringify({ slotId: slot.id }),
     })
     setSending(false)
+    setConfirmOpen(false)
     onChanged()
   }
 
@@ -305,12 +308,26 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
           <span className="text-[11px] px-2 py-1 rounded-full" style={{ background: '#f2ede6', color: '#7a7068' }}>
             Odpowiedzi: {respondedCount}/{castCount}
           </span>
-          <button onClick={sendInvites} disabled={sending || castCount === 0}
+          <button onClick={() => setConfirmOpen(true)} disabled={sending || castCount === 0}
             className="text-xs font-medium px-3 py-1.5 rounded-lg text-white disabled:opacity-40" style={{ background: '#1a1410' }}>
             {sending ? 'Wysyłam…' : respondedCount > 0 ? 'Wyślij ponownie' : 'Wyślij ankiety'}
           </button>
         </div>
       </div>
+
+      {confirmOpen && (
+        <SendConfirmModal
+          title={`Ankieta dostępności — ${prod?.title ?? 'Tytuł'}`}
+          channelLabel="Ankieta dostępności (e-mail / SMS)"
+          recipients={castSorted.map(c => ({ name: c.name }))}
+          content={`Prośba do obsady o zaznaczenie dni, w które mogą zagrać „${prod?.title ?? 'tytuł'}".\nOkno grania: ${fmtDayShort(slot.window_start)} – ${fmtDayShort(slot.window_end)} · docelowo ${slot.target_performances} grań.`}
+          note={respondedCount > 0 ? `Część obsady (${respondedCount}/${castCount}) już odpowiedziała — ankieta zostanie wysłana ponownie do wszystkich.` : undefined}
+          confirmLabel={`Wyślij ankietę do ${castCount} ${castCount === 1 ? 'osoby' : 'osób'}`}
+          sending={sending}
+          onConfirm={sendInvites}
+          onCancel={() => setConfirmOpen(false)}
+        />
+      )}
 
       {/* Heatmapa */}
       {respondedCount === 0 ? (

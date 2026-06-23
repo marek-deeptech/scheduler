@@ -6,6 +6,7 @@ import { useLanguage } from '@/lib/language-context'
 import { useTheatre } from '@/lib/theatre-context'
 import ProductionModal from '@/components/ProductionModal'
 import ConflictResolutionModal from '@/components/ConflictResolutionModal'
+import SendConfirmModal from '@/components/SendConfirmModal'
 import { IconWarning, IconTheatre } from '@/lib/icons'
 import { sortByLastName } from '@/lib/names'
 import { STAGE_LABEL, type Stage } from '@/lib/finance'
@@ -302,6 +303,7 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
   const [msgBody,    setMsgBody]    = useState('')
   const [msgSending, setMsgSending] = useState(false)
   const [msgSent,    setMsgSent]    = useState(false)
+  const [msgConfirm, setMsgConfirm] = useState(false)
 
   // Reset compose form when production changes
   useEffect(() => {
@@ -309,6 +311,7 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
     setMsgSent(false)
     setMsgSubject('')
     setMsgBody('')
+    setMsgConfirm(false)
   }, [prod.id])
 
   async function handleSendMessage() {
@@ -325,6 +328,7 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
       }),
     })
     setMsgSending(false)
+    setMsgConfirm(false)
     setMsgSent(true)
     setMsgSubject('')
     setMsgBody('')
@@ -451,7 +455,7 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
               <div className="flex justify-between items-center">
                 <button onClick={() => setMsgOpen(false)} className="text-xs text-gray-500">Anuluj</button>
                 <button
-                  onClick={handleSendMessage}
+                  onClick={() => setMsgConfirm(true)}
                   disabled={msgSending || !msgSubject || !msgBody}
                   className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-40"
                   style={{ background: '#1a1410', color: '#fff' }}
@@ -461,6 +465,19 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
               </div>
               {msgSent && <p className="text-xs text-green-600">Wysłano do całej obsady ✓</p>}
             </div>
+          )}
+
+          {msgConfirm && (
+            <SendConfirmModal
+              title={`Wiadomość do obsady — ${prod.title}`}
+              channelLabel="E-mail do obsady"
+              recipients={prod.cast.map(c => ({ name: c.name, detail: c.role ?? undefined }))}
+              content={<><b>{msgSubject}</b>{'\n\n'}{msgBody}</>}
+              confirmLabel={`Wyślij do ${prod.cast.length} ${prod.cast.length === 1 ? 'osoby' : 'osób'}`}
+              sending={msgSending}
+              onConfirm={handleSendMessage}
+              onCancel={() => setMsgConfirm(false)}
+            />
           )}
         </div>
 

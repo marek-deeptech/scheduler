@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import SendConfirmModal from '@/components/SendConfirmModal'
 import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
 
@@ -56,6 +57,7 @@ export default function ImplementationPage() {
   const [sending, setSending] = useState(false)
   const [openDept, setOpenDept] = useState<string | null>(null)
   const [deptMsg, setDeptMsg] = useState<Record<string, string>>({})
+  const [reportConfirm, setReportConfirm] = useState(false)
 
   useEffect(() => {
     let q = supabase.from('repertoire_proposals').select('month').eq('status', 'approved').order('month', { ascending: false })
@@ -85,6 +87,7 @@ export default function ImplementationPage() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month, theatreId: selectedTheatreId }),
     })
     setSending(false)
+    setReportConfirm(false)
     load()
   }
 
@@ -172,7 +175,7 @@ export default function ImplementationPage() {
                     : 'Raport wyśle się automatycznie po 100% potwierdzeń (lub wyślij ręcznie poniżej).'}
                 </p>
               </div>
-              <button onClick={sendReport} disabled={sending}
+              <button onClick={() => setReportConfirm(true)} disabled={sending}
                 className="text-sm font-medium px-4 py-2 rounded-xl text-white disabled:opacity-40"
                 style={{ background: status.reportSentAt ? '#7a7068' : '#16a34a' }}>
                 {sending ? 'Wysyłam…' : status.reportSentAt ? 'Wyślij ponownie' : 'Wyślij raport'}
@@ -227,6 +230,22 @@ export default function ImplementationPage() {
             })()}
           </div>
         </div>
+      )}
+
+      {reportConfirm && status?.approved && (
+        <SendConfirmModal
+          title={`Raport finansowy — ${monthLabel(month)}`}
+          channelLabel="E-mail do Dyrektora Finansowego"
+          recipients={[{ name: 'Dyrektor Finansowy', detail: 'adres z Ustawień' }]}
+          content={status.approved.finance
+            ? `Repertuar „${status.approved.label}" — ${monthLabel(month)}.\nPrzychód: ${fmtPln(status.approved.finance.revenue)}\nKoszt: ${fmtPln(status.approved.finance.cost)}\nDochód: ${fmtPln(status.approved.finance.margin)}\nŚr. frekwencja: ${Math.round((status.approved.finance.attendance || 0) * 100)}%`
+            : `Repertuar „${status.approved.label}" — ${monthLabel(month)}.`}
+          note={status.reportSentAt ? 'Raport był już wysłany — zostanie wysłany ponownie.' : undefined}
+          confirmLabel="Wyślij raport"
+          sending={sending}
+          onConfirm={sendReport}
+          onCancel={() => setReportConfirm(false)}
+        />
       )}
     </div>
   )

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
 import { EVENT_TYPE_CATEGORIES, EVENT_TYPES } from '@/types'
+import SendConfirmModal from '@/components/SendConfirmModal'
 
 interface ArtistRecord {
   id: string
@@ -94,6 +95,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
   const [confirmations, setConfirmations] = useState<ConfirmationRow[]>([])
   const [confLoading,   setConfLoading]   = useState(false)
   const [confSending,   setConfSending]   = useState(false)
+  const [confConfirm,   setConfConfirm]   = useState(false)
   const [confSent,      setConfSent]      = useState(false)
   const [confChannel,   setConfChannel]   = useState<'email' | 'sms' | 'both'>('email')
 
@@ -148,6 +150,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
     }).catch(console.error)
 
     setConfSending(false)
+    setConfConfirm(false)
     setConfSent(true)
     setTimeout(() => setConfSent(false), 3000)
     await fetchConfirmations()
@@ -584,7 +587,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
 
                     <button
                       type="button"
-                      onClick={handleSendConfirmations}
+                      onClick={() => setConfConfirm(true)}
                       disabled={confSending || pendingCount === 0}
                       className="w-full py-2.5 text-sm font-medium rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
                     >
@@ -598,6 +601,21 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
                         <>{em.confirmSend} ({pendingCount})</>
                       )}
                     </button>
+
+                    {confConfirm && (
+                      <SendConfirmModal
+                        title="Prośba o potwierdzenie udziału"
+                        channelLabel={confChannel === 'both' ? 'E-mail + SMS' : confChannel === 'sms' ? 'SMS' : 'E-mail'}
+                        recipients={form.artist_ids
+                          .filter(id => { const conf = confirmations.find(c => c.artist_id === id); return !conf || conf.status === 'pending' })
+                          .map(id => ({ name: artists.find(a => a.id === id)?.name ?? '—' }))}
+                        content={`${form.title || form.type || 'Wydarzenie'}\n${form.date} · ${form.start_time}–${form.end_time}\nProśba o potwierdzenie udziału w wydarzeniu.`}
+                        confirmLabel={`Wyślij do ${pendingCount} ${pendingCount === 1 ? 'osoby' : 'osób'}`}
+                        sending={confSending}
+                        onConfirm={handleSendConfirmations}
+                        onCancel={() => setConfConfirm(false)}
+                      />
+                    )}
                   </>
                 )
               })()}
