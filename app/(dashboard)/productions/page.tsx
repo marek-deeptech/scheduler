@@ -563,6 +563,7 @@ export default function ProductionsPage() {
   const [selectedId,  setSelectedId]  = useState<string | null>(null)
   const [modal,       setModal]       = useState<ProductionRow | null | undefined>(undefined)
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [sortBy, setSortBy] = useState<'alpha' | 'fav' | 'hit' | 'premiere'>('alpha')
   // Conflict resolution: chooser popup (many conflicts) + substitution modal
   const [conflictChooser, setConflictChooser] = useState<ProductionRow | null>(null)
   const [conflictModal,   setConflictModal]   = useState<{
@@ -700,11 +701,29 @@ export default function ProductionsPage() {
     setProductions(prev => prev.map(p => p.id === id ? { ...p, status } : p))
   }
 
-  // Filtered + selected
+  // Filtered + sorted
   const filtered = useMemo(() => {
-    if (statusFilter === 'all') return productions
-    return productions.filter(p => p.status === statusFilter)
-  }, [productions, statusFilter])
+    const base = statusFilter === 'all' ? productions : productions.filter(p => p.status === statusFilter)
+    const arr = [...base]
+    const byTitle = (a: ProductionRow, b: ProductionRow) => a.title.localeCompare(b.title, 'pl')
+    switch (sortBy) {
+      case 'fav':
+        arr.sort((a, b) => (b.favLevel - a.favLevel) || byTitle(a, b)); break
+      case 'hit':
+        arr.sort((a, b) => (b.hitLevel - a.hitLevel) || byTitle(a, b)); break
+      case 'premiere':
+        arr.sort((a, b) => {
+          const da = a.premiere_date ?? '', db = b.premiere_date ?? ''
+          if (!da && !db) return byTitle(a, b)
+          if (!da) return 1            // bez daty na koniec
+          if (!db) return -1
+          return db.localeCompare(da) || byTitle(a, b)   // najnowsza premiera na górze
+        }); break
+      default:
+        arr.sort(byTitle)
+    }
+    return arr
+  }, [productions, statusFilter, sortBy])
 
   const selectedProd = productions.find(p => p.id === selectedId) ?? null
 
@@ -840,6 +859,20 @@ export default function ProductionsPage() {
                 )}
               </button>
             ))}
+
+            {/* Sortowanie */}
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value as typeof sortBy)}
+              className="ml-auto shrink-0 rounded-full text-xs font-semibold px-3 py-1.5 bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
+              style={{ border: '1px solid #e4ddd4', color: '#3e3830' }}
+              title="Sortowanie"
+            >
+              <option value="alpha">Sortuj: Alfabetycznie</option>
+              <option value="fav">Sortuj: Favourites</option>
+              <option value="hit">Sortuj: Hit Kasowy</option>
+              <option value="premiere">Sortuj: Data premiery</option>
+            </select>
           </div>
 
           {/* Grid */}
