@@ -63,7 +63,7 @@ function mapEvent(e: any): EventRow {
     id: e.id, title: e.title, start_time: e.start_time, end_time: e.end_time,
     location: e.location ?? null, type: e.type ?? null,
     production_title: prod?.title ?? null,
-    room_id: e.room_id ?? null, theatre_id: e.theatre_id ?? null,
+    room_id: e.room_id ?? null, theatre_id: e.theatre_id ?? prod?.theatre_id ?? null,
     artist_ids: (e.event_artists ?? []).map((ea: any) => ea.artist_id),
   }
 }
@@ -187,7 +187,7 @@ export default function DashboardPage() {
     const weekEnd = localDate(addDays(now, 7))
     const nowTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
 
-    const evSel = 'id, title, start_time, end_time, location, type, room_id, theatre_id, productions(title), event_artists(artist_id)'
+    const evSel = 'id, title, start_time, end_time, location, type, room_id, theatre_id, productions(title, theatre_id), event_artists(artist_id)'
 
     // Next-month and month+2 date ranges
     const nmStart = new Date(now.getFullYear(), now.getMonth() + 1, 1)
@@ -351,7 +351,18 @@ export default function DashboardPage() {
     setAllArtistList(allArtistsRaw.map((a: any) => ({ id: a.id, name: a.name })))
 
     const weekEvs = (weekEvData ?? []).map(mapEvent)
-    const pairs   = buildConflicts((conflictEvData ?? []).map(mapEvent), techArtistIds)
+
+    // Konflikty TYLKO dla niezaakceptowanych przyszłych repertuarów (jak w Tytułach):
+    // pomijamy miesiące przeszłe/bieżący oraz zatwierdzone/wdrożone (globalne i per-teatr).
+    const { data: apprData } = await supabase.from('repertoire_proposals').select('month, theatre_id').eq('status', 'approved')
+    const apprGlobal = new Set<string>(); const apprKeys = new Set<string>()
+    for (const r of (apprData ?? []) as any[]) { if (r.theatre_id) apprKeys.add(`${r.theatre_id}|${r.month}`); else apprGlobal.add(r.month) }
+    const curMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const confEligible = (e: EventRow) => {
+      const m = e.start_time.slice(0, 7)
+      return m > curMonthKey && !apprGlobal.has(m) && !apprKeys.has(`${e.theatre_id}|${m}`)
+    }
+    const pairs   = buildConflicts((conflictEvData ?? []).map(mapEvent).filter(confEligible), techArtistIds)
     setWeekEvCount(weekEvs.filter(e => !SHOW_TYPES.has(e.type ?? '')).length)
     setWeekShows(weekEvs.filter(e => SHOW_TYPES.has(e.type ?? '')))
     setConflictPairs(pairs)
@@ -448,11 +459,7 @@ export default function DashboardPage() {
 
     // ── Proposal-level cast conflicts ─────────────────────────────────────
     try {
-      const { detectProposalConflicts } = await import('@/lib/conflicts')
-      const [propJson, castRes] = await Promise.all([
-        fetch('/api/planning/generate').then(r => r.json()),
-        supabase.from('productions').select('title, artist_productions(artists(id, name))'),
-      ])
+      const propJson = await fetch('/api/planning/generate').then(r => r.json())
       const allProposals: any[] = propJson.proposals ?? []
 
       // ── Month plan info for the Repertuar tiles ──
@@ -478,33 +485,8 @@ export default function DashboardPage() {
         nm: planFor(monthKey(new Date(now.getFullYear(), now.getMonth() + 1, 1))),
         m2: planFor(monthKey(new Date(now.getFullYear(), now.getMonth() + 2, 1))),
       })
-      // Keep conflict detection on approved proposals only
-      propJson.proposals = allProposals.filter(p => p.status === 'approved')
-      // Build maps
-      const pCastMap = new Map<string, string[]>()
-      const aNameMap = new Map<string, string>()
-      for (const p of castRes.data ?? []) {
-        const ids: string[] = []
-        for (const ap of (p as any).artist_productions ?? []) {
-          const a = Array.isArray(ap.artists) ? ap.artists[0] : ap.artists
-          if (a?.id) { ids.push(a.id); aNameMap.set(a.id, a.name) }
-        }
-        pCastMap.set((p as any).title, ids)
-      }
-      // Collect all events from approved proposals
-      const proposalEvents = (propJson.proposals ?? []).flatMap((pr: any) =>
-        (pr.proposal_data ?? []).map((e: any) => ({
-          date:             e.date,
-          production_title: e.production_title,
-          room_name:        e.room_name ?? null,
-          start_time:       e.start_time ?? '19:00',
-          end_time:         e.end_time   ?? '22:00',
-        }))
-      )
-      const allCastConflicts = pCastMap.size > 0
-        ? detectProposalConflicts(proposalEvents, pCastMap, aNameMap)
-        : []
-      setCastConflicts(allCastConflicts)
+      // W repertuarze zaakceptowanym/wdrożonym konflikt nie może wystąpić — nie pokazujemy ich.
+      setCastConflicts([])
     } catch { /* non-critical */ }
 
     setLoading(false)

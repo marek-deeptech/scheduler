@@ -725,10 +725,10 @@ export default function RepertuarPage() {
     info.castIds.forEach((id, i) => { if (info.cast[i]) artistNamesMap.set(id, info.cast[i]) })
   }
 
-  // Detect conflicts across ALL tagged events for the month (not just filtered by theatre)
-  const propConflicts = allTagged.length > 0
-    ? detectProposalConflicts(allTagged, productionCastMap, artistNamesMap)
-    : []
+  // Kalendarz pokazuje WYŁĄCZNIE zatwierdzony repertuar (status=approved),
+  // a w repertuarze zaakceptowanym konflikt nie może wystąpić — więc ich nie pokazujemy.
+  const propConflicts: ProposalConflict[] = []
+  void detectProposalConflicts; void productionCastMap; void artistNamesMap
 
   // Stats derived from visible events
   const byProdVisible = visibleEvents.reduce<Record<string, number>>((acc, e) => {
