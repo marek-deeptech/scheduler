@@ -44,6 +44,7 @@ interface ProductionRow {
   is_favourite: boolean
   favLevel: number
   hitLevel: number
+  poster_url: string | null
   cast: CastMember[]
   events: EventRow[]
   hasConflict: boolean
@@ -174,6 +175,21 @@ function Avatar({ member, size = 'sm' }: { member: CastMember; size?: 'sm' | 'md
   )
 }
 
+// ─── Poster thumbnail (lewy górny róg kafelka) ────────────────────────────────
+
+function PosterThumb({ url, title }: { url: string | null; title: string }) {
+  return url ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={url} alt={`Plakat: ${title}`} title={title}
+      className="w-12 h-16 rounded-md object-cover shrink-0" style={{ border: '1px solid #e4ddd4' }} />
+  ) : (
+    <div className="w-12 h-16 rounded-md shrink-0 flex items-center justify-center"
+      title="Brak plakatu" style={{ background: '#f2ede6', border: '1px solid #e4ddd4' }}>
+      <IconTheatre size={18} className="text-[#c2b8a8]" />
+    </div>
+  )
+}
+
 // ─── Production card ──────────────────────────────────────────────────────────
 
 function ProductionCard({ prod, isSelected, onClick, onEdit, onConflictClick }: {
@@ -202,28 +218,35 @@ function ProductionCard({ prod, isSelected, onClick, onEdit, onConflictClick }: 
 
       <div className="p-5 flex flex-col flex-1 gap-3">
 
-        {/* Theatre + scene + status */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-xs font-medium text-gray-500 truncate">{prod.theatreName ?? '—'}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0"
-              style={prod.stage === 'mala' ? { background: '#eef2ff', color: '#4338ca' } : { background: '#f2ede6', color: '#7a7068' }}
-              title={`${STAGE_LABEL[prod.stage]} Scena`}>
-              {STAGE_LABEL[prod.stage]}
-            </span>
-          </div>
-          <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${style.badge}`}>
-            {prod.status}
-          </span>
-        </div>
+        {/* Poster (lewy górny róg) + nagłówek */}
+        <div className="flex items-start gap-3">
+          <PosterThumb url={prod.poster_url} title={prod.title} />
 
-        {/* Title + director */}
-        <div>
-          <div className="flex items-start gap-2">
-            <h3 className="text-lg font-bold leading-tight flex-1" style={{ color: '#1a1410' }}>{prod.title}</h3>
-            <CategoryMarks favLevel={prod.favLevel} hitLevel={prod.hitLevel} size={14} className="shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0 flex flex-col gap-2">
+            {/* Theatre + scene + status */}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-xs font-medium text-gray-500 truncate">{prod.theatreName ?? '—'}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0"
+                  style={prod.stage === 'mala' ? { background: '#eef2ff', color: '#4338ca' } : { background: '#f2ede6', color: '#7a7068' }}
+                  title={`${STAGE_LABEL[prod.stage]} Scena`}>
+                  {STAGE_LABEL[prod.stage]}
+                </span>
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${style.badge}`}>
+                {prod.status}
+              </span>
+            </div>
+
+            {/* Title + director */}
+            <div>
+              <div className="flex items-start gap-2">
+                <h3 className="text-lg font-bold leading-tight flex-1" style={{ color: '#1a1410' }}>{prod.title}</h3>
+                <CategoryMarks favLevel={prod.favLevel} hitLevel={prod.hitLevel} size={14} className="shrink-0 mt-0.5" />
+              </div>
+              {prod.director && <p className="text-xs text-gray-500 mt-0.5">reż. {prod.director}</p>}
+            </div>
           </div>
-          {prod.director && <p className="text-xs text-gray-500 mt-0.5">reż. {prod.director}</p>}
         </div>
 
         {/* Premiere */}
@@ -599,7 +622,7 @@ export default function ProductionsPage() {
 
     // Tolerancyjnie na brak migracji — 'stage' i poziomy kategorii niezależnie.
     const prodSelect = (withStage: boolean, withLevels: boolean): string => `
-      id, title, director, premiere_date, start_date, end_date, theatre_id, ${withStage ? 'stage, ' : ''}${withLevels ? 'favourite_level, hit_level, ' : ''}status, comment, is_favourite,
+      id, title, director, premiere_date, start_date, end_date, theatre_id, poster_url, ${withStage ? 'stage, ' : ''}${withLevels ? 'favourite_level, hit_level, ' : ''}status, comment, is_favourite,
       theatres(name),
       artist_productions(artists(id, name, role, avatar_url)),
       events(id, title, type, start_time, end_time, room_id, rooms(name), event_artists(artist_id))
@@ -681,6 +704,7 @@ export default function ProductionsPage() {
         is_favourite:  p.is_favourite ?? false,
         favLevel:      p.favourite_level ?? (p.is_favourite ? 1 : 0),
         hitLevel:      p.hit_level ?? 0,
+        poster_url:    p.poster_url ?? null,
         cast: sortedCast,
         events,
         conflicts,
