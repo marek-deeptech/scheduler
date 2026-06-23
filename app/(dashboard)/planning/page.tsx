@@ -103,9 +103,11 @@ export default function PlanningPage() {
       fetch('/api/planning/generate?status=approved').then(r => r.json()),
       // Tolerancyjnie na brak migracji 'stage' — ponów bez tej kolumny.
       (async () => {
-        const sel = (withStage: boolean): string => `title, is_favourite, ${withStage ? 'stage, favourite_level, hit_level, ' : ''}price_category, artist_productions(artists(id, name))`
-        const r = await supabase.from('productions').select(sel(true))
-        return r.error ? await supabase.from('productions').select(sel(false)) : r
+        const sel = (s: boolean, l: boolean): string => `title, is_favourite, ${s ? 'stage, ' : ''}${l ? 'favourite_level, hit_level, ' : ''}price_category, artist_productions(artists(id, name))`
+        let r = await supabase.from('productions').select(sel(true, true))
+        if (r.error) r = await supabase.from('productions').select(sel(false, true))
+        if (r.error) r = await supabase.from('productions').select(sel(false, false))
+        return r
       })(),
     ]).then(([json, castRes]) => {
       // Approved months

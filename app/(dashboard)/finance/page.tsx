@@ -70,10 +70,10 @@ export default function FinancePage() {
     const prodIds = [...new Set(evs.map(e => e.production_id).filter(Boolean))] as string[]
     const prodMap: Record<string, ProductionFinance> = {}
     if (prodIds.length > 0) {
-      let { data: pData, error } = await supabase
-        .from('productions')
-        .select('id, title, stage, favourite_level, hit_level, price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost, is_favourite')
-        .in('id', prodIds)
+      // Tolerancyjnie na brak migracji — 'stage' i poziomy kategorii niezależnie.
+      const finSel = (s: boolean, l: boolean): string => `id, title, ${s ? 'stage, ' : ''}${l ? 'favourite_level, hit_level, ' : ''}price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost, is_favourite`
+      let { data: pData, error } = await supabase.from('productions').select(finSel(true, true)).in('id', prodIds)
+      if (error) { const r = await supabase.from('productions').select(finSel(false, true)).in('id', prodIds); pData = r.data as any; error = r.error }
       if (error) {
         migration = true
         const res = await supabase.from('productions').select('id, title, is_favourite').in('id', prodIds)

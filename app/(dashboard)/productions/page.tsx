@@ -597,21 +597,23 @@ export default function ProductionsPage() {
   async function fetchData() {
     setLoading(true)
 
-    // Tolerancyjnie na brak migracji 'stage' — ponów bez tej kolumny.
-    const prodSelect = (withStage: boolean): string => `
-      id, title, director, premiere_date, start_date, end_date, theatre_id, ${withStage ? 'stage, favourite_level, hit_level, ' : ''}status, comment, is_favourite,
+    // Tolerancyjnie na brak migracji — 'stage' i poziomy kategorii niezależnie.
+    const prodSelect = (withStage: boolean, withLevels: boolean): string => `
+      id, title, director, premiere_date, start_date, end_date, theatre_id, ${withStage ? 'stage, ' : ''}${withLevels ? 'favourite_level, hit_level, ' : ''}status, comment, is_favourite,
       theatres(name),
       artist_productions(artists(id, name, role, avatar_url)),
       events(id, title, type, start_time, end_time, room_id, rooms(name), event_artists(artist_id))
     `
-    const buildProdQuery = (withStage: boolean) => {
-      let q = supabase.from('productions').select(prodSelect(withStage)).order('title')
+    const buildProdQuery = (s: boolean, l: boolean) => {
+      let q = supabase.from('productions').select(prodSelect(s, l)).order('title')
       if (selectedTheatreId) q = q.eq('theatre_id', selectedTheatreId)
       return q
     }
     const prodPromise = (async () => {
-      const r = await buildProdQuery(true)
-      return r.error ? await buildProdQuery(false) : r
+      let r = await buildProdQuery(true, true)
+      if (r.error) r = await buildProdQuery(false, true)   // brak stage, są poziomy
+      if (r.error) r = await buildProdQuery(false, false)  // brak obu
+      return r
     })()
 
     const [{ data: prodData }, { data: thData }, { data: artistData }, { data: roomData }] = await Promise.all([

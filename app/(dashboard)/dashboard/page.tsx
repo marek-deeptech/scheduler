@@ -243,16 +243,18 @@ export default function DashboardPage() {
       tomorrowShowsQ = tomorrowShowsQ.eq('theatre_id', selectedTheatreId)
     }
 
-    // Tolerancyjnie na brak migracji 'stage' — ponów bez tej kolumny.
-    const buildProdQ = (withStage: boolean) => {
-      const cols: string = `id, title, status, ${withStage ? 'stage, favourite_level, hit_level, ' : ''}price_category`
+    // Tolerancyjnie na brak migracji — 'stage' i poziomy kategorii niezależnie.
+    const buildProdQ = (s: boolean, l: boolean) => {
+      const cols: string = `id, title, status, ${s ? 'stage, ' : ''}${l ? 'favourite_level, hit_level, ' : ''}price_category`
       let q = supabase.from('productions').select(cols)
       if (selectedTheatreId) q = q.eq('theatre_id', selectedTheatreId)
       return q
     }
     const prodQ = (async () => {
-      const r = await buildProdQ(true)
-      return r.error ? await buildProdQ(false) : r
+      let r = await buildProdQ(true, true)
+      if (r.error) r = await buildProdQ(false, true)
+      if (r.error) r = await buildProdQ(false, false)
+      return r
     })()
 
     // Fetch all current Urlop/Choroba records upfront (small table — trivial cost)
