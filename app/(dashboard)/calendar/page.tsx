@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { useTheatre } from '@/lib/theatre-context'
 import { supabase } from '@/lib/supabase'
 import ConflictResolutionModal from '@/components/ConflictResolutionModal'
+import { CategoryMarks } from '@/components/CategoryMarks'
 import {
   detectProposalConflicts,
   conflictedTitles,
@@ -50,6 +51,8 @@ interface ProdInfo {
   poster_url:  string | null
   perf_count:  number          // total historical events
   is_favourite: boolean
+  favLevel:    number
+  hitLevel:    number
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -280,11 +283,7 @@ function EventBlock({ e, room, prodMap, propConflicts, conflictTitleSet, onConfl
             color: '#3a3a3a',
           }}
         >
-          {prodMap.get(e.production_title)?.is_favourite && (
-            <svg viewBox="0 0 24 24" width="13" height="13" style={{ flexShrink: 0, marginTop: '1px' }} fill="#ef4444" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
-            </svg>
-          )}
+          <CategoryMarks favLevel={prodMap.get(e.production_title)?.favLevel ?? 0} hitLevel={prodMap.get(e.production_title)?.hitLevel ?? 0} size={11} className="mt-px" />
           {e.production_title}
         </div>
         {artistMap.size > 0 && (
@@ -627,10 +626,12 @@ export default function RepertuarPage() {
         const [propRes, thRes, prodRes, evCountRes] = await Promise.all([
           fetch('/api/planning/generate?status=approved'),
           supabase.from('theatres').select('id, name').order('name'),
-          // Fetch productions with cast (artist_productions join)
-          supabase.from('productions').select(
-            'id, title, director, poster_url, is_favourite, artist_productions(artists(id, name))'
-          ),
+          // Fetch productions with cast (artist_productions join) — tolerancyjnie na brak migracji categories
+          (async () => {
+            const sel = (ext: boolean): string => `id, title, director, poster_url, is_favourite, ${ext ? 'favourite_level, hit_level, ' : ''}artist_productions(artists(id, name))`
+            const r = await supabase.from('productions').select(sel(true))
+            return r.error ? await supabase.from('productions').select(sel(false)) : r
+          })(),
           // Count past events per production for "Grany po raz"
           supabase.from('events').select('production_id').not('production_id', 'is', null),
         ])
@@ -650,7 +651,7 @@ export default function RepertuarPage() {
 
         // Build prodMap: title → ProdInfo (including castIds for conflict detection)
         const map = new Map<string, ProdInfo>()
-        for (const p of prodRes.data ?? []) {
+        for (const p of (prodRes.data ?? []) as any[]) {
           const castEntries: Array<{ id: string; name: string }> = sortByLastName(
             (p.artist_productions ?? [])
               .map((ap: any) => {
@@ -668,6 +669,8 @@ export default function RepertuarPage() {
             poster_url:   (p as any).poster_url ?? null,
             perf_count:   perfCounts[p.id] ?? 0,
             is_favourite: (p as any).is_favourite ?? false,
+            favLevel:     (p as any).favourite_level ?? ((p as any).is_favourite ? 1 : 0),
+            hitLevel:     (p as any).hit_level ?? 0,
           })
         }
 

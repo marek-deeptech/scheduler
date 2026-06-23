@@ -23,17 +23,20 @@ function DollarIcon({ size, color }: { size: number; color: string }) {
   )
 }
 
+// Poziom = liczba symboli (♥♥♥ / $$). Symbole małe i ciasno, by zmieściły się 3.
 function Mark({ kind, level, size, title }: { kind: 'fav' | 'hit'; level: number; size: number; title: string }) {
   const color = kind === 'fav' ? FAV_COLOR : HIT_COLOR
+  const n = Math.max(0, Math.min(3, level))
   return (
-    <span className="inline-flex items-center gap-0.5 shrink-0" title={`${title} — poziom ${level}`}>
-      {kind === 'fav' ? <HeartIcon size={size} color={color} /> : <DollarIcon size={size} color={color} />}
-      <span className="font-bold leading-none" style={{ color, fontSize: Math.round(size * 0.72) }}>{level}</span>
+    <span className="inline-flex items-center shrink-0" title={`${title} — poziom ${n}`}>
+      {Array.from({ length: n }).map((_, i) => (
+        kind === 'fav' ? <HeartIcon key={i} size={size} color={color} /> : <DollarIcon key={i} size={size} color={color} />
+      ))}
     </span>
   )
 }
 
-export function CategoryMarks({ favLevel = 0, hitLevel = 0, size = 16, className = '' }: {
+export function CategoryMarks({ favLevel = 0, hitLevel = 0, size = 12, className = '' }: {
   favLevel?: number
   hitLevel?: number
   size?: number
@@ -41,7 +44,7 @@ export function CategoryMarks({ favLevel = 0, hitLevel = 0, size = 16, className
 }) {
   if (favLevel <= 0 && hitLevel <= 0) return null
   return (
-    <span className={`inline-flex items-center gap-1.5 ${className}`}>
+    <span className={`inline-flex items-center gap-1 ${className}`}>
       {favLevel > 0 && <Mark kind="fav" level={favLevel} size={size} title="Favourite" />}
       {hitLevel > 0 && <Mark kind="hit" level={hitLevel} size={size} title="Hit Kasowy" />}
     </span>

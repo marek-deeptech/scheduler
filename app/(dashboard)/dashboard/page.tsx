@@ -7,6 +7,7 @@ import { useTheatre } from '@/lib/theatre-context'
 import { useLanguage } from '@/lib/language-context'
 import { findConflicts, CONFLICT_LABEL, CONFLICT_ICON, type ConflictResult, type ConflictReason } from '@/lib/conflicts'
 import ConflictPanel from '@/components/ConflictPanel'
+import { CategoryMarks } from '@/components/CategoryMarks'
 import { sortByLastName } from '@/lib/names'
 import { IconUser, IconMapPin, IconSun, IconHeart, IconXCircle, IconStar, IconInbox, IconCalendar, IconWarning } from '@/lib/icons'
 
@@ -150,6 +151,7 @@ export default function DashboardPage() {
   const [dayOffset,     setDayOffset]     = useState(0)
   const [upcoming,      setUpcoming]      = useState<EventRow[]>([])
   const [stageByTitle,  setStageByTitle]  = useState<Map<string, 'Duża' | 'Mała'>>(new Map())
+  const [catByTitle,    setCatByTitle]    = useState<Map<string, { fav: number; hit: number }>>(new Map())
   const [alertArtists,  setAlertArtists]  = useState<ArtistRow[]>([])
   const [artistAvails,  setArtistAvails]  = useState<AvailRow[]>([])
   const [availCounts,   setAvailCounts]   = useState({ dostepni: 0, urlop: 0, niedostepni: 0 })
@@ -243,7 +245,7 @@ export default function DashboardPage() {
 
     // Tolerancyjnie na brak migracji 'stage' — ponów bez tej kolumny.
     const buildProdQ = (withStage: boolean) => {
-      const cols: string = `id, title, status, ${withStage ? 'stage, ' : ''}price_category`
+      const cols: string = `id, title, status, ${withStage ? 'stage, favourite_level, hit_level, ' : ''}price_category`
       let q = supabase.from('productions').select(cols)
       if (selectedTheatreId) q = q.eq('theatre_id', selectedTheatreId)
       return q
@@ -333,8 +335,13 @@ export default function DashboardPage() {
 
     // Mapa scena per tytuł — z twardego pola stage: mala → Mała, inaczej Duża
     const stages = new Map<string, 'Duża' | 'Mała'>()
-    for (const p of prods as any[]) stages.set(p.title, p.stage === 'mala' ? 'Mała' : 'Duża')
+    const cats = new Map<string, { fav: number; hit: number }>()
+    for (const p of prods as any[]) {
+      stages.set(p.title, p.stage === 'mala' ? 'Mała' : 'Duża')
+      cats.set(p.title, { fav: p.favourite_level ?? 0, hit: p.hit_level ?? 0 })
+    }
     setStageByTitle(stages)
+    setCatByTitle(cats)
 
     setAllRooms(roomsData ?? [])
     setAllTheatres(theatresData ?? [])
@@ -1100,8 +1107,9 @@ export default function DashboardPage() {
                       </div>
                       <div className="border-l-2 pl-3 flex-1 min-w-0" style={{ borderLeftColor: '#f5c6cd' }}>
                         <Link href={`/calendar?date=${eventDateParam(ev.start_time)}`}
-                          className="text-sm font-semibold leading-snug hover:underline underline-offset-2 block decoration-gray-400"
+                          className="text-sm font-semibold leading-snug hover:underline underline-offset-2 inline-flex items-center gap-1.5 decoration-gray-400"
                           style={{ color: '#1a1410' }}>
+                          {(() => { const c = catByTitle.get(ev.production_title ?? ev.title); return c ? <CategoryMarks favLevel={c.fav} hitLevel={c.hit} size={11} /> : null })()}
                           {ev.production_title ?? ev.title}
                         </Link>
                         <p className="text-xs text-gray-500 mt-0.5">

@@ -221,7 +221,7 @@ function ProductionCard({ prod, isSelected, onClick, onEdit, onConflictClick }: 
         <div>
           <div className="flex items-start gap-2">
             <h3 className="text-lg font-bold leading-tight flex-1" style={{ color: '#1a1410' }}>{prod.title}</h3>
-            <CategoryMarks favLevel={prod.favLevel} hitLevel={prod.hitLevel} size={17} className="shrink-0 mt-0.5" />
+            <CategoryMarks favLevel={prod.favLevel} hitLevel={prod.hitLevel} size={14} className="shrink-0 mt-0.5" />
           </div>
           {prod.director && <p className="text-xs text-gray-500 mt-0.5">reż. {prod.director}</p>}
         </div>
@@ -345,7 +345,7 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
         <div className="flex items-start justify-between gap-2 mb-1">
           <div className="flex items-center gap-2 min-w-0">
             <h2 className="text-base font-bold text-gray-900 leading-tight">{prod.title}</h2>
-            <CategoryMarks favLevel={prod.favLevel} hitLevel={prod.hitLevel} size={15} />
+            <CategoryMarks favLevel={prod.favLevel} hitLevel={prod.hitLevel} size={13} />
           </div>
           <button onClick={onClose}
             className="w-7 h-7 flex items-center justify-center rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0 text-lg leading-none">

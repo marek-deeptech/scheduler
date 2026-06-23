@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
 import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import SendConfirmModal from '@/components/SendConfirmModal'
+import { CategoryMarks } from '@/components/CategoryMarks'
 import {
   detectProposalConflicts,
   conflictedTitles,
@@ -102,7 +103,7 @@ export default function PlanningPage() {
       fetch('/api/planning/generate?status=approved').then(r => r.json()),
       // Tolerancyjnie na brak migracji 'stage' — ponów bez tej kolumny.
       (async () => {
-        const sel = (withStage: boolean): string => `title, is_favourite, ${withStage ? 'stage, ' : ''}price_category, artist_productions(artists(id, name))`
+        const sel = (withStage: boolean): string => `title, is_favourite, ${withStage ? 'stage, favourite_level, hit_level, ' : ''}price_category, artist_productions(artists(id, name))`
         const r = await supabase.from('productions').select(sel(true))
         return r.error ? await supabase.from('productions').select(sel(false)) : r
       })(),
@@ -117,6 +118,7 @@ export default function PlanningPage() {
       const nameMap  = new Map<string, string>()
       const favSet   = new Set<string>()
       const stages   = new Map<string, 'Duża' | 'Mała'>()
+      const cats     = new Map<string, { fav: number; hit: number }>()
       for (const p of (castRes.data ?? []) as any[]) {
         const ids: string[] = []
         for (const ap of p.artist_productions ?? []) {
@@ -126,11 +128,16 @@ export default function PlanningPage() {
         castMap.set(p.title, ids)
         if ((p as any).is_favourite) favSet.add(p.title)
         stages.set(p.title, (p as any).stage === 'mala' ? 'Mała' : 'Duża')
+        cats.set(p.title, {
+          fav: (p as any).favourite_level ?? ((p as any).is_favourite ? 1 : 0),
+          hit: (p as any).hit_level ?? 0,
+        })
       }
       setProductionCastMap(castMap)
       setArtistNamesMap(nameMap)
       setFavouriteSet(favSet)
       setStageMap(stages)
+      setCatMap(cats)
     }).catch(() => setMonthsReady(true))
   }, [])
 
@@ -172,6 +179,7 @@ export default function PlanningPage() {
   const [artistNamesMap,    setArtistNamesMap]     = useState<Map<string, string>>(new Map())
   const [favouriteSet,      setFavouriteSet]       = useState<Set<string>>(new Set())
   const [stageMap,          setStageMap]           = useState<Map<string, 'Duża' | 'Mała'>>(new Map())
+  const [catMap,            setCatMap]             = useState<Map<string, { fav: number; hit: number }>>(new Map())
 
   const [conflictModal, setConflictModal] = useState<{
     artistId: string; artistName: string; conflictDate: string;
@@ -489,6 +497,7 @@ export default function PlanningPage() {
                 artistNamesMap={artistNamesMap}
                 favouriteSet={favouriteSet}
                 stageMap={stageMap}
+                catMap={catMap}
                 onConflictClick={setConflictModal}
               />
             ))}
@@ -519,7 +528,7 @@ function EmptyState() {
 
 function ProposalCard({
   proposal, expanded, onToggle, onApprove, onReject, actionLoading,
-  productionCastMap, artistNamesMap, favouriteSet, stageMap, onConflictClick,
+  productionCastMap, artistNamesMap, favouriteSet, stageMap, catMap, onConflictClick,
 }: {
   proposal: Proposal
   expanded: boolean
@@ -531,6 +540,7 @@ function ProposalCard({
   artistNamesMap:    Map<string, string>
   favouriteSet:      Set<string>
   stageMap:          Map<string, 'Duża' | 'Mała'>
+  catMap:            Map<string, { fav: number; hit: number }>
   onConflictClick: (params: {
     artistId: string; artistName: string; conflictDate: string;
     conflictStart?: string; conflictEnd?: string; productions: string[]
@@ -636,11 +646,7 @@ function ProposalCard({
                   <span className="flex-1 min-w-0 text-xs font-medium truncate flex items-center gap-1"
                         style={{ color: hasConflict ? '#c8102e' : '#3e3830', fontWeight: hasConflict ? 600 : 400 }}>
                     {hasConflict && '⚠ '}
-                    {favouriteSet.has(e.production_title) && (
-                      <svg viewBox="0 0 24 24" width="11" height="11" style={{ flexShrink: 0 }} fill="#ef4444" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
-                      </svg>
-                    )}
+                    <CategoryMarks favLevel={catMap.get(e.production_title)?.fav ?? 0} hitLevel={catMap.get(e.production_title)?.hit ?? 0} size={10} />
                     <span className="truncate">{e.production_title}</span>
                     {stageMap.get(e.production_title) && (
                       <span className="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide"
