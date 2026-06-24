@@ -99,10 +99,14 @@ export default function PlanningPage() {
   // Przegląd statusów: bieżący miesiąc + 12 kolejnych
   const overviewMonths = getNextMonths(13)
 
-  // Propozycje pogrupowane per miesiąc + status etapu (globalnie, ze wszystkich teatrów)
+  // Propozycje pogrupowane per miesiąc + status etapu — PER TEATR.
+  // Planowanie jest procedowane osobno dla każdego teatru; legacy propozycje globalne
+  // (theatre_id = null, sprzed podziału na teatry) pokazujemy dla obu teatrów.
   useEffect(() => {
-    supabase.from('repertoire_proposals').select('id, month, label, status, stats').then(({ data }) => {
-      const rel = (data ?? []).filter((p: any) => p.status !== 'rejected')
+    supabase.from('repertoire_proposals').select('id, month, label, status, stats, theatre_id').then(({ data }) => {
+      const rel = (data ?? []).filter((p: any) =>
+        p.status !== 'rejected' &&
+        (!selectedTheatreId || p.theatre_id === selectedTheatreId || p.theatre_id == null))
       const byMonth: Record<string, MonthProp[]> = {}
       for (const p of rel as any[]) {
         const stage: MonthStage = p.status === 'approved'
