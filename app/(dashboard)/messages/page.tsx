@@ -618,120 +618,6 @@ export default function MessagesPage() {
         </div>
       </div>
 
-      {/* Toolbar — stacked rows on mobile, single wrapping row on desktop */}
-      <div className="mb-4 space-y-2 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-2">
-        <input
-          type="text"
-          placeholder={tm.searchPlaceholder}
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="border border-gray-200 rounded-xl px-3 py-2 text-sm w-full md:w-56 bg-white focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
-        />
-
-        <div className="flex flex-wrap gap-1.5 md:contents">
-          {([[  'all', tm.allTeams], ['Cast', tm.teamCast], ['Technique', tm.teamTechnique], ['Wardrobe', tm.teamWardrobe]] as [string, string][]).map(([val, label]) => (
-            <button
-              key={val}
-              onClick={() => setTeamFilter(val)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
-                teamFilter === val
-                  ? ''
-                  : 'text-gray-500 border-gray-200 hover:bg-gray-50'
-              }`}
-              style={teamFilter === val ? { background: '#1a1410', color: '#fff', borderColor: '#1a1410' } : undefined}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 md:contents">
-          {theatres.length > 1 && (
-            <select
-              value={theatreFilter}
-              onChange={e => setTheatreFilter(e.target.value)}
-              className="w-full md:w-auto border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-white focus:outline-none md:ml-auto"
-            >
-              <option value="all">{tm.allTheatres}</option>
-              {theatres.map(th => (
-                <option key={th.id} value={th.id}>{th.name}</option>
-              ))}
-            </select>
-          )}
-
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            className={`w-full md:w-auto border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-white focus:outline-none ${theatres.length <= 1 ? 'md:ml-auto' : ''}`}
-          >
-            <option value="all">{tm.allStatuses}</option>
-            <option value="Dostępny">Dostępny</option>
-            <option value="Dostępny tylko w Warszawie">Dostępny tylko w Warszawie</option>
-            <option value="Niepewny">Niepewny</option>
-            <option value="Niedostępny">Niedostępny</option>
-            <option value="Urlop">Urlop</option>
-            <option value="Choroba">Choroba</option>
-          </select>
-
-          <select
-            value={sortBy}
-            onChange={e => setSortBy(e.target.value as 'name' | 'team' | 'status')}
-            className={`w-full md:w-auto border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-white focus:outline-none ${theatres.length > 1 ? 'col-span-2 md:col-auto' : ''}`}
-          >
-            <option value="name">{tm.sortByName}</option>
-            <option value="team">{tm.sortByTeam}</option>
-            <option value="status">{tm.sortByStatus}</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Person list — odbiorcy (filtrowani / sortowani powyżej) */}
-      {loading ? (
-        <p className="text-sm text-gray-500 text-center py-16">{tm.loading}</p>
-      ) : (
-        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden mb-6">
-          {/* List header */}
-          <div className={`${ROW} border-b border-gray-100`} style={{ background: '#faf8f5' }}>
-            <input
-              type="checkbox"
-              checked={allFilteredSelected}
-              onChange={e => toggleAll(e.target.checked)}
-              className="w-4 h-4 rounded accent-gray-900 cursor-pointer"
-            />
-            <div />{/* avatar placeholder */}
-            <span className="text-xs text-gray-500 font-medium">
-              {selected.size > 0
-                ? <>{tm.nSelected(selected.size)} <button onClick={() => setSelected(new Set())} className="underline decoration-dotted hover:text-gray-700 ml-1">{tm.clearSelection}</button></>
-                : `${filtered.length}`}
-            </span>
-            <span className="hidden md:block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colTeam}</span>
-            <span className="hidden md:block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colStatus}</span>
-            <span className="hidden md:block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colContact}</span>
-            <div />
-          </div>
-
-          {/* Rows */}
-          {filtered.length === 0 ? (
-            <div className="py-16 text-center text-sm text-gray-500 italic">
-              {tm.noPeople}
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-50">
-              {filtered.map(person => (
-                <PersonRow
-                  key={person.id}
-                  person={person}
-                  checked={selected.has(person.id)}
-                  onToggle={() => togglePerson(person.id)}
-                  onEmail={() => setCompose({ type: 'email', ids: [person.id] })}
-                  onSms={() => setCompose({ type: 'sms', ids: [person.id] })}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ── Brak potwierdzenia udziału ─────────────────────────────── */}
       {pendingPart.length > 0 && (
         <div className="mb-4 bg-white border rounded-2xl overflow-hidden" style={{ borderColor: '#fde0c8' }}>
@@ -903,6 +789,122 @@ export default function MessagesPage() {
                     <span className="text-[10px] text-gray-400">{fmtDate(m.sentAt)}</span>
                   </div>
                 </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+
+      {/* ── Lista odbiorców (na dole — najpierw braki potwierdzeń) ── */}
+      {/* Toolbar — stacked rows on mobile, single wrapping row on desktop */}
+      <div className="mb-4 space-y-2 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-2">
+        <input
+          type="text"
+          placeholder={tm.searchPlaceholder}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="border border-gray-200 rounded-xl px-3 py-2 text-sm w-full md:w-56 bg-white focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
+        />
+
+        <div className="flex flex-wrap gap-1.5 md:contents">
+          {([[  'all', tm.allTeams], ['Cast', tm.teamCast], ['Technique', tm.teamTechnique], ['Wardrobe', tm.teamWardrobe]] as [string, string][]).map(([val, label]) => (
+            <button
+              key={val}
+              onClick={() => setTeamFilter(val)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                teamFilter === val
+                  ? ''
+                  : 'text-gray-500 border-gray-200 hover:bg-gray-50'
+              }`}
+              style={teamFilter === val ? { background: '#1a1410', color: '#fff', borderColor: '#1a1410' } : undefined}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 md:contents">
+          {theatres.length > 1 && (
+            <select
+              value={theatreFilter}
+              onChange={e => setTheatreFilter(e.target.value)}
+              className="w-full md:w-auto border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-white focus:outline-none md:ml-auto"
+            >
+              <option value="all">{tm.allTheatres}</option>
+              {theatres.map(th => (
+                <option key={th.id} value={th.id}>{th.name}</option>
+              ))}
+            </select>
+          )}
+
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className={`w-full md:w-auto border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-white focus:outline-none ${theatres.length <= 1 ? 'md:ml-auto' : ''}`}
+          >
+            <option value="all">{tm.allStatuses}</option>
+            <option value="Dostępny">Dostępny</option>
+            <option value="Dostępny tylko w Warszawie">Dostępny tylko w Warszawie</option>
+            <option value="Niepewny">Niepewny</option>
+            <option value="Niedostępny">Niedostępny</option>
+            <option value="Urlop">Urlop</option>
+            <option value="Choroba">Choroba</option>
+          </select>
+
+          <select
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value as 'name' | 'team' | 'status')}
+            className={`w-full md:w-auto border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 bg-white focus:outline-none ${theatres.length > 1 ? 'col-span-2 md:col-auto' : ''}`}
+          >
+            <option value="name">{tm.sortByName}</option>
+            <option value="team">{tm.sortByTeam}</option>
+            <option value="status">{tm.sortByStatus}</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Person list — odbiorcy (filtrowani / sortowani powyżej) */}
+      {loading ? (
+        <p className="text-sm text-gray-500 text-center py-16">{tm.loading}</p>
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden mb-6">
+          {/* List header */}
+          <div className={`${ROW} border-b border-gray-100`} style={{ background: '#faf8f5' }}>
+            <input
+              type="checkbox"
+              checked={allFilteredSelected}
+              onChange={e => toggleAll(e.target.checked)}
+              className="w-4 h-4 rounded accent-gray-900 cursor-pointer"
+            />
+            <div />{/* avatar placeholder */}
+            <span className="text-xs text-gray-500 font-medium">
+              {selected.size > 0
+                ? <>{tm.nSelected(selected.size)} <button onClick={() => setSelected(new Set())} className="underline decoration-dotted hover:text-gray-700 ml-1">{tm.clearSelection}</button></>
+                : `${filtered.length}`}
+            </span>
+            <span className="hidden md:block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colTeam}</span>
+            <span className="hidden md:block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colStatus}</span>
+            <span className="hidden md:block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{tm.colContact}</span>
+            <div />
+          </div>
+
+          {/* Rows */}
+          {filtered.length === 0 ? (
+            <div className="py-16 text-center text-sm text-gray-500 italic">
+              {tm.noPeople}
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {filtered.map(person => (
+                <PersonRow
+                  key={person.id}
+                  person={person}
+                  checked={selected.has(person.id)}
+                  onToggle={() => togglePerson(person.id)}
+                  onEmail={() => setCompose({ type: 'email', ids: [person.id] })}
+                  onSms={() => setCompose({ type: 'sms', ids: [person.id] })}
+                />
               ))}
             </div>
           )}
