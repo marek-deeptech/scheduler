@@ -73,10 +73,9 @@ function getNextMonths(n: number) {
 const MONTHS_PL = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień']
 function monthLabelPl(key: string) { const [y, m] = key.split('-'); return `${MONTHS_PL[+m - 1]} ${y}` }
 
-interface ApprovedEntry { id: string; month: string; label: string; reportSent: boolean }
-
 // Etapy cyklu życia repertuaru miesiąca
 type MonthStage = 'brak' | 'planowanie' | 'zatwierdzony' | 'wdrozony'
+interface MonthProp { id: string; label: string; stage: MonthStage }
 const STAGE_CFG: Record<MonthStage, { label: string; bg: string; color: string; dot: string }> = {
   brak:         { label: 'Do zaplanowania', bg: '#f2ede6', color: '#7a7068', dot: '#b8b0a4' },
   planowanie:   { label: 'W planowaniu',    bg: '#e6efff', color: '#1d4ed8', dot: '#3b82f6' },
@@ -92,7 +91,7 @@ export default function PlanningPage() {
   // Bieżący miesiąc (YYYY-MM) — planujemy tylko miesiące przyszłe.
   const thisMonthKey = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })()
   const [approvedMonths, setApprovedMonths] = useState<Set<string>>(new Set())
-  const [approvedList,   setApprovedList]   = useState<ApprovedEntry[]>([])
+  const [proposalsByMonth, setProposalsByMonth] = useState<Record<string, MonthProp[]>>({})
   const [monthStatus,    setMonthStatus]    = useState<Record<string, MonthStage>>({})
   const [monthsReady,    setMonthsReady]    = useState(false)
   const [theatreName,    setTheatreName]    = useState<string>('')
@@ -100,17 +99,26 @@ export default function PlanningPage() {
   // Przegląd statusów: bieżący miesiąc + 12 kolejnych
   const overviewMonths = getNextMonths(13)
 
-  // Status repertuaru per miesiąc dla wybranego teatru (lub globalnie)
+  // Propozycje pogrupowane per miesiąc + status etapu (globalnie, ze wszystkich teatrów)
   useEffect(() => {
-    supabase.from('repertoire_proposals').select('month, theatre_id, status, stats').then(({ data }) => {
-      const rel = data ?? []   // status globalny (najwyższy etap z dowolnego teatru), spójnie z sekcją niżej
+    supabase.from('repertoire_proposals').select('id, month, label, status, stats').then(({ data }) => {
+      const rel = (data ?? []).filter((p: any) => p.status !== 'rejected')
+      const byMonth: Record<string, MonthProp[]> = {}
+      for (const p of rel as any[]) {
+        const stage: MonthStage = p.status === 'approved'
+          ? ((p.stats as any)?.report_sent_at ? 'wdrozony' : 'zatwierdzony')
+          : 'planowanie'
+        ;(byMonth[p.month] ??= []).push({ id: p.id, label: p.label, stage })
+      }
+      const order: Record<MonthStage, number> = { wdrozony: 0, zatwierdzony: 1, planowanie: 2, brak: 3 }
+      for (const k in byMonth) byMonth[k].sort((a, b) => order[a.stage] - order[b.stage] || a.label.localeCompare(b.label, 'pl'))
+      setProposalsByMonth(byMonth)
       const m: Record<string, MonthStage> = {}
       for (const mo of overviewMonths) {
-        const props = rel.filter((p: any) => p.month === mo.value)
-        const approved = props.find((p: any) => p.status === 'approved')
-        if (approved) m[mo.value] = (approved.stats as any)?.report_sent_at ? 'wdrozony' : 'zatwierdzony'
-        else if (props.some((p: any) => p.status === 'draft')) m[mo.value] = 'planowanie'
-        else m[mo.value] = 'brak'
+        const ps = byMonth[mo.value] ?? []
+        m[mo.value] = ps.some(p => p.stage === 'wdrozony') ? 'wdrozony'
+          : ps.some(p => p.stage === 'zatwierdzony') ? 'zatwierdzony'
+          : ps.length ? 'planowanie' : 'brak'
       }
       setMonthStatus(m)
     })
@@ -180,11 +188,6 @@ export default function PlanningPage() {
     fetch(url).then(r => r.json()).then(json => {
       const props = (json.proposals ?? []) as Proposal[]
       setApprovedMonths(new Set<string>(props.map(p => p.month)))
-      setApprovedList(
-        props
-          .map(p => ({ id: p.id, month: p.month, label: p.label, reportSent: !!(p.stats as any)?.report_sent_at }))
-          .sort((a, b) => a.month.localeCompare(b.month))
-      )
     }).catch(() => {})
     if (selectedTheatreId) {
       supabase.from('theatres').select('name').eq('id', selectedTheatreId).single()
@@ -456,9 +459,9 @@ export default function PlanningPage() {
         )}
       </div>
 
-      {/* ── Przegląd statusów: 12 miesięcy do przodu ── */}
+      {/* ── Status repertuarów — pionowa oś 12 miesięcy ── */}
       <div className="bg-white rounded-2xl border border-[#e4ddd4] p-5">
-        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
           <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>Status repertuarów — najbliższe 12 miesięcy</p>
           <div className="flex items-center gap-3 flex-wrap">
             {(['brak', 'planowanie', 'zatwierdzony', 'wdrozony'] as MonthStage[]).map(s => (
@@ -469,73 +472,56 @@ export default function PlanningPage() {
             ))}
           </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+
+        <div className="divide-y" style={{ borderColor: '#f2ede6' }}>
           {overviewMonths.map(mo => {
             const st = monthStatus[mo.value] ?? 'brak'
             const cfg = STAGE_CFG[st]
             const isCurrent = mo.value === thisMonthKey
-            const actionable = st === 'zatwierdzony' || st === 'wdrozony'
-            const inner = (
-              <>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold truncate" style={{ color: '#1a1410' }}>{mo.label}</p>
-                  {isCurrent && <p className="text-[10px]" style={{ color: '#a89e92' }}>bieżący miesiąc</p>}
+            const props = proposalsByMonth[mo.value] ?? []
+            return (
+              <div key={mo.value} className="py-3.5 flex flex-col sm:flex-row sm:items-center gap-3"
+                style={isCurrent ? { background: 'linear-gradient(90deg,#faf8f5,transparent)' } : undefined}>
+                {/* Miesiąc + etap (lewa kolumna) */}
+                <div className="sm:w-52 shrink-0 flex items-center gap-2.5">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: cfg.dot }} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>
+                      {mo.label}{isCurrent && <span className="ml-1.5 text-[10px] font-normal" style={{ color: '#a89e92' }}>• teraz</span>}
+                    </p>
+                    <p className="text-[11px] font-semibold" style={{ color: cfg.color }}>{cfg.label}</p>
+                  </div>
                 </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{ background: cfg.bg, color: cfg.color }}>
-                  {cfg.label}
-                </span>
-              </>
-            )
-            return actionable ? (
-              <Link key={mo.value} href={`/planning/implementation?month=${mo.value}`}
-                className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 border transition-colors hover:bg-[#faf8f5]"
-                style={{ borderColor: isCurrent ? '#cdbfae' : '#e4ddd4' }}>
-                {inner}
-              </Link>
-            ) : (
-              <div key={mo.value}
-                className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 border"
-                style={{ borderColor: isCurrent ? '#cdbfae' : '#e4ddd4', background: isCurrent ? '#faf8f5' : '#fff' }}>
-                {inner}
+
+                {/* Propozycje obok siebie (prawa część) */}
+                <div className="flex-1 min-w-0 flex flex-wrap gap-2">
+                  {props.length === 0 ? (
+                    <span className="text-xs italic self-center" style={{ color: '#bdb4a8' }}>Brak propozycji — wybierz miesiąc powyżej i wygeneruj repertuar.</span>
+                  ) : props.map(p => {
+                    const pc = STAGE_CFG[p.stage]
+                    const pillLabel = p.stage === 'planowanie' ? 'Robocza' : pc.label
+                    const done = p.stage === 'zatwierdzony' || p.stage === 'wdrozony'
+                    return (
+                      <div key={p.id} className="rounded-xl border px-3 py-2 flex flex-col gap-1.5 min-w-[148px]" style={{ borderColor: '#e4ddd4', background: '#faf8f5' }}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold truncate" style={{ color: '#1a1410' }}>{p.label}</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0" style={{ background: pc.bg, color: pc.color }}>{pillLabel}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <Link href={`/planning/${p.id}`} className="text-[11px] font-medium hover:underline" style={{ color: '#7a7068' }}>Podgląd</Link>
+                          {done && (
+                            <Link href={`/planning/implementation?month=${mo.value}`} className="text-[11px] font-medium hover:underline" style={{ color: '#7a2020' }}>Wdróż →</Link>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )
           })}
         </div>
       </div>
-
-      {/* ── Zatwierdzone repertuary — do wdrożenia ── */}
-      {approvedList.length > 0 && (
-        <div className="bg-white rounded-2xl border border-[#e4ddd4] p-5">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>Zatwierdzone — do wdrożenia</p>
-            <span className="text-[11px]" style={{ color: '#a89e92' }}>{theatreName || 'Teatr Polonia'}</span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {approvedList.map(a => (
-              <div key={a.month}
-                className="flex items-center justify-between gap-2 rounded-xl px-3.5 py-3 border"
-                style={{ borderColor: '#e4ddd4' }}>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>{monthLabelPl(a.month)}</p>
-                  <p className="text-[11px] truncate" style={{ color: '#a89e92' }}>{a.label}</p>
-                </div>
-                <div className="flex items-center gap-2.5 shrink-0">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                    style={a.reportSent ? { background: '#dcfce7', color: '#15803d' } : { background: '#fef9c3', color: '#854d0e' }}>
-                    {a.reportSent ? 'Wdrożony' : 'Zatwierdzony'}
-                  </span>
-                  <Link href={`/planning/${a.id}`} className="text-xs font-medium hover:underline" style={{ color: '#7a7068' }}>
-                    Podgląd
-                  </Link>
-                  <Link href={`/planning/implementation?month=${a.month}`} className="text-xs font-medium hover:underline" style={{ color: '#7a2020' }}>
-                    Wdróż →
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* ── Error ── */}
       {error && (
