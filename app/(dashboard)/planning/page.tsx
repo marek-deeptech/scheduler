@@ -518,7 +518,7 @@ export default function PlanningPage() {
                     return (
                       <div key={p.id} className="rounded-xl border px-3 py-2 flex flex-col gap-1.5 min-w-[148px]" style={{ borderColor: '#e4ddd4', background: '#faf8f5' }}>
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-semibold truncate" style={{ color: '#1a1410' }}>{p.label}</span>
+                          <span className="text-xs font-semibold" style={{ color: '#1a1410' }}>{p.label} <span style={{ color: '#a89e92', fontWeight: 500 }}>/ {monthLabelPl(mo.value)}</span></span>
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0" style={{ background: pc.bg, color: pc.color }}>{pillLabel}</span>
                         </div>
                         <div className="flex items-center gap-3">
@@ -654,7 +654,7 @@ function ProposalCard({
         <div className="flex items-start gap-3 mb-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-base font-bold" style={{ color: '#1a1410' }}>{proposal.label}</span>
+              <span className="text-base font-bold" style={{ color: '#1a1410' }}>{proposal.label} <span style={{ color: '#a89e92', fontWeight: 500 }}>/ {monthLabelPl(proposal.month)}</span></span>
               <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full uppercase tracking-wide ${cfg.cls}`}>
                 {cfg.label}
               </span>

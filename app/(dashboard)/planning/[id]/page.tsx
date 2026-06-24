@@ -385,16 +385,15 @@ export default function ProposalDetailPage() {
 
         <div className="space-y-2">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.5rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>{proposal.label}</h1>
+            <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.5rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>{proposal.label} <span style={{ color: '#a89e92', fontWeight: 500 }}>/ {monthName.charAt(0).toUpperCase() + monthName.slice(1)}</span></h1>
             <span className={`px-2.5 py-0.5 text-[10px] font-semibold rounded-full uppercase tracking-wide ${cfg.cls}`}>
               {cfg.label}
             </span>
             {saving && <span className="text-[11px] text-gray-400">Zapisuję…</span>}
           </div>
-          <p className="text-sm text-gray-500">
-            {monthName.charAt(0).toUpperCase() + monthName.slice(1)}
-            {proposal.reasoning ? ` · ${proposal.reasoning}` : ''}
-          </p>
+          {proposal.reasoning && (
+            <p className="text-sm text-gray-500">{proposal.reasoning}</p>
+          )}
           <div className="flex gap-2 flex-wrap">
             <StatChip value={localShows.length} label="spektakli" />
             {conflictCount > 0 && (
