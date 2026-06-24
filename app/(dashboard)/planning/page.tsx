@@ -500,7 +500,8 @@ export default function PlanningPage() {
                   ) : props.map(p => {
                     const pc = STAGE_CFG[p.stage]
                     const pillLabel = p.stage === 'planowanie' ? 'Robocza' : pc.label
-                    const done = p.stage === 'zatwierdzony' || p.stage === 'wdrozony'
+                    // Zatwierdzony → Podgląd + Wdróż; Wdrożony → tylko Podgląd; Robocza → Podgląd (otwiera pełne opcje)
+                    const canImplement = p.stage === 'zatwierdzony'
                     return (
                       <div key={p.id} className="rounded-xl border px-3 py-2 flex flex-col gap-1.5 min-w-[148px]" style={{ borderColor: '#e4ddd4', background: '#faf8f5' }}>
                         <div className="flex items-center justify-between gap-2">
@@ -509,7 +510,7 @@ export default function PlanningPage() {
                         </div>
                         <div className="flex items-center gap-3">
                           <Link href={`/planning/${p.id}`} className="text-[11px] font-medium hover:underline" style={{ color: '#7a7068' }}>Podgląd</Link>
-                          {done && (
+                          {canImplement && (
                             <Link href={`/planning/implementation?month=${mo.value}`} className="text-[11px] font-medium hover:underline" style={{ color: '#7a2020' }}>Wdróż →</Link>
                           )}
                         </div>

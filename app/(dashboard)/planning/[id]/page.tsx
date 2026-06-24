@@ -347,6 +347,7 @@ export default function ProposalDetailPage() {
   const [y, m]    = proposal.month.split('-').map(Number)
   const monthName = new Date(y, m - 1, 1).toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })
   const isDraft   = proposal.status === 'draft'
+  const isImplemented = proposal.status === 'approved' && !!(proposal.stats as any)?.report_sent_at
 
   // Stats from localShows
   const byProd: Record<string, number> = {}
@@ -444,21 +445,37 @@ export default function ProposalDetailPage() {
       {proposal.status === 'approved' && (
         <div className="no-print flex items-center gap-3 flex-wrap bg-green-50 border border-green-200 rounded-2xl px-4 md:px-5 py-3">
           <p className="flex-1 min-w-[200px] text-sm text-green-800 font-medium">
-            ✓ Zatwierdzono{proposal.approved_at ? ` ${new Date(proposal.approved_at).toLocaleDateString('pl-PL', { day:'numeric', month:'long', year:'numeric' })}` : ''} — spektakle dodane do kalendarza
+            {isImplemented
+              ? '✓ Wdrożony — repertuar zatwierdzony i przekazany do realizacji (podgląd tylko do odczytu)'
+              : `✓ Zatwierdzono${proposal.approved_at ? ` ${new Date(proposal.approved_at).toLocaleDateString('pl-PL', { day:'numeric', month:'long', year:'numeric' })}` : ''} — spektakle dodane do kalendarza`}
           </p>
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
-            style={{ background: '#1a1410', color: '#fff' }}
-            onMouseOver={e => (e.currentTarget.style.background = '#000')}
-            onMouseOut={e => (e.currentTarget.style.background = '#1a1410')}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-              <rect x="6" y="14" width="12" height="8"/>
-            </svg>
-            Drukuj
-          </button>
+          <div className="flex gap-2 w-full md:w-auto">
+            {/* Zatwierdzony (jeszcze nie wdrożony) → możliwość wdrożenia. Wdrożony → tylko podgląd. */}
+            {!isImplemented && (
+              <Link
+                href={`/planning/implementation?month=${proposal.month}`}
+                className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
+                style={{ background: '#c8102e', color: '#fff' }}
+                onMouseOver={e => (e.currentTarget.style.background = '#9e0c24')}
+                onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
+              >
+                Wdróż →
+              </Link>
+            )}
+            <button
+              onClick={() => window.print()}
+              className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
+              style={{ background: '#1a1410', color: '#fff' }}
+              onMouseOver={e => (e.currentTarget.style.background = '#000')}
+              onMouseOut={e => (e.currentTarget.style.background = '#1a1410')}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                <rect x="6" y="14" width="12" height="8"/>
+              </svg>
+              Drukuj
+            </button>
+          </div>
         </div>
       )}
 
