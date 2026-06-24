@@ -479,6 +479,8 @@ export default function PlanningPage() {
             const cfg = STAGE_CFG[st]
             const isCurrent = mo.value === thisMonthKey
             const props = proposalsByMonth[mo.value] ?? []
+            const isApprovedMonth = st === 'zatwierdzony' || st === 'wdrozony'
+            const approvedProp = props.find(p => p.stage === 'wdrozony') ?? props.find(p => p.stage === 'zatwierdzony')
             return (
               <div key={mo.value} className="py-3.5 flex flex-col sm:flex-row sm:items-center gap-3"
                 style={isCurrent ? { background: 'linear-gradient(90deg,#faf8f5,transparent)' } : undefined}>
@@ -497,6 +499,13 @@ export default function PlanningPage() {
                 <div className="flex-1 min-w-0 flex flex-wrap gap-2">
                   {props.length === 0 ? (
                     <span className="text-xs italic self-center" style={{ color: '#bdb4a8' }}>Brak propozycji — wybierz miesiąc powyżej i wygeneruj repertuar.</span>
+                  ) : isApprovedMonth && approvedProp ? (
+                    <Link href={`/planning/${approvedProp.id}`}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-2 rounded-xl transition-colors self-center hover:opacity-90"
+                      style={{ background: cfg.bg, color: cfg.color }}>
+                      Zobacz repertuar
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </Link>
                   ) : props.map(p => {
                     const pc = STAGE_CFG[p.stage]
                     const pillLabel = p.stage === 'planowanie' ? 'Robocza' : pc.label
