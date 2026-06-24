@@ -75,6 +75,15 @@ function monthLabelPl(key: string) { const [y, m] = key.split('-'); return `${MO
 
 interface ApprovedEntry { id: string; month: string; label: string; reportSent: boolean }
 
+// Etapy cyklu życia repertuaru miesiąca
+type MonthStage = 'brak' | 'planowanie' | 'zatwierdzony' | 'wdrozony'
+const STAGE_CFG: Record<MonthStage, { label: string; bg: string; color: string; dot: string }> = {
+  brak:         { label: 'Do zaplanowania', bg: '#f2ede6', color: '#7a7068', dot: '#b8b0a4' },
+  planowanie:   { label: 'W planowaniu',    bg: '#e6efff', color: '#1d4ed8', dot: '#3b82f6' },
+  zatwierdzony: { label: 'Zatwierdzony',    bg: '#fef9c3', color: '#854d0e', dot: '#eab308' },
+  wdrozony:     { label: 'Wdrożony',        bg: '#dcfce7', color: '#15803d', dot: '#22c55e' },
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function PlanningPage() {
@@ -84,8 +93,28 @@ export default function PlanningPage() {
   const thisMonthKey = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })()
   const [approvedMonths, setApprovedMonths] = useState<Set<string>>(new Set())
   const [approvedList,   setApprovedList]   = useState<ApprovedEntry[]>([])
+  const [monthStatus,    setMonthStatus]    = useState<Record<string, MonthStage>>({})
   const [monthsReady,    setMonthsReady]    = useState(false)
   const [theatreName,    setTheatreName]    = useState<string>('')
+
+  // Przegląd statusów: bieżący miesiąc + 12 kolejnych
+  const overviewMonths = getNextMonths(13)
+
+  // Status repertuaru per miesiąc dla wybranego teatru (lub globalnie)
+  useEffect(() => {
+    supabase.from('repertoire_proposals').select('month, theatre_id, status, stats').then(({ data }) => {
+      const rel = data ?? []   // status globalny (najwyższy etap z dowolnego teatru), spójnie z sekcją niżej
+      const m: Record<string, MonthStage> = {}
+      for (const mo of overviewMonths) {
+        const props = rel.filter((p: any) => p.month === mo.value)
+        const approved = props.find((p: any) => p.status === 'approved')
+        if (approved) m[mo.value] = (approved.stats as any)?.report_sent_at ? 'wdrozony' : 'zatwierdzony'
+        else if (props.some((p: any) => p.status === 'draft')) m[mo.value] = 'planowanie'
+        else m[mo.value] = 'brak'
+      }
+      setMonthStatus(m)
+    })
+  }, [selectedTheatreId])
 
   // Domyślnie planujemy dla Teatru Polonia — gdy wybrano „Wszystkie", przełącz na Polonię.
   // KPA może zmienić na Och-Teatr w menu po lewej.
@@ -425,6 +454,53 @@ export default function PlanningPage() {
             Stefan analizuje obsadę, dostępność aktorów i sale… Może to potrwać 20–30 sekund.
           </div>
         )}
+      </div>
+
+      {/* ── Przegląd statusów: 12 miesięcy do przodu ── */}
+      <div className="bg-white rounded-2xl border border-[#e4ddd4] p-5">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>Status repertuarów — najbliższe 12 miesięcy</p>
+          <div className="flex items-center gap-3 flex-wrap">
+            {(['brak', 'planowanie', 'zatwierdzony', 'wdrozony'] as MonthStage[]).map(s => (
+              <span key={s} className="inline-flex items-center gap-1 text-[11px]" style={{ color: '#7a7068' }}>
+                <span className="w-2 h-2 rounded-full" style={{ background: STAGE_CFG[s].dot }} />
+                {STAGE_CFG[s].label}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+          {overviewMonths.map(mo => {
+            const st = monthStatus[mo.value] ?? 'brak'
+            const cfg = STAGE_CFG[st]
+            const isCurrent = mo.value === thisMonthKey
+            const actionable = st === 'zatwierdzony' || st === 'wdrozony'
+            const inner = (
+              <>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: '#1a1410' }}>{mo.label}</p>
+                  {isCurrent && <p className="text-[10px]" style={{ color: '#a89e92' }}>bieżący miesiąc</p>}
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{ background: cfg.bg, color: cfg.color }}>
+                  {cfg.label}
+                </span>
+              </>
+            )
+            return actionable ? (
+              <Link key={mo.value} href={`/planning/implementation?month=${mo.value}`}
+                className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 border transition-colors hover:bg-[#faf8f5]"
+                style={{ borderColor: isCurrent ? '#cdbfae' : '#e4ddd4' }}>
+                {inner}
+              </Link>
+            ) : (
+              <div key={mo.value}
+                className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 border"
+                style={{ borderColor: isCurrent ? '#cdbfae' : '#e4ddd4', background: isCurrent ? '#faf8f5' : '#fff' }}>
+                {inner}
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       {/* ── Zatwierdzone repertuary — do wdrożenia ── */}
