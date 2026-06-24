@@ -32,6 +32,21 @@ export default function SlotsPage() {
   const [slots, setSlots] = useState<SlotRow[]>([])
   const [avail, setAvail] = useState<Record<string, Record<string, Record<string, boolean>>>>({}) // slotId -> artist -> date -> mogę
   const [submitted, setSubmitted] = useState<Record<string, Set<string>>>({}) // slotId -> set(artistId)
+  // Miesiące z zatwierdzonym/wdrożonym repertuarem — slotów się tam nie planuje
+  const [lockedMonths, setLockedMonths] = useState<Set<string>>(new Set())
+  const monthLocked = lockedMonths.has(month)
+
+  // Na wejściu: ustaw pierwszy miesiąc, którego repertuar jest dopiero planowany
+  // (pierwszy od bieżącego, który NIE jest zatwierdzony/wdrożony).
+  useEffect(() => {
+    supabase.from('repertoire_proposals').select('month').eq('status', 'approved').then(({ data }) => {
+      const locked = new Set<string>((data ?? []).map((r: any) => r.month))
+      setLockedMonths(locked)
+      let m = monthKey(new Date())
+      for (let i = 0; i < 24 && locked.has(m); i++) m = shiftMonth(m, 1)
+      setMonth(m)
+    })
+  }, [])
 
   useEffect(() => { load() }, [month, selectedTheatreId])
 
@@ -126,6 +141,18 @@ export default function SlotsPage() {
 
       {loading ? (
         <p className="text-sm text-center py-16" style={{ color: '#a89e92' }}>Ładowanie…</p>
+      ) : monthLocked ? (
+        <div className="text-center py-16">
+          <div className="flex justify-center mb-3">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#cec5b8" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
+            </svg>
+          </div>
+          <p className="text-sm font-medium" style={{ color: '#7a7068' }}>Repertuar na {monthLabel(month)} jest zatwierdzony</p>
+          <p className="text-xs mt-1 max-w-sm mx-auto" style={{ color: '#a89e92' }}>
+            Sloty Favourites planuje się tylko dla miesięcy, których repertuar jest dopiero w planowaniu. Przejdź do miesiąca jeszcze niezatwierdzonego (strzałką „›").
+          </p>
+        </div>
       ) : (
         <>
           {/* Dodaj slot */}
