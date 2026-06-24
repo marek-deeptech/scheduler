@@ -164,7 +164,7 @@ export default function DashboardPage() {
   const [showsNMConflicts,  setShowsNMConflicts]  = useState(0)
   const [showsM2Conflicts,  setShowsM2Conflicts]  = useState(0)
   const [notConfirmedCount, setNotConfirmedCount] = useState(0)
-  const [notConfBreakdown, setNotConfBreakdown] = useState<{ noAvail: string[]; noConfirm: string[]; change: string[] }>({ noAvail: [], noConfirm: [], change: [] })
+  const [notConfBreakdown, setNotConfBreakdown] = useState<{ udzial: string[]; dostepnosc: string[]; wiadomosci: string[] }>({ udzial: [], dostepnosc: [], wiadomosci: [] })
   const [showsNMCount,      setShowsNMCount]      = useState(0)
   const [showsNMList,       setShowsNMList]       = useState<EventRow[]>([])
   const [showsM2Count,      setShowsM2Count]      = useState(0)
@@ -403,46 +403,26 @@ export default function DashboardPage() {
     setShowsM2Count(m2Shows.length)
     setShowsM2List(m2Shows)
 
-    // ── Braki potwierdzeń NA JUTRO — trzy kategorie ──
+    // ── BRAK POTWIERDZEŃ — wszystkie braki: udział, dostępność, wiadomości koordynatora ──
     const allArtistsMap = new Map(allArtistsRaw.map((a: any) => [a.id, a.name as string]))
-    const castArtists = allArtistsRaw.filter((a: any) => {
-      const teams = Array.isArray(a.teams) ? a.teams : (a.teams ? [a.teams] : [])
-      return teams.some((t: any) => t?.name === 'Cast')
-    })
-
-    // A: brak deklaracji dostępności (Cast bez wpisu w kalendarzu na jutro)
-    const tomorrowAvailIds = new Set((tomorrowDsData ?? []).map((r: any) => r.artist_id))
-    const noAvail = castArtists.filter((a: any) => !tomorrowAvailIds.has(a.id))
-
-    // B/C: brak potwierdzenia udziału w jutrzejszych spektaklach (event_confirmations = pending)
-    const tomorrowEventIds = ((tomorrowShowsData ?? []) as any[]).map(e => e.id)
-    const noConfirmIds = new Set<string>()
-    const changeIds    = new Set<string>()
-    if (tomorrowEventIds.length > 0) {
-      const [{ data: pendConf }, { data: changeMsgs }] = await Promise.all([
-        supabase.from('event_confirmations')
-          .select('event_id, artist_id, artists(name)')
-          .in('event_id', tomorrowEventIds).eq('status', 'pending'),
-        supabase.from('actor_messages')
-          .select('artist_id, related_event_id')
-          .eq('kind', 'event_change').in('related_event_id', tomorrowEventIds),
-      ])
-      // pary (event, artist) które dostały powiadomienie o zmianie → niepotwierdzona zmiana
-      const changed = new Set((changeMsgs ?? []).map((m: any) => `${m.related_event_id}:${m.artist_id}`))
-      for (const c of (pendConf ?? []) as any[]) {
-        const nm = (Array.isArray(c.artists) ? c.artists[0] : c.artists)?.name
-        if (!nm) continue
-        if (changed.has(`${c.event_id}:${c.artist_id}`)) changeIds.add(nm)
-        else noConfirmIds.add(nm)
-      }
-    }
-
-    const noAvailNames  = noAvail.map((a: any) => a.name as string)
-    const noConfirmNames = [...noConfirmIds]
-    const changeNames    = [...changeIds]
-    setNotConfBreakdown({ noAvail: noAvailNames, noConfirm: noConfirmNames, change: changeNames })
-    // łączna liczba unikalnych osób z jakimkolwiek brakiem
-    setNotConfirmedCount(new Set([...noAvailNames, ...noConfirmNames, ...changeNames]).size)
+    const nameOf = (id: string) => allArtistsMap.get(id)
+    const todayIso = `${today}T00:00:00`
+    const [{ data: pendConf }, { data: slotInv }, { data: coordMsgs }] = await Promise.all([
+      // 1. Udział: oczekujące potwierdzenia udziału w nadchodzących spektaklach
+      supabase.from('event_confirmations').select('artist_id, events(start_time)').eq('status', 'pending'),
+      // 2. Dostępność: ankiety dostępności bez odpowiedzi
+      supabase.from('slot_invites').select('artist_id, submitted_at').is('submitted_at', null),
+      // 3. Wiadomości: prośby koordynatora bez odpowiedzi/odczytu
+      supabase.from('actor_messages').select('artist_id').eq('direction', 'to_actor').eq('kind', 'confirmation_request').is('read_at', null),
+    ])
+    const udzial = [...new Set((pendConf ?? []).filter((c: any) => {
+      const e = Array.isArray(c.events) ? c.events[0] : c.events
+      return e && String(e.start_time) >= todayIso
+    }).map((c: any) => nameOf(c.artist_id)).filter(Boolean))] as string[]
+    const dostepnosc = [...new Set((slotInv ?? []).map((s: any) => nameOf(s.artist_id)).filter(Boolean))] as string[]
+    const wiadomosci = [...new Set((coordMsgs ?? []).map((m: any) => nameOf(m.artist_id)).filter(Boolean))] as string[]
+    setNotConfBreakdown({ udzial, dostepnosc, wiadomosci })
+    setNotConfirmedCount(new Set([...udzial, ...dostepnosc, ...wiadomosci]).size)
 
     // Vacations next month: unique artists
     const vacArtistIds = [...new Set((vacNMData ?? []).map((r: any) => r.artist_id))]
@@ -486,8 +466,32 @@ export default function DashboardPage() {
         nm: planFor(monthKey(new Date(now.getFullYear(), now.getMonth() + 1, 1))),
         m2: planFor(monthKey(new Date(now.getFullYear(), now.getMonth() + 2, 1))),
       })
-      // W repertuarze zaakceptowanym/wdrożonym konflikt nie może wystąpić — nie pokazujemy ich.
-      setCastConflicts([])
+      // ── Konflikty w PLANOWANYCH (roboczych) repertuarach — niezaakceptowane, z datami (→ miesiące) ──
+      const { detectProposalConflicts } = await import('@/lib/conflicts')
+      const castRes = await supabase.from('productions').select('title, artist_productions(artists(id, name))')
+      const pCastMap = new Map<string, string[]>()
+      const aNameMap = new Map<string, string>()
+      for (const p of castRes.data ?? []) {
+        const ids: string[] = []
+        for (const ap of (p as any).artist_productions ?? []) {
+          const a = Array.isArray(ap.artists) ? ap.artists[0] : ap.artists
+          if (a?.id) { ids.push(a.id); aNameMap.set(a.id, a.name) }
+        }
+        pCastMap.set((p as any).title, ids)
+      }
+      const draftMonths = [...new Set(allProposals.filter(p => p.status === 'draft').map(p => p.month))]
+      const draftConflicts: import('@/lib/conflicts').ProposalConflict[] = []
+      for (const month of draftMonths) {
+        const mp = allProposals.filter(p => p.month === month && p.status === 'draft')
+        const src = mp.find(p => /(^|\s)1$/.test(String(p.label ?? '').trim())) ?? mp[0]
+        if (!src) continue
+        const events = (src.proposal_data ?? []).map((e: any) => ({
+          date: e.date, production_title: e.production_title, room_name: e.room_name ?? null,
+          start_time: e.start_time ?? '19:00', end_time: e.end_time ?? '22:00',
+        }))
+        if (pCastMap.size > 0) draftConflicts.push(...detectProposalConflicts(events, pCastMap, aNameMap))
+      }
+      setCastConflicts(draftConflicts)
     } catch { /* non-critical */ }
 
     setLoading(false)
@@ -677,33 +681,37 @@ export default function DashboardPage() {
   const nmDate = new Date(now.getFullYear(), now.getMonth() + 1, 1)
   const nmMonthLabel = MONTHS_PL[nmDate.getMonth()]
   const nmMonthKey   = `${nmDate.getFullYear()}-${String(nmDate.getMonth() + 1).padStart(2, '0')}`
-  const m2MonthLabel = MONTHS_PL[new Date(now.getFullYear(), now.getMonth() + 2, 1).getMonth()]
+  const m2Date = new Date(now.getFullYear(), now.getMonth() + 2, 1)
+  const m2MonthLabel = MONTHS_PL[m2Date.getMonth()]
+  const m2MonthKey   = `${m2Date.getFullYear()}-${String(m2Date.getMonth() + 1).padStart(2, '0')}`
+  // Miesiące z konfliktami w planowanych repertuarach
+  const conflictMonths = [...new Set(castConflicts.map(c => c.date.slice(0, 7)))].sort()
 
   /* ── Tooltip content for new tiles ── */
   const notConfirmedTip = (() => {
-    const { noAvail, noConfirm, change } = notConfBreakdown
-    const empty = noAvail.length === 0 && noConfirm.length === 0 && change.length === 0
+    const { udzial, dostepnosc, wiadomosci } = notConfBreakdown
+    const empty = udzial.length === 0 && dostepnosc.length === 0 && wiadomosci.length === 0
     return (
       <>
-        <TipHeader>Braki potwierdzeń na jutro</TipHeader>
+        <TipHeader>Brak potwierdzeń</TipHeader>
         {empty ? <TipEmpty text="Wszystko potwierdzone" /> : (
           <>
-            {change.length > 0 && (
+            {udzial.length > 0 && (
               <>
-                <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#c8102e' }}>Niepotwierdzona zmiana ({change.length})</p>
-                {change.map(n => <TipRow key={'ch'+n} label={n} dot="bg-red-500" />)}
+                <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#b45309' }}>Brak potwierdzenia udziału ({udzial.length})</p>
+                {udzial.map(n => <TipRow key={'u'+n} label={n} dot="bg-amber-400" />)}
               </>
             )}
-            {noConfirm.length > 0 && (
+            {dostepnosc.length > 0 && (
               <>
-                <p className="px-3 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#b45309' }}>Brak potwierdzenia udziału ({noConfirm.length})</p>
-                {noConfirm.map(n => <TipRow key={'nc'+n} label={n} dot="bg-amber-400" />)}
+                <p className="px-3 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#7a7068' }}>Brak potwierdzenia dostępności ({dostepnosc.length})</p>
+                {dostepnosc.map(n => <TipRow key={'d'+n} label={n} dot="bg-gray-400" />)}
               </>
             )}
-            {noAvail.length > 0 && (
+            {wiadomosci.length > 0 && (
               <>
-                <p className="px-3 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#7a7068' }}>Brak deklaracji dostępności ({noAvail.length})</p>
-                {noAvail.map(n => <TipRow key={'na'+n} label={n} dot="bg-gray-400" />)}
+                <p className="px-3 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#1d4ed8' }}>Brak odpowiedzi na wiadomość ({wiadomosci.length})</p>
+                {wiadomosci.map(n => <TipRow key={'w'+n} label={n} dot="bg-blue-500" />)}
               </>
             )}
           </>
@@ -768,45 +776,51 @@ export default function DashboardPage() {
   /* ── Stat cards config ── */
   const titlesNMCount = new Set(showsNMList.filter(e => e.production_title).map(e => e.production_title)).size
 
-  // Cast-conflict tooltip
-  const castConflictTip = (
-    <>
-      <TipHeader>Konflikty obsady – repertuar</TipHeader>
-      {castConflicts.length === 0
-        ? <TipEmpty text="Brak konfliktów" />
-        : castConflicts.slice(0, 8).map((c, i) => (
-            <span key={i} className="block px-3 py-2 text-xs border-b last:border-0" style={{ borderColor: '#f2ede6' }}>
-              <span className="font-semibold" style={{ color: '#c8102e' }}>
-                {c.productions[0].title} ↔ {c.productions[1].title}
+  // Konflikty w planowanych repertuarach — tooltip pogrupowany po miesiącach
+  const castConflictTip = (() => {
+    const byMonth = new Map<string, typeof castConflicts>()
+    for (const c of castConflicts) {
+      const m = c.date.slice(0, 7)
+      if (!byMonth.has(m)) byMonth.set(m, [])
+      byMonth.get(m)!.push(c)
+    }
+    const monthLabel = (key: string) => { const [y, mm] = key.split('-'); return `${MONTHS_PL[+mm - 1]} ${y}` }
+    return (
+      <>
+        <TipHeader>Konflikty obsady w planowanych</TipHeader>
+        {castConflicts.length === 0
+          ? <TipEmpty text="Brak konfliktów" />
+          : [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([m, list]) => (
+              <span key={m} className="block">
+                <p className="px-3 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#1d4ed8' }}>{monthLabel(m)} ({list.length})</p>
+                {list.slice(0, 6).map((c, i) => (
+                  <span key={i} className="block px-3 py-1.5 text-xs">
+                    <span className="font-semibold" style={{ color: '#c8102e' }}>{c.productions[0].title} ↔ {c.productions[1].title}</span>
+                    <span className="block text-[10px] mt-0.5" style={{ color: '#a89e92' }}>{c.date} · {c.artistNames.join(', ')}</span>
+                  </span>
+                ))}
+                {list.length > 6 && <span className="block px-3 pb-1 text-[11px]" style={{ color: '#a89e92' }}>+{list.length - 6} więcej</span>}
               </span>
-              <span className="block text-[10px] mt-0.5" style={{ color: '#a89e92' }}>
-                {c.date} · {c.artistNames.join(', ')}
-              </span>
-            </span>
-          ))
-      }
-      {castConflicts.length > 8 && (
-        <span className="block px-3 py-1.5 text-[11px]" style={{ color: '#a89e92' }}>
-          +{castConflicts.length - 8} więcej
-        </span>
-      )}
-      <span className="block pb-1" />
-    </>
-  )
+            ))
+        }
+        <span className="block pb-1" />
+      </>
+    )
+  })()
 
   const statCards = [
     {
-      label: 'Nie potwierdzili na jutro', value: notConfirmedCount,
+      label: 'Brak potwierdzeń', value: notConfirmedCount,
       sub: notConfirmedCount > 0
         ? [
-            notConfBreakdown.change.length   ? `${notConfBreakdown.change.length}× zmiana` : null,
-            notConfBreakdown.noConfirm.length ? `${notConfBreakdown.noConfirm.length}× udział` : null,
-            notConfBreakdown.noAvail.length   ? `${notConfBreakdown.noAvail.length}× dostępność` : null,
+            notConfBreakdown.udzial.length     ? `${notConfBreakdown.udzial.length}× udział` : null,
+            notConfBreakdown.dostepnosc.length ? `${notConfBreakdown.dostepnosc.length}× dostępność` : null,
+            notConfBreakdown.wiadomosci.length ? `${notConfBreakdown.wiadomosci.length}× wiadomość` : null,
           ].filter(Boolean).join(' · ')
         : 'wszystko potwierdzone',
       warn: notConfirmedCount > 0,
       tip: notConfirmedTip, tipAlign: 'left' as const,
-      cta: notConfirmedCount > 0 ? { label: 'Wyślij przypomnienie', href: '/messages' } : undefined,
+      cta: notConfirmedCount > 0 ? { label: 'Wyślij ponaglenie', href: '/messages' } : undefined,
     },
     {
       label: `Repertuar – ${nmMonthLabel}`,
@@ -838,21 +852,22 @@ export default function DashboardPage() {
       badge: monthPlans.m2?.hasProposal ? { approved: monthPlans.m2.approved } : undefined,
       tip: showsMonthTip(showsM2List, m2MonthLabel), tipAlign: 'center' as const,
       onClick: showsM2Conflicts > 0 ? () => setShowConflictPanel(true) : undefined,
-      cta: monthPlans.m2?.hasProposal && !monthPlans.m2.approved
+      cta: monthPlans.m2?.approved
+        ? { label: `Zobacz ${m2MonthLabel}`, href: `/calendar?month=${m2MonthKey}` }
+        : monthPlans.m2?.hasProposal && !monthPlans.m2.approved
         ? { label: `Zatwierdź ${m2MonthLabel}`, href: '/planning' }
         : showsM2Count === 0 && !monthPlans.m2?.hasProposal
         ? { label: `Zaplanuj ${m2MonthLabel}`, href: '/planning' }
         : undefined,
     },
     {
-      label: 'Konflikty obsady', value: castConflicts.length,
+      label: 'Konflikty obsady w Planowanych', value: castConflicts.length,
       sub: castConflicts.length > 0
-        ? `${[...new Set(castConflicts.flatMap(c => c.artistNames))].slice(0, 2).join(', ')}${castConflicts.flatMap(c => c.artistNames).length > 2 ? '…' : ''}`
+        ? conflictMonths.map(m => MONTHS_PL[+m.slice(5) - 1]).join(', ')
         : 'brak konfliktów',
       warn: castConflicts.length > 0,
       tip: castConflictTip, tipAlign: 'right' as const,
-      onClick: castConflicts.length > 0 ? () => window.location.assign('/calendar') : undefined,
-      cta: castConflicts.length > 0 ? { label: 'Rozwiąż konflikty', href: '/calendar' } : undefined,
+      cta: castConflicts.length > 0 ? { label: 'Rozwiąż w Planowaniu', href: '/planning' } : undefined,
     },
   ]
 
