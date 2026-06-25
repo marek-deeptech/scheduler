@@ -88,7 +88,7 @@ const STAGE_CFG: Record<MonthStage, { label: string; bg: string; color: string; 
 
 export default function PlanningPage() {
   const { selectedTheatreId, setSelectedTheatreId } = useTheatre()
-  const allMonths = getNextMonths(8)
+  const allMonths = getNextMonths(13)   // bieżący + 12 miesięcy do przodu
   // Bieżący miesiąc (YYYY-MM) — planujemy tylko miesiące przyszłe.
   const thisMonthKey = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })()
   const [approvedMonths, setApprovedMonths] = useState<Set<string>>(new Set())
@@ -437,7 +437,7 @@ export default function PlanningPage() {
               value={selectedMonth}
               onChange={e => setSelectedMonth(e.target.value)}
               disabled={!monthsReady || months.length === 0}
-              className="w-full rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e] disabled:opacity-50" style={{ border: '1px solid #e4ddd4', color: '#3e3830' }}
+              className="w-full rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#cbbfb0] focus:border-[#cbbfb0] disabled:opacity-50" style={{ border: '1px solid #e4ddd4', color: '#3e3830' }}
             >
               {months.length === 0
                 ? <option value="">Wszystkie miesiące zatwierdzone</option>
@@ -455,7 +455,7 @@ export default function PlanningPage() {
               onChange={e => setConstraints(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !generating && handleGenerate()}
               placeholder="np. Hamlet min. 4 razy, bez środowego grania w 1. tygodniu…"
-              className="w-full rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e]" style={{ border: '1px solid #e4ddd4', color: '#3e3830' }}
+              className="w-full rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#cbbfb0] focus:border-[#cbbfb0]" style={{ border: '1px solid #e4ddd4', color: '#3e3830' }}
             />
           </div>
 
