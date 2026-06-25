@@ -13,3 +13,7 @@ create table if not exists planning_assumptions (
 );
 
 create index if not exists planning_assumptions_theatre_idx on planning_assumptions(theatre_id);
+
+-- Spójnie z resztą tabel apki (klucz anon, brak realnego auth) — bez RLS.
+-- Supabase domyślnie włącza RLS na nowych tabelach, więc jawnie je wyłączamy.
+alter table planning_assumptions disable row level security;
