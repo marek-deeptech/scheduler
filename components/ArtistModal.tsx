@@ -69,6 +69,7 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
     role:       artist?.role       ?? '',
     birth_date: artist?.birth_date ?? '',
     actor_type: artist?.actor_type ?? '',
+    core:       (artist as any)?.is_core ?? false,
   })
   const [assignedIds,    setAssignedIds]    = useState<string[]>([])
   const [substituteIds,  setSubstituteIds]  = useState<string[]>([])
@@ -225,6 +226,12 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
       artistId = newArtist?.id ?? null
     }
 
+    // Kategoria CORE — tolerancyjnie na brak kolumny (uruchom supabase-migration-core.sql).
+    if (artistId) {
+      const { error: coreErr } = await supabase.from('artists').update({ is_core: form.core }).eq('id', artistId)
+      if (coreErr) console.warn('Zapis is_core pominięty — uruchom supabase-migration-core.sql:', coreErr.message)
+    }
+
     if (artistId) {
       const id = artistId
       await supabase.from('artist_productions').delete().eq('artist_id', id)
@@ -373,6 +380,23 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
                 <option value="zewnętrzny">Zewnętrzny</option>
                 <option value="performer">Performer</option>
               </select>
+            </div>
+            <div>
+              <label className={labelCls}>Kategoria</label>
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, core: !f.core }))}
+                className="w-full flex items-center justify-between rounded-lg px-3 py-2 border transition-colors"
+                style={form.core
+                  ? { borderColor: '#c8102e', background: '#fdf0f2', color: '#7a2020' }
+                  : { borderColor: '#e5e7eb', background: '#fff', color: '#6b7280' }}
+              >
+                <span className="text-sm font-medium">★ Aktor CORE (kluczowy)</span>
+                <span className="relative w-9 h-5 rounded-full transition-colors shrink-0" style={{ background: form.core ? '#c8102e' : '#d6d0c8' }}>
+                  <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform" style={{ transform: form.core ? 'translateX(16px)' : 'none' }} />
+                </span>
+              </button>
+              <p className="text-[11px] mt-1" style={{ color: '#a89e92' }}>Uwzględniany przy generowaniu repertuaru (dostępność jako twarda blokada).</p>
             </div>
           </div>
 

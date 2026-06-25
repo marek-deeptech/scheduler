@@ -7,6 +7,7 @@ import { useTheatre } from '@/lib/theatre-context'
 import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import SendConfirmModal from '@/components/SendConfirmModal'
 import { CategoryMarks } from '@/components/CategoryMarks'
+import { SlotsTab, FinanceTab, CoreTab, ExtraTab } from '@/components/PlanningConditionTabs'
 import {
   detectProposalConflicts,
   conflictedTitles,
@@ -207,6 +208,9 @@ export default function PlanningPage() {
   const [loading,       setLoading]       = useState(false)
   const [generating,    setGenerating]    = useState(false)
   const [constraints,   setConstraints]   = useState('')
+  // Warunki generowania — domyślnie tylko finanse ON (zadanie 3: a,c,d wyłączone)
+  const [cond, setCond] = useState({ slots: false, finance: true, core: false, extra: false })
+  const [activeTab, setActiveTab] = useState<'gen' | 'slots' | 'finance' | 'core' | 'extra'>('gen')
   const [expandedIds,   setExpandedIds]   = useState<Set<string>>(new Set())
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [error,         setError]         = useState<string | null>(null)
@@ -257,40 +261,53 @@ export default function PlanningPage() {
     }
   }
 
-  async function generate() {
+  // Składa tekst ograniczeń z włączonych warunków (CORE + założenia dodatkowe).
+  async function buildComposedConstraints(): Promise<string> {
+    const parts: string[] = []
+    if (constraints.trim()) parts.push(constraints.trim())
+    if (cond.core) {
+      const r = await supabase.from('artists').select('id, name, is_core').eq('is_core', true)
+      const core = r.error ? [] : (r.data ?? [])
+      if (core.length) {
+        const ids = core.map((a: any) => a.id)
+        const start = `${selectedMonth}-01T00:00:00`, end = `${selectedMonth}-31T23:59:59`
+        const { data: av } = await supabase.from('availabilities').select('artist_id, start_time, end_time')
+          .in('artist_id', ids).lte('start_time', end).gte('end_time', start)
+        const byId: Record<string, string> = Object.fromEntries(core.map((a: any) => [a.id, a.name]))
+        const lines = ((av ?? []) as any[]).map(a => `${byId[a.artist_id]}: niedostępny ${a.start_time.slice(0, 10)}–${a.end_time.slice(0, 10)}`)
+        if (lines.length) parts.push('Twarde blokady — aktorzy CORE niedostępni (nie obsadzaj ich w tych dniach):\n' + lines.join('\n'))
+      }
+    }
+    if (cond.extra && selectedTheatreId) {
+      const { data: asmp } = await supabase.from('planning_assumptions').select('text')
+        .eq('theatre_id', selectedTheatreId).eq('active', true)
+      const lines = ((asmp ?? []) as any[]).map(a => a.text)
+      if (lines.length) parts.push('Założenia dodatkowe (twarde reguły):\n- ' + lines.join('\n- '))
+    }
+    return parts.join('\n\n')
+  }
+
+  async function handleGenerate() {
     setGenerating(true)
     setError(null)
     try {
-      const r = await fetch('/api/planning/generate', {
+      const composed = await buildComposedConstraints()
+      const endpoint = cond.finance ? '/api/planning/generate-options' : '/api/planning/generate'
+      const r = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month: selectedMonth, constraints: constraints.trim() || undefined, theatreId: selectedTheatreId }),
+        body: JSON.stringify({
+          month: selectedMonth, theatreId: selectedTheatreId,
+          constraints: composed || undefined,
+          useSlots: cond.slots, useCore: cond.core,
+        }),
       })
       const json = await r.json()
       if (json.error) throw new Error(json.error)
       setConstraints('')
-      await loadProposals()   // reload so we always show the 4 most recent drafts
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Błąd generowania')
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  async function generateOptions() {
-    setGenerating(true)
-    setError(null)
-    try {
-      const r = await fetch('/api/planning/generate-options', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month: selectedMonth, theatreId: selectedTheatreId }),
-      })
-      const json = await r.json()
-      if (json.error) throw new Error(json.error)
       await loadProposals()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Błąd generowania opcji')
+      setError(e instanceof Error ? e.message : 'Błąd generowania')
     } finally {
       setGenerating(false)
     }
@@ -361,22 +378,56 @@ export default function PlanningPage() {
           <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>Planowanie repertuaru</h1>
           <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>Stefan analizuje obsadę i dostępność, generuje propozycje układu spektakli</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Link href="/planning/slots"
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl transition-colors"
-            style={{ background: '#fff', border: '1px solid #e4ddd4', color: '#7a2020' }}>
-            <span className="text-red-500">♥</span> Sloty Favourites
-          </Link>
-          <Link href="/planning/implementation"
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl transition-colors"
-            style={{ background: '#fff', border: '1px solid #e4ddd4', color: '#7a7068' }}>
-            ✓ Wdrożenie
-          </Link>
-        </div>
       </div>
+
+      {/* ── Zakładki: Generowanie + edycja warunków ── */}
+      <div className="flex gap-1.5 overflow-x-auto -mt-2 pb-1">
+        {([
+          ['gen', 'Generowanie'], ['slots', 'Sloty Favourites'], ['finance', 'Założenia finansowe'], ['core', 'Dostępność CORE'], ['extra', 'Założenia dodatkowe'],
+        ] as const).map(([k, lbl]) => (
+          <button key={k} onClick={() => setActiveTab(k)}
+            className="px-3.5 py-2 text-sm font-semibold rounded-xl whitespace-nowrap transition-colors shrink-0"
+            style={activeTab === k ? { background: '#1a1410', color: '#fff' } : { background: '#f2ede6', color: '#7a7068' }}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Zakładki edycji warunków ── */}
+      {activeTab === 'slots'   && <SlotsTab />}
+      {activeTab === 'finance' && <FinanceTab />}
+      {activeTab === 'core'    && <CoreTab month={selectedMonth || thisMonthKey} />}
+      {activeTab === 'extra'   && <ExtraTab theatreId={selectedTheatreId} theatreName={theatreName} />}
+
+      {activeTab === 'gen' && (<>
 
       {/* ── Controls ── */}
       <div className="bg-white rounded-2xl border border-[#e4ddd4] p-5 space-y-4">
+        {/* Warunki do uwzględnienia (zadanie 1) */}
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#b8b0a4' }}>Uwzględnij warunki</label>
+          <div className="flex gap-2 flex-wrap">
+            {([
+              ['slots', '♥', 'Sloty Favourites', '#ef4444'],
+              ['finance', '◆', 'Założenia finansowe', '#34d399'],
+              ['core', '★', 'Dostępność CORE', '#eab308'],
+              ['extra', '▣', 'Założenia dodatkowe', '#60a5fa'],
+            ] as const).map(([k, icon, lbl, color]) => {
+              const on = cond[k]
+              return (
+                <button key={k} type="button" onClick={() => setCond(c => ({ ...c, [k]: !c[k] }))}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-colors"
+                  style={on
+                    ? { borderColor: '#1a1410', background: '#1a1410', color: '#fff' }
+                    : { borderColor: '#e4ddd4', background: '#fff', color: '#a89e92' }}>
+                  <span style={{ color: on ? color : '#cec5b8' }}>{icon}</span>
+                  {lbl}
+                  <span className="ml-0.5 text-[9px] font-bold" style={{ color: on ? color : '#cec5b8' }}>{on ? 'ON' : 'OFF'}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
         <div className="flex gap-3 items-end flex-wrap">
 
           {/* Month picker — only months without approved repertoire */}
@@ -402,7 +453,7 @@ export default function PlanningPage() {
               type="text"
               value={constraints}
               onChange={e => setConstraints(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && !generating && generate()}
+              onKeyDown={e => e.key === 'Enter' && !generating && handleGenerate()}
               placeholder="np. Hamlet min. 4 razy, bez środowego grania w 1. tygodniu…"
               className="w-full rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e]" style={{ border: '1px solid #e4ddd4', color: '#3e3830' }}
             />
@@ -410,7 +461,7 @@ export default function PlanningPage() {
 
           {/* Generate button */}
           <button
-            onClick={generate}
+            onClick={handleGenerate}
             disabled={generating || !selectedTheatreId}
             className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors shrink-0"
             style={{ background: '#c8102e', color: '#fff' }}
@@ -430,24 +481,22 @@ export default function PlanningPage() {
                   <path d="M12 2a7 7 0 0 1 7 7c0 4-3 6-5 8l-2 2-2-2c-2-2-5-4-5-8a7 7 0 0 1 7-7z" strokeLinecap="round" strokeLinejoin="round"/>
                   <circle cx="12" cy="9" r="2" fill="currentColor" stroke="none"/>
                 </svg>
-                Generuj propozycje
+                Generowanie
               </>
             )}
           </button>
 
-          {/* Generate 4 finance-optimized options */}
-          <button
-            onClick={generateOptions}
-            disabled={generating || !selectedTheatreId}
-            className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors shrink-0"
-            style={{ background: '#1a1410', color: '#fff' }}
+          {/* Wdrożenie — obok Generowanie */}
+          <Link
+            href="/planning/implementation"
+            className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold rounded-xl transition-colors shrink-0"
+            style={{ background: '#fff', border: '1px solid #e4ddd4', color: '#7a7068' }}
           >
-            <span style={{ color: '#34d399' }}>◆</span>
-            Uwzględnij założenia finansowe
-          </button>
+            ✓ Wdrożenie
+          </Link>
         </div>
         <p className="text-[11px] -mt-2" style={{ color: '#a89e92' }}>
-          Planujesz: <b style={{ color: '#7a2020' }}>{theatreName || 'Teatr Polonia'}</b> (zmień teatr w menu po lewej). „Uwzględnij założenia finansowe" bierze zatwierdzone dni Favourites jako stałe i dokłada resztę repertuaru pod 4 cele finansowe (uwzględnia zajętość wspólnych aktorów w drugim teatrze).
+          Planujesz: <b style={{ color: '#7a2020' }}>{theatreName || 'Teatr Polonia'}</b> (zmień teatr w menu po lewej). Włączone warunki powyżej zostaną uwzględnione przy generowaniu{cond.finance ? ' (Finanse ON → 4 warianty pod cele finansowe)' : ' (1 propozycja)'}.
         </p>
 
         {/* Generating banner */}
@@ -587,6 +636,8 @@ export default function PlanningPage() {
           </div>
         </>
       )}
+
+      </>)}
     </div>
   )
 }

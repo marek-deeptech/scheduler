@@ -37,7 +37,8 @@ async function loadFinanceParams(): Promise<FinanceParams> {
 }
 
 export async function POST(request: Request) {
-  const { month, theatreId } = await request.json() as { month: string; theatreId?: string }
+  const { month, theatreId, useCore = false, useSlots = false } = await request.json() as
+    { month: string; theatreId?: string; constraints?: string; useCore?: boolean; useSlots?: boolean }
   if (!month?.match(/^\d{4}-\d{2}$/)) return Response.json({ error: 'Invalid month' }, { status: 400 })
   if (!theatreId) return Response.json({ error: 'Wybierz teatr (Polonia lub Och) — repertuar planowany jest osobno dla każdego teatru.' }, { status: 400 })
 
@@ -121,7 +122,8 @@ export async function POST(request: Request) {
     if (!Array.isArray(s.locked_dates) || !s.locked_dates.length) continue
     const prodTheatre = (Array.isArray(s.productions) ? s.productions[0] : s.productions)?.theatre_id
     if (prodTheatre === theatreId) {
-      lockedByProd[s.production_id] = s.locked_dates
+      // Sloty Favourites jako stałe tylko gdy warunek włączony (zadanie 3, domyślnie OFF)
+      if (useSlots) lockedByProd[s.production_id] = s.locked_dates
     } else {
       // wspólni aktorzy zajęci w innym teatrze w te dni
       for (const aid of castByProd[s.production_id] ?? []) {
@@ -135,6 +137,23 @@ export async function POST(request: Request) {
     const date = String(ev.start_time).slice(0, 10)
     for (const aid of castByProd[ev.production_id] ?? []) {
       (unavailByDate[date] ??= new Set()).add(aid)
+    }
+  }
+
+  // Dostępność aktorów CORE — twarde blokady (warunek c, gdy włączony).
+  if (useCore) {
+    const core = await supabase.from('artists').select('id, is_core').eq('is_core', true)
+    const coreIds = core.error ? [] : ((core.data ?? []) as any[]).map(a => a.id)
+    if (coreIds.length) {
+      const { data: av } = await supabase.from('availabilities').select('artist_id, start_time, end_time')
+        .in('artist_id', coreIds).lte('start_time', `${monthEnd}T23:59:59`).gte('end_time', `${monthStart}T00:00:00`)
+      for (const a of (av ?? []) as any[]) {
+        const e = new Date(`${String(a.end_time).slice(0, 10)}T12:00:00Z`)
+        for (let d = new Date(`${String(a.start_time).slice(0, 10)}T12:00:00Z`); d <= e; d.setUTCDate(d.getUTCDate() + 1)) {
+          const ds = d.toISOString().slice(0, 10)
+          if (ds >= monthStart && ds <= monthEnd) (unavailByDate[ds] ??= new Set()).add(a.artist_id)
+        }
+      }
     }
   }
 
