@@ -22,6 +22,8 @@ interface ArtistRow {
   avatar_url: string | null
   productionCount: number
   playedHours: number      // zagrane godziny w ost. 12 mies. (przeszłe spektakle)
+  playCount: number        // liczba zagranych spektakli w ost. 12 mies.
+  is_core: boolean
 }
 
 interface ProductionRef {
@@ -177,7 +179,10 @@ function ArtistCard({ artist, isSelected, onClick }: {
       )}
       <Avatar url={artist.avatar_url} name={artist.name} size="md" />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold truncate" style={{ color: '#1a1410' }}>{artist.name}</p>
+        <p className="text-sm font-semibold truncate flex items-center gap-1" style={{ color: '#1a1410' }}>
+          {artist.is_core && <span title="Aktor CORE" className="shrink-0" style={{ color: '#c8102e' }}>★</span>}
+          <span className="truncate">{artist.name}</span>
+        </p>
         <p className="text-xs truncate" style={{ color: '#a89e92' }}>{artist.role ?? '—'}</p>
       </div>
       <div className="flex flex-col items-end gap-1 shrink-0">
@@ -191,8 +196,8 @@ function ArtistCard({ artist, isSelected, onClick }: {
         {artist.productionCount > 0 && (
           <span className="text-[10px]" style={{ color: '#a89e92' }}>{artist.productionCount} {artist.productionCount === 1 ? 'tytuł' : artist.productionCount < 5 ? 'tytuły' : 'tytułów'}</span>
         )}
-        {artist.playedHours > 0 && (
-          <span className="text-[10px] font-medium" style={{ color: '#7a7068' }}>{artist.playedHours} godz. zagrane</span>
+        {artist.playCount > 0 && (
+          <span className="text-[10px] font-semibold" style={{ color: '#7a2020' }}>{artist.playCount} {artist.playCount === 1 ? 'spektakl' : artist.playCount < 5 ? 'spektakle' : 'spektakli'}/rok</span>
         )}
       </div>
     </div>
@@ -1093,6 +1098,7 @@ export default function ArtistsPage() {
   const [modal,        setModal]        = useState<ArtistRow | null | undefined>(undefined)
   const [search,       setSearch]       = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [sortMode,     setSortMode]     = useState<'alpha' | 'core'>('alpha')
 
   // Auto-select artist from URL param (?select=<id>) and optionally open edit modal (?edit=1)
   const searchParams = useSearchParams()
@@ -1120,7 +1126,7 @@ export default function ArtistsPage() {
 
     const [{ data: aData }, { data: pData }, { data: dsData }, { data: pastEv }] = await Promise.all([
       supabase.from('artists')
-        .select('id, name, email, phone, role, birth_date, actor_type, avatar_url, teams!inner(name), artist_productions(production_id)')
+        .select('id, name, email, phone, role, birth_date, actor_type, is_core, avatar_url, teams!inner(name), artist_productions(production_id)')
         .eq('teams.name', 'Cast')
         .order('name'),
       supabase.from('productions').select('id, title, theatres(name)').order('title'),
@@ -1142,14 +1148,17 @@ export default function ArtistsPage() {
     for (const a of ((aData ?? []) as any[])) {
       for (const ap of (a.artist_productions ?? [])) (prodToArtists[ap.production_id] ??= []).push(a.id)
     }
-    // Suma zagranych godzin per aktor
+    // Suma zagranych godzin + liczba spektakli per aktor (ost. 12 mies.)
     const hoursByArtist: Record<string, number> = {}
+    const playCountByArtist: Record<string, number> = {}
     for (const ev of ((pastEv ?? []) as any[])) {
-      const dur = (new Date(ev.end_time).getTime() - new Date(ev.start_time).getTime()) / 3.6e6
-      if (!(dur > 0)) continue
       const explicit = (ev.event_artists ?? []).map((e: any) => e.artist_id)
       const cast = explicit.length > 0 ? explicit : (prodToArtists[ev.production_id] ?? [])
-      for (const aid of cast) hoursByArtist[aid] = (hoursByArtist[aid] ?? 0) + dur
+      const dur = (new Date(ev.end_time).getTime() - new Date(ev.start_time).getTime()) / 3.6e6
+      for (const aid of cast) {
+        playCountByArtist[aid] = (playCountByArtist[aid] ?? 0) + 1
+        if (dur > 0) hoursByArtist[aid] = (hoursByArtist[aid] ?? 0) + dur
+      }
     }
 
     setArtists(((aData ?? []) as any[]).map(a => ({
@@ -1163,6 +1172,8 @@ export default function ArtistsPage() {
       avatar_url:      a.avatar_url ?? null,
       productionCount: (a.artist_productions ?? []).length,
       playedHours:     Math.round(hoursByArtist[a.id] ?? 0),
+      playCount:       playCountByArtist[a.id] ?? 0,
+      is_core:         !!a.is_core,
     })))
     setProductions(((pData ?? []) as any[]).map(p => ({
       id: p.id, title: p.title,
@@ -1292,8 +1303,14 @@ export default function ArtistsPage() {
       const q = search.toLowerCase()
       list = list.filter(a => a.name.toLowerCase().includes(q) || (a.role ?? '').toLowerCase().includes(q))
     }
+    if (sortMode === 'core') {
+      // CORE najpierw, w obu grupach wg aktywności (liczba spektakli / rok), potem alfabetycznie
+      const alpha = sortByLastName(list)
+      return [...alpha].sort((a, b) =>
+        (Number(b.is_core) - Number(a.is_core)) || (b.playCount - a.playCount))
+    }
     return sortByLastName(list)
-  }, [artists, statusFilter, search])
+  }, [artists, statusFilter, search, sortMode])
 
   const selectedArtist = artists.find(a => a.id === selectedId) ?? null
 
@@ -1356,6 +1373,18 @@ export default function ArtistsPage() {
               className="flex-1 min-w-[180px] rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
               style={{ border: '1px solid #e4ddd4', background: '#fff', color: '#1a1410' }}
             />
+            {/* Sortowanie */}
+            <div className="flex items-center gap-0.5 rounded-lg p-0.5 shrink-0" style={{ background: '#ede7df' }}>
+              {([['alpha', 'Alfabetycznie'], ['core', 'Core + aktywność']] as const).map(([k, lbl]) => (
+                <button key={k} onClick={() => setSortMode(k)}
+                  className="px-2.5 py-1 rounded-md text-xs font-semibold whitespace-nowrap transition-all"
+                  style={sortMode === k
+                    ? { background: '#fff', color: '#1a1410', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+                    : { color: '#a89e92' }}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
             <div className="flex gap-1 flex-wrap">
               {[{ key: 'all', label: ta.all }, ...statusOptions.map(s => ({ key: s, label: s }))].map(f => {
                 const isActive = statusFilter === f.key
