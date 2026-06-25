@@ -355,13 +355,13 @@ export default function PlanningPage() {
       )}
 
       {/* ── Header ── */}
-      <div className="flex items-start justify-between gap-4 px-4 py-4 -mx-4 -mt-4 md:px-8 md:py-5 md:-mx-8 md:-mt-8 mb-2"
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-4 px-4 py-4 -mx-4 -mt-4 md:px-8 md:py-5 md:-mx-8 md:-mt-8 mb-2"
         style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
         <div>
           <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>Planowanie repertuaru</h1>
           <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>Stefan analizuje obsadę i dostępność, generuje propozycje układu spektakli</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 flex-wrap">
           <Link href="/planning/slots"
             className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl transition-colors"
             style={{ background: '#fff', border: '1px solid #e4ddd4', color: '#7a2020' }}>

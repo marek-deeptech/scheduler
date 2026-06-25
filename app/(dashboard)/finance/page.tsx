@@ -234,10 +234,10 @@ export default function FinancePage() {
             .fin-slider::-moz-range-thumb:hover { transform: scale(1.18); }
           `}</style>
           <div className="mb-6 rounded-2xl p-4" style={{ background: '#fff', border: '1px solid #e4ddd4' }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+              <div className="flex items-center gap-2 min-w-0">
                 <span className="text-sm font-semibold" style={{ color: '#1a1410' }}>Symulacja scenariusza</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: '#f2ede6', color: '#7a7068' }}>co-jeśli</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap shrink-0" style={{ background: '#f2ede6', color: '#7a7068' }}>co-jeśli</span>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <span className="text-xs" style={{ color: '#7a7068' }}>{simOn ? 'Włączona' : 'Wyłączona'}</span>
