@@ -94,12 +94,19 @@ async function notifyCastAfterApproval(insertedEvents: InsertedEvent[], month: s
   const logRows: MessageLogRow[] = []
   let notified = 0
 
+  // ⚠️ TEST: wyślij powiadomienia tylko do pierwszych N aktorów (0 = bez limitu).
+  // Ustaw 0 (lub usuń ten blok) przed realnym wdrożeniem.
+  const TEST_MAX_NOTIFY = 5
+  const notifyEntries = TEST_MAX_NOTIFY > 0
+    ? Object.entries(artistEvents).slice(0, TEST_MAX_NOTIFY)
+    : Object.entries(artistEvents)
+
   // Zaproszenia kalendarzowe (.ics) — SEQUENCE per (event, aktor), doklejane do maili.
-  const invitePairs = Object.entries(artistEvents).flatMap(([aid, evs]) =>
+  const invitePairs = notifyEntries.flatMap(([aid, evs]) =>
     evs.map(e => ({ event_id: e.id, artist_id: aid })))
   const seqMap = await bumpInviteSeqs(supabase, invitePairs)
 
-  for (const [artistId, evsRaw] of Object.entries(artistEvents)) {
+  for (const [artistId, evsRaw] of notifyEntries) {
     const info = artistInfo[artistId]
     if (!info) continue
     const evs = [...evsRaw].sort((a, b) => a.start_time.localeCompare(b.start_time))

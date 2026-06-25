@@ -11,7 +11,7 @@ function getResend() {
 // ⚠️ TRYB TESTOWY — wszystkie maile przekierowane na adresy testowe,
 // żeby nic nie trafiło do prawdziwych odbiorców. Aby wrócić do realnej
 // wysyłki, ustaw TEST_REDIRECT_EMAILS = [] (lub usuń override poniżej).
-export const TEST_REDIRECT_EMAILS = ['Marek@veryniceworks.com', 'k.szustow@szustow.com']
+export const TEST_REDIRECT_EMAILS = ['marek@veryniceworks.com']
 
 export interface EmailAttachment { filename: string; content: Buffer | string; contentType?: string }
 
