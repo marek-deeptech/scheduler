@@ -13,7 +13,14 @@ function getResend() {
 // wysyłki, ustaw TEST_REDIRECT_EMAILS = [] (lub usuń override poniżej).
 export const TEST_REDIRECT_EMAILS = ['Marek@veryniceworks.com', 'k.szustow@szustow.com']
 
-export async function sendEmail(to: string | string[], subject: string, html: string) {
+export interface EmailAttachment { filename: string; content: Buffer | string; contentType?: string }
+
+export async function sendEmail(
+  to: string | string[],
+  subject: string,
+  html: string,
+  opts?: { attachments?: EmailAttachment[] },
+) {
   const resend = getResend()
   if (!resend) {
     console.warn('Resend not configured — email skipped')
@@ -25,7 +32,10 @@ export async function sendEmail(to: string | string[], subject: string, html: st
     console.info(`[TEST] Mail przekierowany (oryg. odbiorca: ${original}) → ${TEST_REDIRECT_EMAILS.join(', ')}`)
     recipients = TEST_REDIRECT_EMAILS
   }
-  const { error } = await resend.emails.send({ from: FROM, to: recipients, subject, html })
+  const { error } = await resend.emails.send({
+    from: FROM, to: recipients, subject, html,
+    ...(opts?.attachments?.length ? { attachments: opts.attachments } : {}),
+  })
   if (error) console.error('Resend error:', error)
   return !error
 }

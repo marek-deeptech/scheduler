@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
 import { logMessages, type MessageLogRow } from '@/lib/message-log'
+import { bumpInviteSeqs, inviteAttachment } from '@/lib/calendar-invite'
+import { localFromStored, type Vevent } from '@/lib/ics'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -92,6 +94,11 @@ async function notifyCastAfterApproval(insertedEvents: InsertedEvent[], month: s
   const logRows: MessageLogRow[] = []
   let notified = 0
 
+  // Zaproszenia kalendarzowe (.ics) — SEQUENCE per (event, aktor), doklejane do maili.
+  const invitePairs = Object.entries(artistEvents).flatMap(([aid, evs]) =>
+    evs.map(e => ({ event_id: e.id, artist_id: aid })))
+  const seqMap = await bumpInviteSeqs(supabase, invitePairs)
+
   for (const [artistId, evsRaw] of Object.entries(artistEvents)) {
     const info = artistInfo[artistId]
     if (!info) continue
@@ -126,7 +133,23 @@ async function notifyCastAfterApproval(insertedEvents: InsertedEvent[], month: s
         <table style="width:100%;border-collapse:collapse">${rows}</table>
       `)
 
-      const ok = await sendEmail(info.email, `[Repertuar] ${label} — Twoje spektakle (${evs.length})`, html)
+      const vevents: Vevent[] = evs.map(e => {
+        const seq = seqMap.get(`${e.id}:${artistId}`)
+        return {
+          uid: seq?.uid ?? `${e.id}.${artistId}@repertuar.vercel.app`,
+          sequence: seq?.sequence ?? 0,
+          startLocal: localFromStored(e.start_time),
+          endLocal: localFromStored(e.end_time),
+          summary: e.title,
+          description: `Spektakl — repertuar ${label}. Potwierdź udział w aplikacji.`,
+        }
+      })
+      const ok = await sendEmail(
+        info.email,
+        `[Repertuar] ${label} — Twoje spektakle (${evs.length})`,
+        html,
+        { attachments: [inviteAttachment('REQUEST', { name: info.name, email: info.email }, vevents)] },
+      )
       if (ok) {
         artistNotified = true
         logRows.push({

@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
 import { logMessages, type MessageLogRow } from '@/lib/message-log'
+import { bumpInviteSeqs, inviteAttachment } from '@/lib/calendar-invite'
+import { localFromStored, type Vevent } from '@/lib/ics'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -83,7 +85,18 @@ export async function POST(request: Request) {
         </table>
         <div>${link}</div>
       `)
-      const ok = await sendEmail(sub.email, `[Zastępstwo] ${productionTitle} — ${dateLabel}`, html)
+      const seqMap = await bumpInviteSeqs(supabase, eventIds.map(id => ({ event_id: id, artist_id: substituteId })))
+      const vevents: Vevent[] = evs.map(e => {
+        const s = seqMap.get(`${e.id}:${substituteId}`)!
+        return {
+          uid: s.uid, sequence: s.sequence,
+          startLocal: localFromStored(e.start_time), endLocal: localFromStored(e.end_time),
+          summary: `${productionTitle} (zastępstwo)`,
+          description: 'Zastępstwo — potwierdź udział w aplikacji.',
+        }
+      })
+      const ok = await sendEmail(sub.email, `[Zastępstwo] ${productionTitle} — ${dateLabel}`, html,
+        { attachments: [inviteAttachment('REQUEST', { name: sub.name, email: sub.email }, vevents)] })
       if (ok) {
         sent++
         logRows.push({
@@ -127,7 +140,17 @@ export async function POST(request: Request) {
         </p>
         <p style="font-size:12px;color:#9ca3af;margin:0">W razie pytań skontaktuj się z koordynatorem.</p>
       `)
-      const ok = await sendEmail(removed.email, `[Zmiana obsady] ${productionTitle} — ${dateLabel}`, html)
+      const seqMap = await bumpInviteSeqs(supabase, eventIds.map(id => ({ event_id: id, artist_id: removedArtistId! })), true)
+      const vevents: Vevent[] = evs.map(e => {
+        const s = seqMap.get(`${e.id}:${removedArtistId}`)!
+        return {
+          uid: s.uid, sequence: s.sequence,
+          startLocal: localFromStored(e.start_time), endLocal: localFromStored(e.end_time),
+          summary: productionTitle,
+        }
+      })
+      const ok = await sendEmail(removed.email, `[Zmiana obsady] ${productionTitle} — ${dateLabel}`, html,
+        { attachments: [inviteAttachment('CANCEL', { name: removed.name, email: removed.email }, vevents)] })
       if (ok) {
         sent++
         logRows.push({
