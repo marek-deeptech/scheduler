@@ -109,6 +109,83 @@ function Section({ title, description, children }: {
   )
 }
 
+// ─── Integracje (Google Calendar) ──────────────────────────────────────────────
+
+function GoogleIntegration() {
+  const [loading, setLoading] = useState(true)
+  const [account, setAccount] = useState<{ email: string | null; receive_all: boolean } | null>(null)
+  const [mapped,  setMapped]  = useState(0)
+  const [configErr, setConfigErr] = useState(false)
+  const [justConnected, setJustConnected] = useState(false)
+
+  async function load() {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/google/status')
+      if (!res.ok) { setConfigErr(true); setLoading(false); return }
+      const j = await res.json()
+      const acc = (j.connected ?? []).find((a: any) => a.owner_key === 'marek-mielnicki') ?? (j.connected ?? [])[0] ?? null
+      setAccount(acc ? { email: acc.email, receive_all: acc.receive_all } : null)
+      setMapped(j.mappedEvents ?? 0)
+    } catch { setConfigErr(true) }
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('google') === 'connected') {
+      setJustConnected(true)
+      window.history.replaceState({}, '', '/settings')
+    }
+    load()
+  }, [])
+
+  return (
+    <Section title="Integracje" description="Synchronizacja z zewnętrznymi kalendarzami">
+      <div className="px-5 py-4">
+        {justConnected && (
+          <div className="mb-3 px-3 py-2 rounded-lg text-xs font-medium" style={{ background: '#dcfce7', color: '#15803d' }}>
+            ✓ Połączono z Google Calendar — eventy będą synchronizowane.
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: '#f2ede6' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a524a" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>Google Calendar</p>
+              {loading ? (
+                <p className="text-xs" style={{ color: '#a89e92' }}>Sprawdzam status…</p>
+              ) : configErr ? (
+                <p className="text-xs" style={{ color: '#b45309' }}>Backend nieskonfigurowany — ustaw zmienne środowiskowe (SUPABASE_SERVICE_ROLE_KEY, GOOGLE_*).</p>
+              ) : account ? (
+                <p className="text-xs truncate" style={{ color: '#15803d' }}>
+                  Połączono{account.email ? `: ${account.email}` : ''} · {mapped} zsynchronizowanych
+                </p>
+              ) : (
+                <p className="text-xs" style={{ color: '#a89e92' }}>Niepołączone — eventy nie trafiają do kalendarza.</p>
+              )}
+            </div>
+          </div>
+          {!loading && (
+            <a
+              href="/api/google/connect?owner=marek-mielnicki&all=1"
+              className="px-4 py-2 text-sm font-semibold rounded-xl shrink-0 transition-colors"
+              style={account
+                ? { border: '1px solid #e4ddd4', color: '#7a7068', background: '#fff' }
+                : { background: '#1a1410', color: '#fff' }}
+            >
+              {account ? 'Połącz ponownie' : 'Połącz Google Calendar'}
+            </a>
+          )}
+        </div>
+      </div>
+    </Section>
+  )
+}
+
 // ─── Divider ──────────────────────────────────────────────────────────────────
 
 function Divider({ label }: { label: string }) {
@@ -659,6 +736,9 @@ ON CONFLICT (name) DO NOTHING;`}</pre>
               </>
             )}
           </Section>
+
+          {/* ── Integracje ───────────────────────────────────────────────────── */}
+          <GoogleIntegration />
         </>
       )}
 
