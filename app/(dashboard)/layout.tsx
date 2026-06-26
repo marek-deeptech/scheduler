@@ -267,13 +267,24 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
   const lnk      = (href: string) => `sidebar-link${isActive(href) ? ' active' : ''}`
 
-  const theatreBtnCls = (id: string | null) => {
+  // W zakładce Repertuar (/calendar) nie można wybrać obu teatrów naraz.
+  const onRepertoire = isActive('/calendar')
+  useEffect(() => {
+    if (onRepertoire && selectedTheatreId === null && theatres && theatres.length > 0) {
+      const def = theatres.find(t => t.name.toLowerCase().includes('polonia')) ?? theatres[0]
+      setSelectedTheatreId(def.id)
+    }
+  }, [onRepertoire, selectedTheatreId, theatres, setSelectedTheatreId])
+
+  const theatreBtnCls = (id: string | null, disabled = false) => {
     const active = selectedTheatreId === id
     return [
       'w-full text-left px-2.5 py-1.5 rounded-lg text-[12px] font-medium transition-colors flex items-center gap-2 truncate',
-      active
-        ? 'bg-[#e8e0d6] text-[#1a1410] font-semibold'
-        : 'text-[#7a7068] hover:bg-[#ede7df] hover:text-[#1a1410]',
+      disabled
+        ? 'text-[#c2b9ad] cursor-not-allowed'
+        : active
+          ? 'bg-[#e8e0d6] text-[#1a1410] font-semibold'
+          : 'text-[#7a7068] hover:bg-[#ede7df] hover:text-[#1a1410]',
     ].join(' ')
   }
 
@@ -306,8 +317,13 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
           <div className="px-3 pt-3 pb-2" style={{ borderBottom: '1px solid #e4ddd4' }}>
             <p className="sidebar-section mb-2">{t.nav.theatreLabel}</p>
             <div className="flex flex-col gap-0.5">
-              <button className={theatreBtnCls(null)} onClick={() => setSelectedTheatreId(null)}>
-                <span className="w-1.5 h-1.5 rounded-full bg-[#5c5248] shrink-0" />
+              <button
+                className={theatreBtnCls(null, onRepertoire)}
+                onClick={() => { if (!onRepertoire) setSelectedTheatreId(null) }}
+                disabled={onRepertoire}
+                title={onRepertoire ? 'W zakładce Repertuar wybierz jeden teatr' : undefined}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-[#5c5248] shrink-0" style={onRepertoire ? { opacity: 0.4 } : undefined} />
                 {t.nav.allTheatres}
               </button>
               {theatres === null && (

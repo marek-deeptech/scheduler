@@ -23,10 +23,12 @@ interface ProposalEvent {
   room_name: string | null
   start_time: string
   end_time: string
+  theatre_id?: string | null
 }
 
 interface TaggedEvent extends ProposalEvent {
   _theatre: string
+  _col?: string   // normalised scene column for grouping (Duża scena / Mała scena)
 }
 
 interface Proposal {
@@ -38,6 +40,7 @@ interface Proposal {
   reasoning: string
   stats: { total: number; by_production: Record<string, number> }
   approved_at: string | null
+  theatre_id: string | null
 }
 
 interface Theatre { id: string; name: string }
@@ -115,6 +118,24 @@ function tagEvents(events: ProposalEvent[], allTheatreNames: string[]): TaggedEv
     room_name: ROOM_CYCLE[i % 4],
     _theatre:  tCycle[i % 4],
   }))
+}
+
+// Each month's repertoire is stored as ONE proposal per theatre, so the theatre
+// is known up-front — we must NOT guess it from a cycle (that mislabels a
+// single-theatre proposal across both theatres). Assign the known theatre to
+// every event and normalise the scene from room_name.
+// Map a precise venue/scene label to one of the two display columns.
+function sceneColumn(roomName: string | null): string {
+  const r = (roomName ?? '').toLowerCase()
+  if (r.includes('mała') || r.includes('mala') || r.includes('cafe') || r.includes('café')) return 'Mała scena'
+  return 'Duża scena'
+}
+
+function tagSingleTheatre(events: ProposalEvent[], theatreName: string): TaggedEvent[] {
+  return [...events]
+    .sort((a, b) => `${a.date}${a.start_time ?? ''}`.localeCompare(`${b.date}${b.start_time ?? ''}`))
+    // Keep the precise venue in room_name (shown per-event); group by the column.
+    .map(e => ({ ...e, _theatre: theatreName, _col: sceneColumn(e.room_name) }))
 }
 
 // ── Cast popup ────────────────────────────────────────────────────────────────
@@ -271,7 +292,7 @@ function EventBlock({ e, room, prodMap, propConflicts, conflictTitleSet, onConfl
       {/* Time + room label */}
       <div className="text-[10px] font-bold uppercase tracking-wider mb-1"
            style={{ color: '#a89e92' }}>
-        {e.start_time?.slice(0, 5) || '—'} | {room.toUpperCase()}
+        {e.start_time?.slice(0, 5) || '—'} | {(e.room_name || room).toUpperCase()}
       </div>
 
       {/* Production title + conflict badge */}
@@ -367,17 +388,17 @@ function MonthTable({ month, events, accentColor, prodMap, propConflicts, onConf
   // Pre-compute conflict title set for fast lookup
   const conflictTitleSet = conflictedTitles(propConflicts)
 
-  // Unique rooms → columns (sorted)
+  // Unique scene columns (Duża/Mała), sorted — events keep their precise venue.
   const rooms = [...new Set(
-    events.map(e => e.room_name?.trim() || 'Scena')
+    events.map(e => e._col || e.room_name?.trim() || 'Scena')
   )].sort()
 
   // Unique titles for color mapping
 
-  // Build lookup: dateStr → room → events[]
+  // Build lookup: dateStr → column → events[]
   const byDateRoom: Record<string, Record<string, TaggedEvent[]>> = {}
   for (const e of events) {
-    const room = e.room_name?.trim() || 'Scena'
+    const room = e._col || e.room_name?.trim() || 'Scena'
     byDateRoom[e.date] ??= {}
     byDateRoom[e.date][room] ??= []
     byDateRoom[e.date][room].push(e)
@@ -594,7 +615,7 @@ function MonthTable({ month, events, accentColor, prodMap, propConflicts, onConf
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function RepertuarPage() {
-  const { selectedTheatreId } = useTheatre()
+  const { selectedTheatreId, setSelectedTheatreId } = useTheatre()
 
   const [proposals,   setProposals]   = useState<Proposal[]>([])
   const [theatres,    setTheatres]    = useState<Theatre[]>([])
@@ -617,6 +638,14 @@ export default function RepertuarPage() {
   // Resolve selected theatre name from id
   const selectedTheatre = theatres.find(t => t.id === selectedTheatreId) ?? null
   const accent = theatreAccent(selectedTheatre?.name ?? null)
+
+  // W Repertuarze nie pokazujemy obu teatrów naraz — domyślnie Teatr Polonia.
+  useEffect(() => {
+    if (selectedTheatreId === null && theatres.length > 0) {
+      const def = theatres.find(t => t.name.toLowerCase().includes('polonia')) ?? theatres[0]
+      setSelectedTheatreId(def.id)
+    }
+  }, [selectedTheatreId, theatres, setSelectedTheatreId])
 
   useEffect(() => {
     async function load() {
@@ -701,17 +730,27 @@ export default function RepertuarPage() {
     }, {})
   ).sort((a, b) => a.month.localeCompare(b.month))
 
-  const active = months.find(p => p.month === activeMonth)
+  // Each month has ONE proposal per theatre. Pick the proposal matching the
+  // selected theatre (Repertuar always has a single theatre selected). This
+  // replaces the old dedup-by-month + cycle-tagging that dropped a theatre and
+  // mislabelled single-theatre shows across both theatres.
+  const activeProposal: Proposal | undefined =
+    proposals.find(p => p.month === activeMonth && p.theatre_id === selectedTheatreId)
+    ?? proposals.find(p => p.month === activeMonth)
 
-  // Tag all events with theatre + room, then optionally filter
-  const theatreNames = theatres.map(t => t.name)
-  const allTagged: TaggedEvent[] = active
-    ? tagEvents(
-        [...(active.proposal_data ?? [])].sort((a, b) => a.date.localeCompare(b.date)),
-        theatreNames,
-      )
+  const activeTheatreName =
+    theatres.find(t => t.id === activeProposal?.theatre_id)?.name
+    ?? selectedTheatre?.name
+    ?? ''
+
+  void tagEvents // retained for the (legacy) untagged-data path
+
+  const allTagged: TaggedEvent[] = activeProposal
+    ? tagSingleTheatre(activeProposal.proposal_data ?? [], activeTheatreName)
     : []
 
+  // A single theatre is always selected on Repertuar, so events are already the
+  // right theatre; keep the filter as a safety net.
   const visibleEvents: TaggedEvent[] = selectedTheatre
     ? allTagged.filter(e => e._theatre === selectedTheatre.name)
     : allTagged
@@ -865,7 +904,7 @@ export default function RepertuarPage() {
       )}
 
       {/* ── Stats bar ── */}
-      {!loading && active && (
+      {!loading && activeProposal && (
         <div
           className="-mx-4 px-4 md:-mx-8 md:px-8 py-3 flex items-center gap-4 md:gap-6 flex-wrap"
           style={{ background: '#faf8f5', borderBottom: '1px solid #e4ddd4' }}
@@ -896,10 +935,10 @@ export default function RepertuarPage() {
                 </span>
               ))}
           </div>
-          {active.approved_at && (
+          {activeProposal.approved_at && (
             <span className="ml-auto text-[11px] shrink-0" style={{ color: '#cec5b8' }}>
               Zatwierdzono{' '}
-              {new Date(active.approved_at).toLocaleDateString('pl-PL', {
+              {new Date(activeProposal.approved_at).toLocaleDateString('pl-PL', {
                 day: 'numeric', month: 'long',
               })}
             </span>
@@ -908,10 +947,10 @@ export default function RepertuarPage() {
       )}
 
       {/* ── Vertical table ── */}
-      {!loading && active && (
+      {!loading && activeProposal && (
         <div className="-mx-4 md:-mx-8">
           <MonthTable
-            month={active.month}
+            month={activeProposal.month}
             events={visibleEvents}
             accentColor={accent}
             prodMap={prodMap}

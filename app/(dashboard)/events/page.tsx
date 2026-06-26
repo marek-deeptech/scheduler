@@ -91,6 +91,126 @@ function buildGrid(year: number, month: number): (Date | null)[] {
   return days
 }
 
+// ── Type icons (Heroicons-outline style) ───────────────────────────────────────
+
+function typeIconPath(type: string | null): string {
+  const t = type ?? ''
+  if (/urodzin/i.test(t)) return 'M12 8.25v-1.5m0 1.5c-1.355 0-2.697.056-4.024.166C6.845 8.51 6 9.473 6 10.608v2.513m6-4.871c1.355 0 2.697.056 4.024.166C17.155 8.51 18 9.473 18 10.608v2.513M15 8.25v-1.5m-6 1.5v-1.5m12 9.75-1.5.75a3.354 3.354 0 0 1-3 0 3.354 3.354 0 0 0-3 0 3.354 3.354 0 0 1-3 0 3.354 3.354 0 0 0-3 0 3.354 3.354 0 0 1-3 0L3 16.5m15-3.38a48.474 48.474 0 0 0-6-.37c-2.032 0-4.034.125-6 .37m12 0c.39.049.777.102 1.163.16 1.07.16 1.837 1.094 1.837 2.175v5.17c0 .62-.504 1.124-1.125 1.124H4.125A1.125 1.125 0 0 1 3 20.625v-5.17c0-1.08.768-2.014 1.837-2.174A47.78 47.78 0 0 1 6 13.12M12 3.375a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0z'
+  if (/próba|proba|generaln/i.test(t)) return 'M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0zM4.5 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632z'
+  if (/konferencj|wywiad|spotkani|zebrani/i.test(t)) return 'M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z'
+  if (/sesj|zdjęc|zdjec/i.test(t)) return 'M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316zM16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0zM18.75 10.5h.008v.008h-.008V10.5z'
+  if (/montaż|montaz|warsztat|wynajem|scenograf/i.test(t)) return 'M11.42 15.17 17.25 21A2.652 2.652 0 0 0 21 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 0 0 4.486-6.336l-3.276 3.277a3.004 3.004 0 0 1-2.25-2.25l3.276-3.276a4.5 4.5 0 0 0-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L3 3.75l1.5-1.5L8.25 3v1.5l2.099 2.099'
+  return 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z' // domyślnie: błyskawica (wydarzenie)
+}
+function TypeIcon({ type, size = 16 }: { type: string | null; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d={typeIconPath(type)} />
+    </svg>
+  )
+}
+const ClockIc = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="shrink-0"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" strokeLinecap="round"/></svg>
+const PinIc   = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="shrink-0"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z" strokeLinejoin="round"/><circle cx="12" cy="10" r="2.5"/></svg>
+const UsersIc = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="shrink-0"><path d="M16 19v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM22 19v-2a4 4 0 0 0-3-3.87M16 3.13A4 4 0 0 1 16 11" strokeLinecap="round" strokeLinejoin="round"/></svg>
+
+// ── EventTile (kafelek) ─────────────────────────────────────────────────────────
+
+function EventTile({ ev, extraIdx, now, onOpen }: {
+  ev: EventRow; extraIdx: number; now: Date; onOpen: (ev: EventRow) => void
+}) {
+  const s = typeStyle(ev.type, extraIdx)
+  const past = new Date(ev.end_time) < now
+  const cast = (ev.event_artists ?? []).map((a: any) => (Array.isArray(a.artists) ? a.artists[0] : a.artists)).filter(Boolean)
+  const room = (ev as any).rooms?.name ?? ev.location
+  return (
+    <button onClick={() => onOpen(ev)}
+      className="text-left rounded-2xl border p-4 transition-all hover:shadow-md w-full flex flex-col gap-2.5"
+      style={{ background: '#fff', borderColor: s.border, opacity: past ? 0.65 : 1 }}>
+      <div className="flex items-center gap-2">
+        <span className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style={{ background: s.bg, color: s.color }}>
+          <TypeIcon type={ev.type} size={16} />
+        </span>
+        <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full truncate" style={{ background: s.bg, color: s.color }}>{ev.type ?? 'Inne'}</span>
+        <span className="ml-auto text-sm font-bold tabular-nums shrink-0" style={{ color: '#1a1410' }}>{formatTime(ev.start_time)}</span>
+      </div>
+      <p className="text-sm font-bold leading-snug line-clamp-2" style={{ color: '#1a1410' }}>{ev.title}</p>
+      <div className="flex flex-col gap-1 text-[11px]" style={{ color: '#7a7068' }}>
+        <span className="flex items-center gap-1.5"><ClockIc /> {formatTime(ev.start_time)}–{formatTime(ev.end_time)}</span>
+        {room && <span className="flex items-center gap-1.5 truncate"><PinIc /> <span className="truncate">{room}</span></span>}
+        {cast.length > 0 && <span className="flex items-center gap-1.5 truncate"><UsersIc /> <span className="truncate">{cast.length === 1 ? cast[0].name : `${cast[0].name} +${cast.length - 1}`}</span></span>}
+      </div>
+    </button>
+  )
+}
+
+// ── EventDrawer (panel z prawej) ─────────────────────────────────────────────────
+
+function EventDrawer({ ev, onClose, onEdit }: {
+  ev: EventRow; onClose: () => void; onEdit: (ev: EventRow) => void
+}) {
+  const [open, setOpen] = useState(false)
+  useEffect(() => { const t = setTimeout(() => setOpen(true), 10); return () => clearTimeout(t) }, [])
+  const close = () => { setOpen(false); setTimeout(onClose, 200) }
+  const s = typeStyle(ev.type, 0)
+  const cast = (ev.event_artists ?? []).map((a: any) => (Array.isArray(a.artists) ? a.artists[0] : a.artists)).filter(Boolean)
+  const room = (ev as any).rooms?.name ?? null
+  return (
+    <div className="fixed inset-0 z-[80]">
+      <div className={`absolute inset-0 bg-black/30 transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`} onClick={close} />
+      <div className={`absolute right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-2xl overflow-y-auto transition-transform duration-200 ${open ? 'translate-x-0' : 'translate-x-full'}`}>
+        {(ev as any).image_url && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={(ev as any).image_url} alt="" className="w-full h-44 object-cover" />
+        )}
+        <div className="p-5">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full" style={{ background: s.bg, color: s.color }}>
+              <TypeIcon type={ev.type} size={14} /> {ev.type ?? 'Inne'}
+            </span>
+            <button onClick={close} className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#f2ede6', color: '#7a7068' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          </div>
+          <h2 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.4rem', fontWeight: 700, color: '#1a1410', lineHeight: 1.2 }}>{ev.title}</h2>
+          <p className="text-sm capitalize mt-1" style={{ color: '#7a7068' }}>{formatDayLabel(ev.start_time)}</p>
+
+          <div className="mt-5 space-y-3">
+            <div className="flex items-center gap-2.5 text-sm" style={{ color: '#3e3830' }}>
+              <span style={{ color: '#a89e92' }}><ClockIc /></span>{formatTime(ev.start_time)}–{formatTime(ev.end_time)}
+            </div>
+            {room && <div className="flex items-center gap-2.5 text-sm" style={{ color: '#3e3830' }}><span style={{ color: '#a89e92' }}><PinIc /></span>{room}</div>}
+            {ev.location && <div className="flex items-center gap-2.5 text-sm" style={{ color: '#3e3830' }}><span style={{ color: '#a89e92' }}><PinIc /></span>{ev.location}</div>}
+          </div>
+
+          {ev.description && (
+            <div className="mt-5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#b8b0a4' }}>Opis</p>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: '#5a524a' }}>{ev.description}</p>
+            </div>
+          )}
+
+          {cast.length > 0 && (
+            <div className="mt-5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#b8b0a4' }}>Obsada / udział ({cast.length})</p>
+              <div className="flex flex-wrap gap-1.5">
+                {cast.map((a: any) => (
+                  <span key={a.id} className="text-xs px-2.5 py-1 rounded-full" style={{ background: '#f2ede6', color: '#5a524a' }}>{a.name}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <button onClick={() => { onEdit(ev); close() }}
+            className="mt-6 w-full px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors"
+            style={{ background: '#1a1410', color: '#fff' }}>
+            Edytuj wydarzenie
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── EventCard ─────────────────────────────────────────────────────────────────
 
 function EventCard({ ev, extraIdx, now, onEdit }: {
@@ -443,6 +563,7 @@ export default function EventsPage() {
   const [calMonth,    setCalMonth]    = useState(() => new Date())
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [editingEvent, setEditingEvent] = useState<EventRow | null>(null)
+  const [selectedEvent, setSelectedEvent] = useState<EventRow | null>(null)
 
   useEffect(() => { fetchAll() }, [])
 
@@ -592,7 +713,7 @@ export default function EventsPage() {
           <div className="flex items-center justify-center h-40 text-sm" style={{ color: '#a89e92' }}>Ładowanie wydarzeń…</div>
 
         ) : view === 'calendar' ? (
-          <div className="px-4 md:px-8 py-4 md:py-6 space-y-5 max-w-3xl">
+          <div className="px-4 md:px-8 py-4 md:py-6 space-y-5">
             <div className="bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid #e4ddd4' }}>
               <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #f2ede6' }}>
                 <button onClick={prevMonth} className="w-8 h-8 flex items-center justify-center rounded-xl transition-colors hover:bg-gray-100" style={{ color: '#7a7068' }}>
@@ -617,7 +738,7 @@ export default function EventsPage() {
                     style={{ color: d === 'Sb' || d === 'Nd' ? '#cec5b8' : '#a89e92' }}>{d}</div>
                 ))}
               </div>
-              <div className="grid grid-cols-7 gap-px px-3 pb-4">
+              <div className="grid grid-cols-7 gap-1 px-3 pb-4">
                 {grid.map((day, i) => {
                   if (!day) return <div key={`pad-${i}`} />
                   const dStr   = localDate(day)
@@ -627,23 +748,29 @@ export default function EventsPage() {
                   const isSbSn  = day.getDay() === 0 || day.getDay() === 6
                   return (
                     <button key={dStr} onClick={() => setSelectedDay(prev => prev === dStr ? null : dStr)}
-                      className="flex flex-col items-center py-1.5 rounded-xl transition-all"
+                      className="flex flex-col items-stretch gap-1 p-1.5 rounded-xl transition-all text-left min-h-[80px] overflow-hidden"
                       style={{ background: isSel ? '#1a1410' : isToday ? '#f2ede6' : 'transparent', border: isToday && !isSel ? '1px solid #e4ddd4' : '1px solid transparent' }}
                       onMouseOver={e => { if (!isSel) e.currentTarget.style.background = '#f8f5f1' }}
                       onMouseOut={e => { e.currentTarget.style.background = isSel ? '#1a1410' : isToday ? '#f2ede6' : 'transparent' }}>
-                      <span className="text-sm font-medium w-7 h-7 flex items-center justify-center rounded-lg"
+                      <span className="text-sm font-semibold w-6 h-6 flex items-center justify-center rounded-lg self-start shrink-0"
                         style={{ color: isSel ? '#fff' : isToday ? '#1a1410' : isSbSn ? '#cec5b8' : '#3e3830' }}>
                         {day.getDate()}
                       </span>
-                      {dayEvs.length > 0 && (
-                        <div className="flex gap-0.5 mt-1 h-1.5">
-                          {dayEvs.slice(0, 3).map((e, di) => {
-                            const s = typeStyle(e.type, extraIndexMap.get(e.type ?? '') ?? 0)
-                            return <span key={di} className="w-1.5 h-1.5 rounded-full" style={{ background: isSel ? 'rgba(255,255,255,0.7)' : s.dot }} />
-                          })}
-                          {dayEvs.length > 3 && <span className="text-[8px] leading-none" style={{ color: isSel ? 'rgba(255,255,255,0.7)' : '#a89e92' }}>+</span>}
-                        </div>
-                      )}
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        {dayEvs.slice(0, 2).map((e, di) => {
+                          const s = typeStyle(e.type, extraIndexMap.get(e.type ?? '') ?? 0)
+                          return (
+                            <span key={di} className="text-[9px] leading-tight px-1 py-0.5 rounded truncate flex items-center gap-0.5"
+                              style={{ background: isSel ? 'rgba(255,255,255,0.15)' : s.bg, color: isSel ? '#fff' : s.color }}>
+                              {/urodzin/i.test(e.type ?? '') && <span className="shrink-0"><TypeIcon type={e.type} size={9} /></span>}
+                              <span className="truncate">{e.title}</span>
+                            </span>
+                          )
+                        })}
+                        {dayEvs.length > 2 && (
+                          <span className="text-[9px] px-1 font-medium" style={{ color: isSel ? 'rgba(255,255,255,0.7)' : '#a89e92' }}>+{dayEvs.length - 2} więcej</span>
+                        )}
+                      </div>
                     </button>
                   )
                 })}
@@ -682,9 +809,9 @@ export default function EventsPage() {
                         <div className="flex-1 h-px" style={{ background: '#e4ddd4' }} />
                         <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: '#e4ddd4', color: '#7a7068' }}>{dayEvs.length}</span>
                       </div>
-                      <div className="space-y-2">
+                      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {dayEvs.map(ev => (
-                          <EventCard key={ev.id} ev={ev} extraIdx={extraIndexMap.get(ev.type ?? '') ?? 0} now={now} onEdit={setEditingEvent} />
+                          <EventTile key={ev.id} ev={ev} extraIdx={extraIndexMap.get(ev.type ?? '') ?? 0} now={now} onOpen={setSelectedEvent} />
                         ))}
                       </div>
                     </div>
@@ -708,7 +835,7 @@ export default function EventsPage() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-8 max-w-3xl">
+              <div className="space-y-8">
                 {listGrouped.map(([dk, dayEvs]) => (
                   <div key={dk}>
                     <div className="flex items-center gap-3 mb-3">
@@ -716,9 +843,9 @@ export default function EventsPage() {
                       <div className="flex-1 h-px" style={{ background: '#e4ddd4' }} />
                       <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: '#e4ddd4', color: '#7a7068' }}>{dayEvs.length}</span>
                     </div>
-                    <div className="space-y-2">
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                       {dayEvs.map(ev => (
-                        <EventCard key={ev.id} ev={ev} extraIdx={extraIndexMap.get(ev.type ?? '') ?? 0} now={now} onEdit={setEditingEvent} />
+                        <EventTile key={ev.id} ev={ev} extraIdx={extraIndexMap.get(ev.type ?? '') ?? 0} now={now} onOpen={setSelectedEvent} />
                       ))}
                     </div>
                   </div>
@@ -728,6 +855,15 @@ export default function EventsPage() {
           </div>
         )}
       </div>
+
+      {/* Drawer ze szczegółami (z prawej) */}
+      {selectedEvent && (
+        <EventDrawer
+          ev={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+          onEdit={(e) => setEditingEvent(e)}
+        />
+      )}
 
       {/* Edit modal */}
       {editingEvent && (
