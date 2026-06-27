@@ -387,17 +387,14 @@ export default function MessagesPage() {
   const [people, setPeople] = useState<Person[]>([])
   const [theatres, setTheatres] = useState<Theatre[]>([])
   const [responses, setResponses] = useState<ActorResponse[]>([])
-  const [responsesOpen, setResponsesOpen] = useState(true)
   const [sentHistory, setSentHistory] = useState<SentMessage[]>([])
-  const [historyOpen, setHistoryOpen] = useState(false)
   // Tablica statusów: braki potwierdzeń + zastępstwa
   const [pendingPart, setPendingPart] = useState<{ id: string; event_id: string; artist_id: string; actorName: string; eventTitle: string; eventStart: string | null; sentAt: string | null; changed: boolean; eventDetails: any }[]>([])
   const [noAvailResp, setNoAvailResp] = useState<{ id: string; slotId: string; artistId: string; actorName: string; title: string; range: string }[]>([])
   const [resent, setResent] = useState<Set<string>>(new Set())
   const [subs, setSubs] = useState<{ id: string; actorName: string | null; subject: string; sentAt: string | null }[]>([])
-  const [pendingOpen, setPendingOpen] = useState(true)
-  const [availOpen, setAvailOpen] = useState(false)
-  const [subsOpen, setSubsOpen] = useState(false)
+  // Zakładki: odbiorcy (domyślnie) + sekcje statusów
+  const [activeTab, setActiveTab] = useState<'recipients' | 'pending' | 'avail' | 'subs' | 'responses' | 'history'>('recipients')
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [teamFilter, setTeamFilter] = useState<string>('all')
@@ -608,6 +605,16 @@ export default function MessagesPage() {
     })
   }
 
+  // Jeśli aktywna zakładka statusu opustoszała (np. po wysłaniu ponaglenia) —
+  // wróć na „Odbiorcy".
+  useEffect(() => {
+    const counts: Record<string, number> = {
+      pending: pendingPart.length, avail: noAvailResp.length, subs: subs.length,
+      responses: responses.length, history: sentHistory.length,
+    }
+    if (activeTab !== 'recipients' && (counts[activeTab] ?? 0) === 0) setActiveTab('recipients')
+  }, [activeTab, pendingPart.length, noAvailResp.length, subs.length, responses.length, sentHistory.length])
+
   return (
     <div className="pb-24">
       {/* Page header */}
@@ -618,50 +625,57 @@ export default function MessagesPage() {
         </div>
       </div>
 
-      {/* ── Brak potwierdzenia udziału ─────────────────────────────── */}
-      {pendingPart.length > 0 && (
-        <div className="mb-4 bg-white border rounded-2xl overflow-hidden" style={{ borderColor: '#fde0c8' }}>
-          <button onClick={() => setPendingOpen(v => !v)} className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-gray-900">Brak potwierdzenia udziału</span>
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#fff7ed', color: '#b45309' }}>{pendingPart.length}</span>
-              {pendingPart.some(p => p.changed) && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">{pendingPart.filter(p => p.changed).length} po zmianie</span>
+      {/* ── Zakładki sekcji ── */}
+      <div className="flex items-center gap-2 mb-5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+        {[
+          { key: 'recipients' as const, label: 'Odbiorcy',           count: null as number | null, alert: false },
+          { key: 'pending'    as const, label: 'Brak potwierdzeń',   count: pendingPart.length,    alert: pendingPart.some(p => p.changed) },
+          { key: 'avail'      as const, label: 'Brak odpowiedzi',    count: noAvailResp.length,    alert: false },
+          { key: 'subs'       as const, label: 'Zastępstwa',         count: subs.length,           alert: false },
+          { key: 'responses'  as const, label: 'Odpowiedzi aktorów', count: responses.length,      alert: false },
+          { key: 'history'    as const, label: 'Historia',           count: sentHistory.length,    alert: false },
+        ].filter(t => t.key === 'recipients' || (t.count ?? 0) > 0).map(t => {
+          const on = activeTab === t.key
+          return (
+            <button key={t.key} onClick={() => setActiveTab(t.key)}
+              className="shrink-0 px-3.5 py-2 text-sm font-semibold rounded-xl transition-colors flex items-center gap-1.5"
+              style={on ? { background: '#1a1410', color: '#fff' } : { background: '#fff', color: '#7a7068', border: '1px solid #e4ddd4' }}>
+              {t.label}
+              {t.count != null && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                  style={on ? { background: 'rgba(255,255,255,0.2)', color: '#fff' } : t.alert ? { background: '#fee2e2', color: '#b91c1c' } : { background: '#f2ede6', color: '#7a7068' }}>
+                  {t.count}
+                </span>
               )}
-            </div>
-            <span className="text-gray-400 text-sm">{pendingOpen ? '▲' : '▼'}</span>
-          </button>
-          {pendingOpen && (
-            <div className="border-t border-gray-100 divide-y divide-gray-50 max-h-72 overflow-y-auto">
-              {pendingPart.map(r => (
-                <div key={r.id} className="flex items-center gap-3 px-5 py-2.5">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{r.actorName}</p>
-                    <p className="text-xs text-gray-500 truncate">{r.eventTitle}{r.eventStart ? ` · ${fmtDate(r.eventStart)}` : ''}</p>
-                  </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${r.changed ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
-                    {r.changed ? 'ZMIANA — BRAK POTW.' : 'BRAK POTWIERDZENIA'}
-                  </span>
-                  <RetryButton done={resent.has('c' + r.id)} onClick={() => resendConfirmation(r)} />
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ── Brak potwierdzenia udziału ── */}
+      {activeTab === 'pending' && (
+        <div className="mb-4 bg-white border rounded-2xl overflow-hidden" style={{ borderColor: '#fde0c8' }}>
+          <div className="divide-y divide-gray-50 max-h-[62vh] overflow-y-auto">
+            {pendingPart.map(r => (
+              <div key={r.id} className="flex items-center gap-3 px-5 py-2.5">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{r.actorName}</p>
+                  <p className="text-xs text-gray-500 truncate">{r.eventTitle}{r.eventStart ? ` · ${fmtDate(r.eventStart)}` : ''}</p>
                 </div>
-              ))}
-            </div>
-          )}
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${r.changed ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
+                  {r.changed ? 'ZMIANA — BRAK POTW.' : 'BRAK POTWIERDZENIA'}
+                </span>
+                <RetryButton done={resent.has('c' + r.id)} onClick={() => resendConfirmation(r)} />
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* ── Brak odpowiedzi na dostępność (zapytania KPA) ──────────────── */}
-      {noAvailResp.length > 0 && (
+      {/* ── Brak odpowiedzi na dostępność (zapytania KPA) ── */}
+      {activeTab === 'avail' && (
         <div className="mb-4 bg-white border border-gray-200 rounded-2xl overflow-hidden">
-          <button onClick={() => setAvailOpen(v => !v)} className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-gray-900">Brak odpowiedzi na zapytanie o dostępność</span>
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{noAvailResp.length}</span>
-            </div>
-            <span className="text-gray-400 text-sm">{availOpen ? '▲' : '▼'}</span>
-          </button>
-          {availOpen && (
-            <div className="border-t border-gray-100 divide-y divide-gray-50 max-h-72 overflow-y-auto">
+          <div className="divide-y divide-gray-50 max-h-[62vh] overflow-y-auto">
               {noAvailResp.map(r => (
                 <div key={r.id} className="flex items-center gap-3 px-5 py-2.5">
                   <div className="flex-1 min-w-0">
@@ -672,60 +686,38 @@ export default function MessagesPage() {
                   <RetryButton done={resent.has('s' + r.id)} onClick={() => resendSlot(r)} />
                 </div>
               ))}
-            </div>
-          )}
+          </div>
         </div>
       )}
 
-      {/* ── Zastępstwa ─────────────────────────────────────────────── */}
-      {subs.length > 0 && (
+      {/* ── Zastępstwa ── */}
+      {activeTab === 'subs' && (
         <div className="mb-4 bg-white border border-gray-200 rounded-2xl overflow-hidden">
-          <button onClick={() => setSubsOpen(v => !v)} className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-gray-900">Zastępstwa</span>
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{subs.length}</span>
-            </div>
-            <span className="text-gray-400 text-sm">{subsOpen ? '▲' : '▼'}</span>
-          </button>
-          {subsOpen && (
-            <div className="border-t border-gray-100 divide-y divide-gray-50 max-h-72 overflow-y-auto">
-              {subs.map(s => (
-                <div key={s.id} className="flex items-center gap-3 px-5 py-2.5">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{s.actorName ?? '—'}</p>
-                    <p className="text-xs text-gray-500 truncate">{s.subject}</p>
-                  </div>
-                  <span className="text-[10px] text-gray-400 shrink-0">{s.sentAt ? fmtDate(s.sentAt) : ''}</span>
+          <div className="divide-y divide-gray-50 max-h-[62vh] overflow-y-auto">
+            {subs.map(s => (
+              <div key={s.id} className="flex items-center gap-3 px-5 py-2.5">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{s.actorName ?? '—'}</p>
+                  <p className="text-xs text-gray-500 truncate">{s.subject}</p>
                 </div>
-              ))}
-            </div>
-          )}
+                <span className="text-[10px] text-gray-400 shrink-0">{s.sentAt ? fmtDate(s.sentAt) : ''}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* ── Responses section ──────────────────────────────────────── */}
-      {responses.length > 0 && (
+      {/* ── Odpowiedzi aktorów ── */}
+      {activeTab === 'responses' && (
         <div className="mb-6 bg-white border border-gray-200 rounded-2xl overflow-hidden">
-          <button
-            onClick={() => setResponsesOpen(v => !v)}
-            className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-gray-900">Odpowiedzi aktorów</span>
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{responses.length}</span>
-              <span className="flex gap-1 ml-1">
-                {(['confirmed','maybe','declined'] as const).map(s => {
-                  const n = responses.filter(r => r.status === s).length
-                  if (!n) return null
-                  return <span key={s} className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${RESP_CFG[s].cls}`}>{n}</span>
-                })}
-              </span>
-            </div>
-            <span className="text-gray-400 text-sm">{responsesOpen ? '▲' : '▼'}</span>
-          </button>
-
-          {responsesOpen && (
-            <div className="border-t border-gray-100 divide-y divide-gray-50">
+          <div className="flex items-center gap-1 px-5 py-2.5 border-b border-gray-100" style={{ background: '#faf8f5' }}>
+            {(['confirmed','maybe','declined'] as const).map(s => {
+              const n = responses.filter(r => r.status === s).length
+              if (!n) return null
+              return <span key={s} className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${RESP_CFG[s].cls}`}>{RESP_CFG[s].label}: {n}</span>
+            })}
+          </div>
+          <div className="divide-y divide-gray-50 max-h-[62vh] overflow-y-auto">
               {responses.map(r => (
                 <div key={r.id} className="flex items-center gap-3 px-5 py-3">
                   <div className="flex-1 min-w-0">
@@ -745,27 +737,14 @@ export default function MessagesPage() {
                   </div>
                 </div>
               ))}
-            </div>
-          )}
+          </div>
         </div>
       )}
 
-      {/* ── Sent history section ───────────────────────────────────── */}
-      {sentHistory.length > 0 && (
+      {/* ── Historia wysłanych ── */}
+      {activeTab === 'history' && (
         <div className="mb-6 bg-white border border-gray-200 rounded-2xl overflow-hidden">
-          <button
-            onClick={() => setHistoryOpen(v => !v)}
-            className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-gray-900">Historia wysłanych</span>
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{sentHistory.length}</span>
-            </div>
-            <span className="text-gray-400 text-sm">{historyOpen ? '▲' : '▼'}</span>
-          </button>
-
-          {historyOpen && (
-            <div className="border-t border-gray-100 divide-y divide-gray-50 max-h-96 overflow-y-auto">
+          <div className="divide-y divide-gray-50 max-h-[62vh] overflow-y-auto">
               {sentHistory.map(m => (
                 <div key={m.id} className="flex items-start gap-3 px-5 py-3">
                   <span className={`mt-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${
@@ -790,13 +769,13 @@ export default function MessagesPage() {
                   </div>
                 </div>
               ))}
-            </div>
-          )}
+          </div>
         </div>
       )}
 
 
-      {/* ── Lista odbiorców (na dole — najpierw braki potwierdzeń) ── */}
+      {/* ── Odbiorcy: filtry + lista ── */}
+      {activeTab === 'recipients' && (<>
       {/* Toolbar — stacked rows on mobile, single wrapping row on desktop */}
       <div className="mb-4 space-y-2 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-2">
         <input
@@ -910,6 +889,7 @@ export default function MessagesPage() {
           )}
         </div>
       )}
+      </>)}
 
       {/* Spacer so the fixed action bar doesn't cover the last rows */}
       {selected.size > 0 && <div className="h-28 md:h-20" />}
