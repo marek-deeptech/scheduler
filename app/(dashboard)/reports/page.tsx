@@ -131,6 +131,8 @@ export default function ReportsPage() {
   const [productions, setProductions] = useState<ProdMeta[]>([])
   const [loading,     setLoading]     = useState(true)
   const [assignments, setAssignments] = useState<{ artist_id: string; production_id: string; theatre_id: string | null }[]>([])
+  // Filtr konfliktów spójny z Pulpitem: liczymy tylko niezatwierdzone, przyszłe miesiące.
+  const [conflFilter, setConflFilter] = useState<{ global: Set<string>; keys: Set<string> }>({ global: new Set(), keys: new Set() })
   // Obciążenie zespołu — filtr po miesiącu/roku
   const [wlMonth,     setWlMonth]     = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })
   const [wlEvents,    setWlEvents]    = useState<EventRow[]>([])
@@ -166,6 +168,7 @@ export default function ReportsPage() {
       { data: avData },
       { data: prodData },
       { data: assignData },
+      { data: apprData },
     ] = await Promise.all([
       evQ,
       supabase.from('artists').select('id,name,status').order('name'),
@@ -174,7 +177,15 @@ export default function ReportsPage() {
         .gte('end_time',   `${start}T00:00:00`),
       prodQ,
       assignQ,
+      supabase.from('repertoire_proposals').select('month, theatre_id').eq('status', 'approved'),
     ])
+
+    // Zbiory zatwierdzonych miesięcy (globalnie i per-teatr) — do filtra konfliktów.
+    const apprGlobal = new Set<string>(); const apprKeys = new Set<string>()
+    for (const r of (apprData ?? []) as any[]) {
+      if (r.theatre_id) apprKeys.add(`${r.theatre_id}|${r.month}`); else apprGlobal.add(r.month)
+    }
+    setConflFilter({ global: apprGlobal, keys: apprKeys })
 
     setAssignments(((assignData ?? []) as any[]).map(r => {
       const p = Array.isArray(r.productions) ? r.productions[0] : r.productions
@@ -203,14 +214,24 @@ export default function ReportsPage() {
     const shows      = events.filter(e => SHOW_TYPES.has(e.type ?? ''))
     const fittings   = events.filter(e => FITTING_TYPES.has(e.type ?? ''))
     const rehearsalH = rehearsals.reduce((s, e) => s + hours(e.start_time, e.end_time), 0)
-    const conflictResults = findConflicts(events.map(e => ({
+    // Konflikty liczymy spójnie z Pulpitem: TYLKO niezatwierdzone, przyszłe miesiące
+    // (pomijamy przeszłe/bieżący oraz zatwierdzone/wdrożone — tam konflikt jest już
+    // zaakceptowany i nie jest „do rozwiązania").
+    const curMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+    const eligible = (e: EventRow) => {
+      // Konflikt = realne podwójne obsadzenie (spektakl/próba), nie urodziny itp.
+      if (!SHOW_TYPES.has(e.type ?? '') && !REHEARSAL_TYPES.has(e.type ?? '')) return false
+      const m = e.start_time.slice(0, 7)
+      return m > curMonthKey && !conflFilter.global.has(m) && !conflFilter.keys.has(`${e.theatre_id}|${m}`)
+    }
+    const conflictResults = findConflicts(events.filter(eligible).map(e => ({
       id: e.id, start_time: e.start_time, end_time: e.end_time,
       room_id: e.room_id, theatre_id: e.theatre_id,
       artist_ids: e.event_artists.map(x => x.artist_id),
     })))
     const conflicts = conflictResults.length
     return { rehearsals: rehearsals.length, shows: shows.length, rehearsalH, conflicts, fittings: fittings.length }
-  }, [events])
+  }, [events, conflFilter])
 
   const artistWorkload = useMemo(() => {
     const map: Record<string, { name: string; rehearsals: number; shows: number }> = {}
