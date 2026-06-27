@@ -2,13 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
 import { windowDates } from '@/lib/slots'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
 
 interface SlotData {
   slotId: string
@@ -40,39 +34,17 @@ export default function SlotPollPage() {
   const [submitted, setSubmitted] = useState(false)
 
   const fetchData = useCallback(async () => {
-    const { data: invite, error } = await supabase
-      .from('slot_invites')
-      .select('slot_id, artist_id, submitted_at, artists(name), repertoire_slots(window_start, window_end, target_performances, productions(title))')
-      .eq('token', token)
-      .single()
+    const resp = await fetch(`/api/slots/respond?token=${encodeURIComponent(token)}`)
+    const json = await resp.json().catch(() => null)
+    const sd: SlotData | undefined = json?.data
 
-    if (error || !invite) { setNotFound(true); setLoading(false); return }
-
-    const slot = Array.isArray((invite as any).repertoire_slots) ? (invite as any).repertoire_slots[0] : (invite as any).repertoire_slots
-    const artist = Array.isArray((invite as any).artists) ? (invite as any).artists[0] : (invite as any).artists
-    const prod = Array.isArray(slot?.productions) ? slot.productions[0] : slot?.productions
-
-    const sd: SlotData = {
-      slotId: (invite as any).slot_id,
-      artistId: (invite as any).artist_id,
-      artistName: artist?.name ?? '—',
-      title: prod?.title ?? 'Spektakl',
-      windowStart: slot?.window_start,
-      windowEnd: slot?.window_end,
-      target: slot?.target_performances ?? 4,
-      submittedAt: (invite as any).submitted_at,
-    }
+    if (!resp.ok || !sd) { setNotFound(true); setLoading(false); return }
     setData(sd)
 
     const dates = windowDates(sd.windowStart, sd.windowEnd)
     // Wczytaj istniejące odpowiedzi; brak = domyślnie "mogę"
-    const { data: existing } = await supabase
-      .from('slot_availability')
-      .select('date, available')
-      .eq('slot_id', sd.slotId)
-      .eq('artist_id', sd.artistId)
     const existingMap: Record<string, boolean> = {}
-    for (const r of (existing ?? []) as any[]) existingMap[r.date] = r.available
+    for (const r of (json.availability ?? []) as { date: string; available: boolean }[]) existingMap[r.date] = r.available
 
     const init: Record<string, boolean> = {}
     for (const d of dates) init[d] = existingMap[d] ?? true

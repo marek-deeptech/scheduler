@@ -81,6 +81,60 @@ function getMonthDays(year: number, month: number): (Date | null)[] {
   return days
 }
 
+// ── Event drawer (wysuwany z prawej, jak w Wydarzeniach) ──────────────────────
+
+function ActorEventDrawer({ ev, onClose }: { ev: DayEvent; onClose: () => void }) {
+  const [open, setOpen] = useState(false)
+  useEffect(() => { const t = setTimeout(() => setOpen(true), 10); return () => clearTimeout(t) }, [])
+  const close = () => { setOpen(false); setTimeout(onClose, 200) }
+
+  const dateLabel = new Date(ev.start_time.slice(0, 10) + 'T12:00:00')
+    .toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })
+  const heading = ev.type ?? ev.title
+
+  return (
+    <div className="fixed inset-0 z-[80]">
+      <div className={`absolute inset-0 bg-black/30 transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`} onClick={close} />
+      <div className={`absolute right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-2xl overflow-y-auto transition-transform duration-200 ${open ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="p-5">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full"
+              style={ev.isMine ? { background: '#1a1410', color: '#fff' } : { background: '#f2ede6', color: '#7a7068' }}>
+              {ev.isMine ? 'Jesteś w obsadzie' : (ev.type ?? 'Wydarzenie')}
+            </span>
+            <button onClick={close} className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#f2ede6', color: '#7a7068' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          </div>
+
+          <h2 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.4rem', fontWeight: 700, color: '#1a1410', lineHeight: 1.2 }}>{heading}</h2>
+          <p className="text-sm capitalize mt-1" style={{ color: '#7a7068' }}>{dateLabel}</p>
+
+          <div className="mt-5 space-y-3 text-sm" style={{ color: '#3e3830' }}>
+            <div className="flex items-center gap-2.5">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a89e92" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+              {fmtTime(ev.start_time)}–{fmtTime(ev.end_time)}
+            </div>
+            {ev.room && (
+              <div className="flex items-center gap-2.5">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a89e92" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
+                {ev.room}
+              </div>
+            )}
+          </div>
+
+          {ev.production && ev.production !== heading && (
+            <div className="mt-5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#b8b0a4' }}>Produkcja</p>
+              <span className="inline-block text-sm px-2.5 py-1 rounded-full" style={{ background: '#f2ede6', color: '#5a524a' }}>{ev.production}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ActorCalendarPage() {
@@ -106,6 +160,8 @@ export default function ActorCalendarPage() {
   const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set())
   // Day filter for the vertical list (mini-calendar click)
   const [filterDay,     setFilterDay]     = useState<string | null>(null)
+  // Event drawer (szczegóły wydarzenia, wysuwany z prawej)
+  const [selectedEvent, setSelectedEvent] = useState<DayEvent | null>(null)
   // Miesiące z zatwierdzonym/wdrożonym repertuarem — kalendarz zablokowany
   const [lockedMonths,  setLockedMonths]  = useState<Set<string>>(new Set())
   const viewMonthKey = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`
@@ -644,7 +700,11 @@ export default function ActorCalendarPage() {
                           {dayEvs.length > 0 ? (
                             <div className="space-y-2">
                               {dayEvs.map(ev => (
-                                <div key={ev.id} className={`rounded-2xl p-3.5 ${ev.isMine ? 'bg-gray-900' : 'bg-white border border-gray-200'}`}>
+                                <button
+                                  key={ev.id}
+                                  onClick={() => setSelectedEvent(ev)}
+                                  className={`w-full text-left rounded-2xl p-3.5 transition-all hover:shadow-md ${ev.isMine ? 'bg-gray-900' : 'bg-white border border-gray-200'}`}
+                                >
                                   <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
                                       <p className={`text-sm font-semibold ${ev.isMine ? 'text-white' : 'text-gray-800'}`}>
@@ -668,7 +728,7 @@ export default function ActorCalendarPage() {
                                       {ev.production}
                                     </span>
                                   )}
-                                </div>
+                                </button>
                               ))}
                             </div>
                           ) : (
@@ -887,6 +947,11 @@ export default function ActorCalendarPage() {
           )
         })()}
       </div>
+
+      {/* ── Event drawer (szczegóły wydarzenia, z prawej) ── */}
+      {selectedEvent && (
+        <ActorEventDrawer ev={selectedEvent} onClose={() => setSelectedEvent(null)} />
+      )}
 
     </div>
   )

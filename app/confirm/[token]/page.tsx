@@ -2,12 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
 
 interface ConfirmationData {
   id: string
@@ -64,21 +58,11 @@ export default function ConfirmPage() {
   const [finalStatus, setFinalStatus] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
-    const { data: rows, error } = await supabase
-      .from('event_confirmations')
-      .select(`
-        id, token, status, comment,
-        events!event_id (
-          title, type, start_time, end_time,
-          productions (title),
-          rooms (name)
-        ),
-        artists!artist_id (name)
-      `)
-      .eq('token', token)
-      .single()
+    const resp = await fetch(`/api/confirmations/respond?token=${encodeURIComponent(token)}`)
+    const json = await resp.json().catch(() => null)
+    const rows = json?.data
 
-    if (error || !rows) {
+    if (!resp.ok || !rows) {
       setNotFound(true)
       setLoading(false)
       return

@@ -61,7 +61,7 @@ export async function POST(request: Request) {
   if (ok) {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
     const summary = conflicts
       .map(c => `${c.eventA.title} vs ${c.eventB.title} (${fmtPolish(c.eventA.start_time)})${c.artistNames.length ? ` — ${c.artistNames.join(', ')}` : ''}`)

@@ -80,6 +80,9 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   function logout() {
     setLoggedIn(false)
     try { localStorage.setItem('profileLoggedIn', 'false') } catch {}
+    // Skasuj serwerową sesję (httpOnly cookie) i wróć na ekran logowania.
+    fetch('/api/auth/logout', { method: 'POST' })
+      .finally(() => { try { window.location.href = '/login' } catch {} })
   }
 
   if (!hydrated) return null

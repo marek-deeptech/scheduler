@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
 const VALID_STATUSES = ['confirmed', 'declined', 'maybe'] as const
@@ -51,6 +51,27 @@ async function maybeTriggerFinanceReport(eventId: string) {
   } catch (e) {
     console.error('maybeTriggerFinanceReport:', e)
   }
+}
+
+// Publiczny odczyt szczegółów potwierdzenia po tokenie (zamiast anon z przeglądarki).
+export async function GET(request: Request) {
+  const token = new URL(request.url).searchParams.get('token')
+  if (!token) return Response.json({ error: 'Missing token' }, { status: 400 })
+  const { data, error } = await supabase
+    .from('event_confirmations')
+    .select(`
+      id, token, status, comment,
+      events!event_id (
+        title, type, start_time, end_time,
+        productions (title),
+        rooms (name)
+      ),
+      artists!artist_id (name)
+    `)
+    .eq('token', token)
+    .single()
+  if (error || !data) return Response.json({ error: 'Not found' }, { status: 404 })
+  return Response.json({ data })
 }
 
 export async function POST(request: Request) {
