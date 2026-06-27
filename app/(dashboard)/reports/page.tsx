@@ -133,6 +133,14 @@ export default function ReportsPage() {
   const [assignments, setAssignments] = useState<{ artist_id: string; production_id: string; theatre_id: string | null }[]>([])
   // Filtr konfliktów spójny z Pulpitem: liczymy tylko niezatwierdzone, przyszłe miesiące.
   const [conflFilter, setConflFilter] = useState<{ global: Set<string>; keys: Set<string> }>({ global: new Set(), keys: new Set() })
+  const [activeTab, setActiveTab] = useState<'tytuly' | 'aktorzy' | 'aktywnosc'>('tytuly')
+  // Przy eksporcie PDF pokazujemy WSZYSTKIE sekcje (pełny raport), nie tylko aktywną zakładkę.
+  const [forPrint, setForPrint] = useState(false)
+  function exportPdf() {
+    setForPrint(true)
+    setTimeout(() => { window.print(); setForPrint(false) }, 350)
+  }
+  const showTab = (k: 'tytuly' | 'aktorzy' | 'aktywnosc') => forPrint || activeTab === k
   // Obciążenie zespołu — filtr po miesiącu/roku
   const [wlMonth,     setWlMonth]     = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })
   const [wlEvents,    setWlEvents]    = useState<EventRow[]>([])
@@ -447,7 +455,7 @@ export default function ReportsPage() {
             {PERIOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           <button
-            onClick={() => window.print()}
+            onClick={exportPdf}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-xl transition-colors"
             style={{ background: '#c8102e' }}
             onMouseOver={e => (e.currentTarget.style.background = '#9e0c24')}
@@ -478,8 +486,26 @@ export default function ReportsPage() {
         }
       </div>
 
+      {/* Zakładki sekcji */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+        {([
+          ['tytuly',     'Tytuły'],
+          ['aktorzy',    'Aktorzy'],
+          ['aktywnosc',  'Próby i sale'],
+        ] as const).map(([key, label]) => {
+          const on = activeTab === key
+          return (
+            <button key={key} onClick={() => setActiveTab(key)}
+              className="shrink-0 px-4 py-2 text-sm font-semibold rounded-xl transition-colors"
+              style={on ? { background: '#1a1410', color: '#fff' } : { background: '#fff', color: '#7a7068', border: '1px solid #e4ddd4' }}>
+              {label}
+            </button>
+          )
+        })}
+      </div>
+
       {/* Production table */}
-      {!loading && productionTable.length > 0 && (
+      {showTab('tytuly') && !loading && productionTable.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100">
             <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>{tr.productionsSection}</h3>
@@ -539,6 +565,7 @@ export default function ReportsPage() {
       )}
 
       {/* Charts row 1: workload + status */}
+      {showTab('aktorzy') && (
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4">
 
         {/* Artist workload */}
@@ -593,8 +620,10 @@ export default function ReportsPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* Charts row 2: per-production + room util */}
+      {showTab('aktywnosc') && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* Rehearsals per production */}
@@ -640,9 +669,10 @@ export default function ReportsPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* Obciążenie zespołu — per wybrany miesiąc */}
-      {!loading && (() => {
+      {showTab('aktorzy') && !loading && (() => {
         const MONTHS_PL = td.months
         const [wy, wm] = wlMonth.split('-').map(Number)
         const nowY = new Date().getFullYear()
@@ -705,7 +735,7 @@ export default function ReportsPage() {
       })()}
 
       {/* Absences */}
-      {!loading && absenceList.length > 0 && (
+      {showTab('aktorzy') && !loading && absenceList.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100">
             <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>{tr.absencesSection}</h3>
@@ -731,7 +761,7 @@ export default function ReportsPage() {
       )}
 
       {/* Event type breakdown */}
-      {!loading && typeCounts.length > 0 && (
+      {showTab('aktywnosc') && !loading && typeCounts.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-2xl p-6">
           <h3 className="text-sm font-semibold mb-4" style={{ color: '#1a1410' }}>{tr.eventTypesSection}</h3>
           <div className="flex flex-wrap gap-2.5">
