@@ -247,6 +247,54 @@ function ProfileSwitcher() {
   )
 }
 
+// ── Sidebar: zalogowany użytkownik (avatar + Wyloguj) ───────────────────────
+
+function SidebarUserFooter() {
+  const { mode, actorId, actorName, logout } = useProfile()
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    if (mode === 'actor' && actorId) {
+      supabase.from('artists').select('avatar_url').eq('id', actorId).single()
+        .then(({ data }) => { if (!cancelled) setAvatarUrl((data as any)?.avatar_url ?? null) })
+    } else {
+      setAvatarUrl(null)
+    }
+    return () => { cancelled = true }
+  }, [mode, actorId])
+
+  const isActor = mode === 'actor' && !!actorId
+  const label   = isActor ? (actorName ?? 'Aktor') : 'Koordynator'
+
+  return (
+    <div className="px-3 py-3 flex items-center gap-2.5" style={{ borderTop: '1px solid #e4ddd4' }}>
+      {avatarUrl ? (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img src={avatarUrl} alt={label} className="w-9 h-9 rounded-full object-cover shrink-0" style={{ border: '1px solid #e4ddd4' }} />
+      ) : (
+        <span className="w-9 h-9 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0" style={{ background: '#1a1410', color: '#fff' }}>
+          {label.charAt(0).toUpperCase()}
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="text-[12px] font-semibold truncate" style={{ color: '#1a1410' }}>{label}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#a89e92' }}>
+          {isActor ? 'Aktor' : 'Zalogowano'}
+        </p>
+      </div>
+      <button
+        onClick={logout}
+        title="Wyloguj"
+        className="px-2.5 py-1.5 text-[11px] font-semibold rounded-lg shrink-0 transition-colors hover:bg-[#ede7df]"
+        style={{ border: '1px solid #e4ddd4', color: '#7a7068', background: '#fff' }}
+      >
+        Wyloguj
+      </button>
+    </div>
+  )
+}
+
 // ── Sidebar ─────────────────────────────────────────────────────────────────
 
 function Sidebar({ mobile = false }: { mobile?: boolean }) {
@@ -387,6 +435,9 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
           <Link href="/actor/messages" className={lnk('/actor/messages')}>{icons.mail}Wiadomości</Link>
         </nav>
       )}
+
+      {/* Zalogowany użytkownik + Wyloguj */}
+      <SidebarUserFooter />
 
       {/* Language toggle */}
       <div className="px-3 py-3" style={{ borderTop: '1px solid #e4ddd4' }}>
