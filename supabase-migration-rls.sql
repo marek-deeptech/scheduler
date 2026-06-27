@@ -1,33 +1,32 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- RLS deny-by-default na wszystkich tabelach public.
+-- RLS deny-by-default na WSZYSTKICH tabelach public.
 -- Po tej migracji publiczny klucz anon NIE MA dostępu do żadnej tabeli.
 -- Aplikacja działa, bo cały ruch idzie przez serwer z kluczem service_role
 -- (proxy /rest/v1 oraz API routes), a service_role omija RLS.
+-- Wersja odporna: iteruje po realnie istniejących tabelach (pomija nieistniejące).
 -- URUCHOM RĘCZNIE w Supabase SQL editor — DOPIERO po wdrożeniu nowej wersji apki.
 -- ─────────────────────────────────────────────────────────────────────────────
 
-alter table public.theatres enable row level security;
-alter table public.rooms enable row level security;
-alter table public.teams enable row level security;
-alter table public.artists enable row level security;
-alter table public.productions enable row level security;
-alter table public.artist_productions enable row level security;
-alter table public.events enable row level security;
-alter table public.event_artists enable row level security;
-alter table public.event_types enable row level security;
-alter table public.event_confirmations enable row level security;
-alter table public.repertoire_proposals enable row level security;
-alter table public.repertoire_slots enable row level security;
-alter table public.slot_invites enable row level security;
-alter table public.slot_availability enable row level security;
-alter table public.availabilities enable row level security;
-alter table public.actor_day_status enable row level security;
-alter table public.actor_messages enable row level security;
-alter table public.actor_substitutes enable row level security;
-alter table public.chat_messages enable row level security;
-alter table public.app_settings enable row level security;
-alter table public.planning_assumptions enable row level security;
-alter table public.google_accounts enable row level security;
-alter table public.gcal_event_map enable row level security;
+do $$
+declare r record;
+begin
+  for r in
+    select tablename from pg_tables where schemaname = 'public'
+  loop
+    execute format('alter table public.%I enable row level security;', r.tablename);
+  end loop;
+end $$;
+
+-- Usuń wszystkie zalegające polityki (np. stare token-owe na event_confirmations),
+-- które wpuszczały anon. Apka czyta wszystko przez service_role (omija RLS),
+-- więc żadne polityki nie są potrzebne — pełne odcięcie publicznego klucza anon.
+do $$
+declare r record;
+begin
+  for r in select tablename, policyname from pg_policies where schemaname = 'public'
+  loop
+    execute format('drop policy if exists %I on public.%I;', r.policyname, r.tablename);
+  end loop;
+end $$;
 
 -- (Brak polityk = brak dostępu dla anon/public. service_role i tak omija RLS.)
