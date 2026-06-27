@@ -38,7 +38,10 @@ async function handle(req: NextRequest, path: string[]) {
 
   const resHeaders = new Headers()
   for (const h of RES_HEADERS) { const v = upstream.headers.get(h); if (v) resHeaders.set(h, v) }
-  const buf = await upstream.arrayBuffer()
+  // 204/205/304 (np. DELETE albo Prefer: return=minimal) NIE mogą mieć ciała —
+  // inaczej konstruktor Response rzuca i całe żądanie kończy się 500.
+  const noBody = [101, 204, 205, 304].includes(upstream.status)
+  const buf = noBody ? null : await upstream.arrayBuffer()
   return new NextResponse(buf, { status: upstream.status, headers: resHeaders })
 }
 
