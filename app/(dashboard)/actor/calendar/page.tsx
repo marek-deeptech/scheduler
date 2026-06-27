@@ -459,9 +459,9 @@ export default function ActorCalendarPage() {
           {loading ? (
             <div className="flex items-center justify-center h-40 text-gray-500 text-sm">Ładowanie…</div>
           ) : (
-            <div className="space-y-5 max-w-3xl">
+            <div className="space-y-5">
 
-              {/* ── Mini month calendar card ── */}
+              {/* ── Big month calendar card ── */}
               <div className="bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid #e4ddd4' }}>
                 <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #f2ede6' }}>
                   <button onClick={prevMonth} className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors hover:bg-gray-100 text-gray-500 text-lg">‹</button>
@@ -487,14 +487,16 @@ export default function ActorCalendarPage() {
                   ))}
                 </div>
 
-                {/* Days */}
-                <div className="grid grid-cols-7 gap-px px-3 pb-4">
+                {/* Days — big cells with event titles (jak w Wydarzeniach) */}
+                <div className="grid grid-cols-7 gap-1 px-3 pb-4">
                   {days.map((day, i) => {
                     if (!day) return <div key={`pad-${i}`} />
                     const dateStr    = toDateStr(day)
                     const isToday    = dateStr === todayStr
                     const isSel      = !multiMode && dateStr === filterDay
                     const isMultiSel = multiMode && multiSelected.has(dateStr)
+                    const isDark     = isSel || isMultiSel
+                    const isSbSn     = day.getDay() === 0 || day.getDay() === 6
                     const dayEvs     = getEventsForDate(dateStr)
                     const daySt      = effectiveStatus(dateStr)
                     const stDef      = DAY_STATUSES.find(s => s.value === daySt?.status)
@@ -508,23 +510,39 @@ export default function ActorCalendarPage() {
                           if (multiMode) toggleMultiDate(dateStr)
                           else setFilterDay(prev => prev === dateStr ? null : dateStr)
                         }}
-                        className="flex flex-col items-center py-1.5 rounded-xl transition-all"
+                        className="flex flex-col items-stretch gap-1 p-1.5 rounded-xl transition-all text-left min-h-[88px] overflow-hidden"
                         style={{
-                          background: isMultiSel ? '#1a1410' : isSel ? '#1a1410' : isToday ? '#f2ede6' : 'transparent',
-                          border: isToday && !isSel && !isMultiSel ? '1px solid #e4ddd4' : '1px solid transparent',
+                          background: isDark ? '#1a1410' : isToday ? '#f2ede6' : 'transparent',
+                          border: isToday && !isDark ? '1px solid #e4ddd4' : '1px solid transparent',
                         }}
+                        onMouseOver={e => { if (!isDark) e.currentTarget.style.background = '#f8f5f1' }}
+                        onMouseOut={e => { e.currentTarget.style.background = isDark ? '#1a1410' : isToday ? '#f2ede6' : 'transparent' }}
                       >
-                        <span className="text-sm font-medium w-7 h-7 flex items-center justify-center rounded-lg"
-                          style={{ color: (isSel || isMultiSel) ? '#fff' : isToday ? '#1a1410' : '#3e3830' }}>
-                          {day.getDate()}
-                        </span>
-                        <div className="flex gap-0.5 mt-1 h-1.5 items-center">
-                          {hasConflict && <span className="text-[8px] leading-none">⚠️</span>}
-                          {!hasConflict && stDef && (
-                            <span className={`w-1.5 h-1.5 rounded-full ${stDef.dot}`} />
-                          )}
-                          {dayEvs.length > 0 && (
-                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: (isSel || isMultiSel) ? '#fff' : '#1a1410' }} />
+                        {/* Day number + availability indicator */}
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-sm font-semibold w-6 h-6 flex items-center justify-center rounded-lg shrink-0"
+                            style={{ color: isDark ? '#fff' : isToday ? '#1a1410' : isSbSn ? '#cec5b8' : '#3e3830' }}>
+                            {day.getDate()}
+                          </span>
+                          {hasConflict
+                            ? <span className="text-[11px] leading-none shrink-0" title="Kolizja statusu z wydarzeniem">⚠️</span>
+                            : stDef && <span className={`w-2 h-2 rounded-full shrink-0 ${stDef.dot}`} title={daySt?.status} />}
+                        </div>
+
+                        {/* Event titles */}
+                        <div className="flex flex-col gap-0.5 min-w-0">
+                          {dayEvs.slice(0, 2).map((e, di) => (
+                            <span key={di} className="text-[9px] leading-tight px-1 py-0.5 rounded truncate"
+                              style={e.isMine
+                                ? { background: isDark ? 'rgba(255,255,255,0.22)' : '#1a1410', color: '#fff' }
+                                : { background: isDark ? 'rgba(255,255,255,0.12)' : '#ece5dc', color: isDark ? '#fff' : '#5a524a' }}>
+                              {e.title}
+                            </span>
+                          ))}
+                          {dayEvs.length > 2 && (
+                            <span className="text-[9px] px-1 font-medium" style={{ color: isDark ? 'rgba(255,255,255,0.7)' : '#a89e92' }}>
+                              +{dayEvs.length - 2} więcej
+                            </span>
                           )}
                         </div>
                       </button>
