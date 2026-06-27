@@ -247,6 +247,103 @@ function ProfileSwitcher() {
   )
 }
 
+// ── Górny pasek (desktop): switcher Koordynator/Aktor + avatar + Wyloguj ─────
+
+function TopBarProfile() {
+  const { mode, actorId, actorName, setMode, setActor, logout } = useProfile()
+  const router = useRouter()
+  const [actors, setActors]   = useState<Actor[]>([])
+  const [open, setOpen]       = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    if (mode === 'actor' && actorId) {
+      supabase.from('artists').select('avatar_url').eq('id', actorId).single()
+        .then(({ data }) => { if (!cancelled) setAvatarUrl((data as any)?.avatar_url ?? null) })
+    } else {
+      setAvatarUrl(null)
+    }
+    return () => { cancelled = true }
+  }, [mode, actorId])
+
+  async function loadActors() {
+    if (actors.length > 0) return
+    setLoading(true)
+    const { data } = await supabase
+      .from('artists').select('id, name, teams!inner(name)').eq('teams.name', 'Cast').order('name')
+    setActors(sortByLastName(((data ?? []) as any[]).map(a => ({ id: a.id, name: a.name }))))
+    setLoading(false)
+  }
+  function switchToCoordinator() { setMode('coordinator'); router.push('/dashboard') }
+  function switchToActor() { setMode('actor'); loadActors(); if (!actorId) setOpen(true); else router.push('/actor/calendar') }
+  function selectActor(a: Actor) { setActor(a.id, a.name); setOpen(false); router.push('/actor/calendar') }
+
+  const isActor = mode === 'actor' && !!actorId
+  const label   = isActor ? (actorName ?? 'Aktor') : 'Koordynator'
+
+  return (
+    <div className="flex items-center gap-3">
+      {/* Switcher */}
+      <div className="flex p-0.5 rounded-lg" style={{ background: '#ede7df' }}>
+        <button onClick={switchToCoordinator} className="px-3 py-1 text-[11px] font-semibold rounded-md transition-all"
+          style={mode === 'coordinator' ? { background: '#fff', color: '#1a1410', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' } : { color: '#a89e92' }}>
+          Koordynator
+        </button>
+        <button onClick={switchToActor} className="px-3 py-1 text-[11px] font-semibold rounded-md transition-all"
+          style={mode === 'actor' ? { background: '#fff', color: '#1a1410', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' } : { color: '#a89e92' }}>
+          Aktor
+        </button>
+      </div>
+
+      {/* Wybór aktora */}
+      {mode === 'actor' && (
+        <div className="relative">
+          <button onClick={() => { loadActors(); setOpen(v => !v) }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] font-medium rounded-lg"
+            style={{ background: '#fff', color: '#5a524a', border: '1px solid #e4ddd4' }}>
+            <span className="truncate max-w-[150px]">{actorName ?? 'Wybierz aktora…'}</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 opacity-40">
+              <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          {open && (
+            <div className="absolute right-0 top-full mt-1 w-56 rounded-xl z-50 max-h-64 overflow-y-auto"
+              style={{ background: '#fff', border: '1px solid #e4ddd4', boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}>
+              {loading && <p className="px-3 py-2 text-[11px] italic text-gray-400">Ładowanie…</p>}
+              {actors.map(a => (
+                <button key={a.id} onClick={() => selectActor(a)}
+                  className="w-full text-left px-3 py-2 text-[12px] transition-colors hover:bg-gray-50"
+                  style={{ color: a.id === actorId ? '#1a1410' : '#7a7068', fontWeight: a.id === actorId ? 600 : 400 }}>
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Avatar */}
+      {avatarUrl ? (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img src={avatarUrl} alt={label} className="w-8 h-8 rounded-full object-cover shrink-0" style={{ border: '1px solid #e4ddd4' }} />
+      ) : (
+        <span className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0" style={{ background: '#1a1410', color: '#fff' }}>
+          {label.charAt(0).toUpperCase()}
+        </span>
+      )}
+
+      {/* Wyloguj */}
+      <button onClick={logout}
+        className="px-2.5 py-1.5 text-[11px] font-semibold rounded-lg shrink-0 transition-colors hover:bg-[#ede7df]"
+        style={{ border: '1px solid #e4ddd4', color: '#7a7068', background: '#fff' }}>
+        Wyloguj
+      </button>
+    </div>
+  )
+}
+
 // ── Sidebar: zalogowany użytkownik (avatar + Wyloguj) ───────────────────────
 
 function SidebarUserFooter() {
@@ -298,7 +395,7 @@ function SidebarUserFooter() {
 // ── Sidebar ─────────────────────────────────────────────────────────────────
 
 function Sidebar({ mobile = false }: { mobile?: boolean }) {
-  const { t, locale, toggle } = useLanguage()
+  const { t } = useLanguage()
   const { selectedTheatreId, setSelectedTheatreId } = useTheatre()
   const { mode } = useProfile()
   const [theatres, setTheatres] = useState<Theatre[] | null>(null)
@@ -355,8 +452,8 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
       {/* Crimson divider */}
       <div className="mx-4 h-px" style={{ background: 'rgba(200,16,46,0.20)' }} />
 
-      {/* Profile switcher */}
-      <ProfileSwitcher />
+      {/* Profile switcher — na desktopie jest w górnym pasku, tu tylko w mobilnym menu */}
+      {mobile && <ProfileSwitcher />}
 
       {/* Navigation */}
       {mode === 'coordinator' ? (
@@ -436,20 +533,10 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
         </nav>
       )}
 
-      {/* Zalogowany użytkownik + Wyloguj */}
-      <SidebarUserFooter />
+      {/* Zalogowany użytkownik + Wyloguj — na desktopie w górnym pasku, tu tylko mobilnie */}
+      {mobile && <SidebarUserFooter />}
 
-      {/* Language toggle */}
-      <div className="px-3 py-3" style={{ borderTop: '1px solid #e4ddd4' }}>
-        <button
-          onClick={toggle}
-          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-colors hover:bg-[#ede7df]"
-          style={{ color: '#a89e92' }}
-        >
-          <span>{locale === 'en' ? '🇬🇧 English' : '🇵🇱 Polski'}</span>
-          <span>{locale === 'en' ? 'PL' : 'EN'}</span>
-        </button>
-      </div>
+      {/* PL/EN ukryte na razie */}
     </aside>
   )
 }
@@ -690,12 +777,13 @@ function Shell({ children }: { children: React.ReactNode }) {
           <MobileUserChip onOpenDrawer={() => setDrawerOpen(true)} />
         </header>
 
-        {/* Desktop breadcrumb bar */}
+        {/* Desktop top bar: breadcrumbs + profil/wylogowanie */}
         <div
-          className="hidden md:flex items-center px-8 shrink-0 no-print"
-          style={{ minHeight: 44, background: '#fff', borderBottom: '1px solid #e4ddd4' }}
+          className="hidden md:flex items-center justify-between gap-4 px-8 shrink-0 no-print"
+          style={{ minHeight: 52, background: '#fff', borderBottom: '1px solid #e4ddd4' }}
         >
           <Breadcrumbs />
+          <TopBarProfile />
         </div>
 
         <main className="flex-1 overflow-y-auto overscroll-contain">
