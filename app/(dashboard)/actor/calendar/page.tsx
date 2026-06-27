@@ -165,7 +165,15 @@ export default function ActorCalendarPage() {
   // Miesiące z zatwierdzonym/wdrożonym repertuarem — kalendarz zablokowany
   const [lockedMonths,  setLockedMonths]  = useState<Set<string>>(new Set())
   const viewMonthKey = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`
-  const monthLocked  = lockedMonths.has(viewMonthKey)
+  const monthApproved = lockedMonths.has(viewMonthKey)
+
+  // Prawy drawer ze szczegółami dnia — animacja wjazdu/wyjazdu
+  const panelActive = !!selected || multiMode
+  const [panelShown, setPanelShown] = useState(false)
+  useEffect(() => {
+    if (panelActive) { const t = setTimeout(() => setPanelShown(true), 10); return () => clearTimeout(t) }
+    setPanelShown(false)
+  }, [panelActive])
 
   // Redirect if no actor selected
   useEffect(() => {
@@ -288,6 +296,12 @@ export default function ActorCalendarPage() {
     setMultiSelected(new Set())
   }
 
+  // Zamknij prawy drawer z animacją wyjazdu
+  function closePanel() {
+    setPanelShown(false)
+    setTimeout(() => { setSelected(null); exitMultiMode() }, 200)
+  }
+
   // Alarm do koordynatora, gdy niedostępność koliduje z repertuarem
   function notifyCoordinator(days: { date: string; status: string; note?: string | null }[]) {
     if (!actorId) return
@@ -300,10 +314,12 @@ export default function ActorCalendarPage() {
 
   // Multi-select: save immediately with delete → insert
   async function applyStatusToSelected(status: string) {
-    if (!actorId || multiSelected.size === 0 || monthLocked) return
+    if (!actorId || multiSelected.size === 0) return
+    // Pomiń dni zablokowane (granie w zatwierdzonym repertuarze)
+    const dates = Array.from(multiSelected).filter(d => !isDayLocked(d))
+    if (dates.length === 0) { exitMultiMode(); return }
     setSaving(true)
     setSaveError(null)
-    const dates = Array.from(multiSelected)
 
     const { error: delErr } = await supabase
       .from('actor_day_status')
@@ -340,9 +356,16 @@ export default function ActorCalendarPage() {
     return events.filter(e => e.start_time.slice(0, 10) === dateStr)
   }
 
+  // Blokada dotyczy TYLKO dni, w których aktor gra spektakl z zatwierdzonego
+  // repertuaru — pozostałe dni miesiąca pozostają edytowalne.
+  function isDayLocked(dateStr: string): boolean {
+    if (!lockedMonths.has(dateStr.slice(0, 7))) return false
+    return getEventsForDate(dateStr).some(e => e.isMine)
+  }
+
   // Mark a day's status locally (not saved yet)
   function markDayStatus(dateStr: string, status: string) {
-    if (monthLocked) return
+    if (isDayLocked(dateStr)) return
     setPending(prev => ({ ...prev, [dateStr]: status }))
   }
 
@@ -357,15 +380,17 @@ export default function ActorCalendarPage() {
 
   // Save all pending changes + note to Supabase (delete → insert to avoid upsert issues)
   async function saveAll() {
-    if (!actorId || monthLocked) return
+    if (!actorId) return
     setSaving(true)
     setSaveError(null)
 
     // Build full set of changes: pending statuses + note for selected day
+    // (pomijamy dni zablokowane — granie w zatwierdzonym repertuarze)
     const toSave: { date: string; status: string; note: string | null }[] = []
 
     const pendingEntries = Object.entries(pending)
     for (const [date, status] of pendingEntries) {
+      if (isDayLocked(date)) continue
       const isSelected = date === selected
       toSave.push({
         date,
@@ -375,7 +400,7 @@ export default function ActorCalendarPage() {
     }
 
     // If selected day has no pending status change but has a note change, add it too
-    if (selected && !pending[selected]) {
+    if (selected && !pending[selected] && !isDayLocked(selected)) {
       const existingSt = getStatusForDate(selected)
       if (existingSt) {
         toSave.push({ date: selected, status: existingSt.status, note: noteInput || null })
@@ -446,8 +471,7 @@ export default function ActorCalendarPage() {
             </div>
             <button
               onClick={() => { setMultiMode(v => !v); setMultiSelected(new Set()) }}
-              disabled={monthLocked}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
                 multiMode
                   ? 'bg-gray-900 text-white border-gray-900'
                   : 'text-gray-600 border-gray-200 hover:bg-gray-50'
@@ -474,20 +498,20 @@ export default function ActorCalendarPage() {
           </div>
         </div>
 
-        {/* Blokada miesiąca — repertuar zatwierdzony/wdrożony */}
-        {monthLocked && (
+        {/* Repertuar zatwierdzony — zablokowane są tylko dni z Twoimi spektaklami */}
+        {monthApproved && (
           <div className="px-4 md:px-8 py-2.5 border-b shrink-0 flex items-center gap-2" style={{ background: '#f2ede6', borderColor: '#e4ddd4' }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7a7068" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
               <rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
             </svg>
             <span className="text-xs font-medium" style={{ color: '#5a524a' }}>
-              Repertuar na <b>{MONTHS_PL[viewMonth]} {viewYear}</b> jest zatwierdzony — dostępność w tym miesiącu jest zablokowana i nie można jej zmieniać.
+              Repertuar na <b>{MONTHS_PL[viewMonth]} {viewYear}</b> jest zatwierdzony — zablokowane są tylko dni, w których grasz spektakle (🔒). Pozostałe dni możesz nadal edytować.
             </span>
           </div>
         )}
 
         {/* Unsaved changes banner */}
-        {(Object.keys(pending).length > 0 && !selected && !monthLocked) && (
+        {(Object.keys(pending).length > 0 && !selected) && (
           <div className="px-4 md:px-8 py-2 bg-amber-50 border-b border-amber-200 flex items-center justify-between shrink-0">
             <span className="text-xs font-medium text-amber-700">
               Niezapisane zmiany: {Object.keys(pending).length} {Object.keys(pending).length === 1 ? 'dzień' : 'dni'}
@@ -525,7 +549,7 @@ export default function ActorCalendarPage() {
                     <h2 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.1rem', fontWeight: 700, color: '#1a1410' }}>{MONTHS_PL[viewMonth]}</h2>
                     <span className="text-sm font-medium" style={{ color: '#a89e92' }}>{viewYear}</span>
                     <button
-                      onClick={() => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); setFilterDay(todayStr) }}
+                      onClick={() => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()) }}
                       className="text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors"
                       style={{ background: '#f2ede6', color: '#7a7068', border: '1px solid #e4ddd4' }}
                     >
@@ -549,7 +573,7 @@ export default function ActorCalendarPage() {
                     if (!day) return <div key={`pad-${i}`} />
                     const dateStr    = toDateStr(day)
                     const isToday    = dateStr === todayStr
-                    const isSel      = !multiMode && dateStr === filterDay
+                    const isSel      = !multiMode && dateStr === selected
                     const isMultiSel = multiMode && multiSelected.has(dateStr)
                     const isDark     = isSel || isMultiSel
                     const isSbSn     = day.getDay() === 0 || day.getDay() === 6
@@ -558,13 +582,14 @@ export default function ActorCalendarPage() {
                     const stDef      = DAY_STATUSES.find(s => s.value === daySt?.status)
                     const isBlocking = daySt && BLOCKING_STATUSES.has(daySt.status)
                     const hasConflict = isBlocking && dayEvs.length > 0
+                    const dayLocked  = isDayLocked(dateStr)
 
                     return (
                       <button
                         key={dateStr}
                         onClick={() => {
                           if (multiMode) toggleMultiDate(dateStr)
-                          else setFilterDay(prev => prev === dateStr ? null : dateStr)
+                          else { setSelectedEvent(null); setNoteInput(getStatusForDate(dateStr)?.note ?? ''); setSelected(prev => prev === dateStr ? null : dateStr) }
                         }}
                         className="flex flex-col items-stretch gap-1 p-1.5 rounded-xl transition-all text-left min-h-[88px] overflow-hidden"
                         style={{
@@ -580,7 +605,11 @@ export default function ActorCalendarPage() {
                             style={{ color: isDark ? '#fff' : isToday ? '#1a1410' : isSbSn ? '#cec5b8' : '#3e3830' }}>
                             {day.getDate()}
                           </span>
-                          {hasConflict
+                          {dayLocked
+                            ? <span className="shrink-0" title="Grasz spektakl — dostępność zablokowana">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={isDark ? '#fff' : '#a89e92'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                              </span>
+                            : hasConflict
                             ? <span className="text-[11px] leading-none shrink-0" title="Kolizja statusu z wydarzeniem">⚠️</span>
                             : stDef && <span className={`w-2 h-2 rounded-full shrink-0 ${stDef.dot}`} title={daySt?.status} />}
                         </div>
@@ -745,12 +774,11 @@ export default function ActorCalendarPage() {
         </div>
       </div>
 
-      {/* ── Right: day detail panel ───────────────────────────────────────── */}
-      <div className={
-        selected || multiMode
-          ? 'fixed inset-x-0 bottom-0 top-auto max-h-[70dvh] z-[60] rounded-t-2xl shadow-2xl bg-white border-t border-gray-200 flex flex-col overflow-hidden pb-[env(safe-area-inset-bottom)] md:pb-0 md:static md:inset-auto md:max-h-none md:rounded-none md:shadow-none md:z-auto md:w-72 md:shrink-0 md:border-t-0 md:border-l md:transition-all md:duration-200'
-          : 'hidden'
-      }>
+      {/* ── Right: day detail drawer (wysuwany z prawej) ──────────────────── */}
+      {panelActive && (
+      <div className="fixed inset-0 z-[60]">
+        <div className={`absolute inset-0 bg-black/30 transition-opacity duration-200 ${panelShown ? 'opacity-100' : 'opacity-0'}`} onClick={closePanel} />
+        <div className={`absolute right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-2xl flex flex-col overflow-hidden transition-transform duration-200 ${panelShown ? 'translate-x-0' : 'translate-x-full'}`}>
 
         {/* ── Multi-select panel ── */}
         {multiMode && (
@@ -760,7 +788,7 @@ export default function ActorCalendarPage() {
                 <h3 className="text-sm font-bold text-gray-900">
                   {multiSelected.size > 0 ? `${multiSelected.size} ${multiSelected.size === 1 ? 'dzień' : 'dni'}` : 'Zaznacz dni'}
                 </h3>
-                <button onClick={exitMultiMode} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-xl">×</button>
+                <button onClick={closePanel} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-xl">×</button>
               </div>
               {multiSelected.size === 0 && (
                 <p className="text-xs text-gray-400 mt-1">Kliknij dni w kalendarzu, żeby je zaznaczyć</p>
@@ -772,7 +800,7 @@ export default function ActorCalendarPage() {
                 {DAY_STATUSES.map(opt => (
                   <button
                     key={opt.value}
-                    disabled={saving || multiSelected.size === 0 || monthLocked}
+                    disabled={saving || multiSelected.size === 0}
                     onClick={() => applyStatusToSelected(opt.value)}
                     className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 transition-all text-xs font-semibold disabled:opacity-40 ${opt.cls} border-transparent`}
                   >
@@ -799,7 +827,7 @@ export default function ActorCalendarPage() {
               <div className="px-5 py-4 border-b border-gray-100 shrink-0">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-gray-900">{dayLabel}</h3>
-                  <button onClick={() => setSelected(null)} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-xl">×</button>
+                  <button onClick={closePanel} className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-xl">×</button>
                 </div>
               </div>
 
@@ -808,12 +836,12 @@ export default function ActorCalendarPage() {
                 {/* Status picker */}
                 <div>
                   <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Mój status na ten dzień</p>
-                  {monthLocked ? (
+                  {isDayLocked(selected) ? (
                     <div className="rounded-xl px-3 py-2.5 text-xs flex items-start gap-2" style={{ background: '#f2ede6', color: '#7a7068' }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
                         <rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
                       </svg>
-                      <span>Repertuar zatwierdzony — dostępności nie można zmieniać.{daySt ? ` Obecnie: ${daySt.status}.` : ''}</span>
+                      <span>Grasz spektakl z zatwierdzonego repertuaru — dostępności tego dnia nie można zmieniać.{daySt ? ` Obecnie: ${daySt.status}.` : ''}</span>
                     </div>
                   ) : (
                   <div className="flex flex-col gap-1">
@@ -849,7 +877,8 @@ export default function ActorCalendarPage() {
                   )}
                 </div>
 
-                {/* Note */}
+                {/* Note — tylko dla dni edytowalnych */}
+                {!isDayLocked(selected) && (
                 <div>
                   <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Notatka</p>
                   <textarea
@@ -870,6 +899,7 @@ export default function ActorCalendarPage() {
                     <p className="mt-2 text-xs text-red-600 font-medium">{saveError}</p>
                   )}
                 </div>
+                )}
 
                 {/* Conflict warning */}
                 {(() => {
@@ -946,7 +976,9 @@ export default function ActorCalendarPage() {
             </>
           )
         })()}
+        </div>
       </div>
+      )}
 
       {/* ── Event drawer (szczegóły wydarzenia, z prawej) ── */}
       {selectedEvent && (
