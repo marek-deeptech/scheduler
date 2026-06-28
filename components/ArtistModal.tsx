@@ -72,8 +72,6 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
     core:       (artist as any)?.is_core ?? false,
   })
   const [assignedIds,    setAssignedIds]    = useState<string[]>([])
-  const [substituteIds,  setSubstituteIds]  = useState<string[]>([])
-  const [subSearch,      setSubSearch]      = useState('')
   const [vacations,      setVacations]      = useState<VacationRecord[]>([])
   const [sicknesses,   setSicknesses]   = useState<VacationRecord[]>([])
   const [newVacation,  setNewVacation]  = useState({ start: '', end: '', note: '' })
@@ -92,8 +90,6 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
     if (!artist) return
     supabase.from('artist_productions').select('production_id').eq('artist_id', artist.id)
       .then(({ data }) => setAssignedIds((data ?? []).map(r => r.production_id)))
-    supabase.from('actor_substitutes').select('substitute_id').eq('actor_id', artist.id)
-      .then(({ data }) => setSubstituteIds((data ?? []).map((r: any) => r.substitute_id)))
     loadAvailability(artist.id)
   }, [artist?.id])
 
@@ -240,13 +236,6 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
           assignedIds.map(production_id => ({ artist_id: id, production_id }))
         )
         if (apErr) { setError(apErr.message); setSaving(false); return }
-      }
-      // Save substitutes
-      await supabase.from('actor_substitutes').delete().eq('actor_id', id)
-      if (substituteIds.length > 0) {
-        await supabase.from('actor_substitutes').insert(
-          substituteIds.map(substitute_id => ({ actor_id: id, substitute_id }))
-        )
       }
     }
 
@@ -561,63 +550,13 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
             )}
           </div>
 
-          {/* Substitutes */}
-          {isEdit && allActors.filter(a => a.id !== artist?.id).length > 0 && (
+          {/* Dublerzy — zarządzane per tytuł w osobnej zakładce */}
+          {isEdit && (
             <div>
-              <label className={labelCls}>Aktorzy na zastępstwo</label>
-
-              {/* Assigned substitutes */}
-              {substituteIds.length > 0 && (
-                <div className="flex flex-col gap-1 mb-2">
-                  {allActors.filter(a => substituteIds.includes(a.id)).map(a => (
-                    <div key={a.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100">
-                      <div>
-                        <span className="text-sm font-medium text-gray-800">{a.name}</span>
-                        {a.role && <span className="ml-2 text-xs text-gray-500">{a.role}</span>}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSubstituteIds(prev => prev.filter(id => id !== a.id))}
-                        className="w-5 h-5 flex items-center justify-center rounded-full bg-white/70 hover:bg-white text-gray-500 hover:text-red-500 transition-colors text-xs font-bold"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Search + add */}
-              <input
-                value={subSearch}
-                onChange={e => setSubSearch(e.target.value)}
-                placeholder="Szukaj aktora…"
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white mb-1"
-              />
-              <div className="flex flex-col gap-1 max-h-36 overflow-y-auto">
-                {allActors
-                  .filter(a =>
-                    a.id !== artist?.id &&
-                    !substituteIds.includes(a.id) &&
-                    a.name.toLowerCase().includes(subSearch.toLowerCase())
-                  )
-                  .map(a => (
-                    <div key={a.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 hover:bg-gray-100 transition-colors">
-                      <div>
-                        <span className="text-sm text-gray-700">{a.name}</span>
-                        {a.role && <span className="ml-2 text-xs text-gray-500">{a.role}</span>}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSubstituteIds(prev => [...prev, a.id])}
-                        className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 text-xs font-bold transition-colors"
-                      >
-                        +
-                      </button>
-                    </div>
-                  ))
-                }
-              </div>
+              <label className={labelCls}>Dublerzy</label>
+              <p className="text-xs text-gray-500 italic px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-100">
+                Dublerów ustawiasz osobno dla każdego tytułu w zakładce <b>Dublerzy</b> w profilu aktora.
+              </p>
             </div>
           )}
 

@@ -78,9 +78,9 @@ async function buildContext(): Promise<string> {
       .lte('start_time', nextMonth + 'T00:00:00')
       .limit(300),
     supabase
-      .from('actor_substitutes')
-      .select('actor:artists!actor_substitutes_artist_id_fkey(name), substitute:artists!actor_substitutes_substitute_id_fkey(name)')
-      .limit(200),
+      .from('actor_production_substitutes')
+      .select('actor:artists!actor_production_substitutes_actor_id_fkey(name), substitute:artists!actor_production_substitutes_substitute_id_fkey(name), production:productions(title)')
+      .limit(400),
   ])
 
   // Cast-only ID set — all downstream filtering uses this
@@ -159,8 +159,9 @@ async function buildContext(): Promise<string> {
     .map(s => {
       const actor = Array.isArray(s.actor) ? s.actor[0] : s.actor
       const sub   = Array.isArray(s.substitute) ? s.substitute[0] : s.substitute
+      const prod  = Array.isArray(s.production) ? s.production[0] : s.production
       if (!actor?.name || !sub?.name) return null
-      return `- ${actor.name} → zastępca: ${sub.name}`
+      return `- ${actor.name} → dubler: ${sub.name}${prod?.title ? ` (w „${prod.title}")` : ''}`
     })
     .filter(Boolean)
     .join('\n')

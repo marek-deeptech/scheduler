@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import ArtistModal from '@/components/ArtistModal'
+import SubstitutesByTitle, { type ActorRef } from '@/components/SubstitutesByTitle'
 import { IconMail, IconPhone, IconTheatre, IconSun, IconHeart } from '@/lib/icons'
 import { useLanguage } from '@/lib/language-context'
 import { sortByLastName } from '@/lib/names'
@@ -686,20 +687,22 @@ function MessagesTab({ artist, detail, onDetailRefresh }: {
 
 // ─── Detail panel ─────────────────────────────────────────────────────────────
 
-function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefresh }: {
+function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefresh, allActors, initialTab }: {
   artist: ArtistRow
   detail: ArtistDetail | null
   loading: boolean
   onEdit: () => void
   onClose: () => void
   onDetailRefresh: () => void
+  allActors: ActorRef[]
+  initialTab?: 'profile' | 'plan' | 'messages' | 'subs'
 }) {
   const { t, locale } = useLanguage()
   const ta = t.artists
   const localeStr = locale === 'pl' ? 'pl-PL' : 'en-US'
   const now = new Date()
 
-  const [activeTab,    setActiveTab]    = useState<'profile' | 'plan' | 'messages'>('profile')
+  const [activeTab,    setActiveTab]    = useState<'profile' | 'plan' | 'messages' | 'subs'>(initialTab ?? 'profile')
   const [emailOpen,    setEmailOpen]    = useState(false)
   const [emailSubject, setEmailSubject] = useState('')
   const [emailBody,    setEmailBody]    = useState('')
@@ -739,7 +742,11 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
     setTimeout(() => { setSmsSent(false); setSmsOpen(false) }, 3000)
   }
 
-  useEffect(() => { setActiveTab('profile') }, [artist.id])
+  const firstTabRun = useRef(true)
+  useEffect(() => {
+    if (firstTabRun.current) { firstTabRun.current = false; return }
+    setActiveTab('profile')
+  }, [artist.id])
 
   const inputCls = 'w-full rounded-lg px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#c8102e]'
 
@@ -890,7 +897,7 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
 
         {/* Tab switcher */}
         <div className="flex gap-1 mt-3 p-0.5 rounded-xl" style={{ background: '#f2ede6' }}>
-          {(['profile', 'plan', 'messages'] as const).map(tab => {
+          {(['profile', 'plan', 'subs', 'messages'] as const).map(tab => {
             const pendingCount = tab === 'messages' && detail
               ? (detail.confirmations ?? []).filter(c => c.status === 'pending').length
               : 0
@@ -900,7 +907,7 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
                 style={activeTab === tab
                   ? { background: '#fff', color: '#1a1410', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }
                   : { color: '#7a7068' }}>
-                {tab === 'profile' ? ta.profileTab : tab === 'plan' ? ta.planTab : 'Wiad.'}
+                {tab === 'profile' ? ta.profileTab : tab === 'plan' ? ta.planTab : tab === 'subs' ? 'Dublerzy' : 'Wiad.'}
                 {pendingCount > 0 && (
                   <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-orange-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
                     {pendingCount}
@@ -919,6 +926,26 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
         </div>
       )}
 
+      {/* Dublerzy tab — per tytuł */}
+      {activeTab === 'subs' && (
+        <div className="flex-1 overflow-y-auto px-5 py-4" style={{ background: '#faf8f5' }}>
+          <p className="text-[11px] mb-3" style={{ color: '#a89e92' }}>
+            Dla każdego tytułu wskaż osobnych dublerów. Przy konflikcie obsady proponowani są tylko dublerzy z danego tytułu.
+          </p>
+          {!detail && loading ? (
+            <div className="flex items-center justify-center py-8 text-xs" style={{ color: '#a89e92' }}>{ta.loading}</div>
+          ) : (
+            <SubstitutesByTitle
+              actorId={artist.id}
+              productions={(detail?.productions ?? []).map(p => ({ id: p.id, title: p.title, theatreName: p.theatreName }))}
+              allActors={allActors}
+              editable
+              onChange={onDetailRefresh}
+            />
+          )}
+        </div>
+      )}
+
       {/* Messages tab — keep content mounted during refresh (loader only on first load),
           otherwise MessagesTab's mount-effect re-triggers fetchDetail in a loop */}
       {activeTab === 'messages' && detail ? (
@@ -934,25 +961,6 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
         <div className="flex-1 flex items-center justify-center text-xs" style={{ color: '#a89e92' }}>{ta.loading}</div>
       ) : activeTab === 'profile' && detail ? (
         <div className="flex-1 overflow-y-auto" style={{ background: '#faf8f5' }}>
-
-          {/* Substitutes */}
-          <div className="px-5 py-4" style={{ borderBottom: '1px solid #ede8e0' }}>
-            <SectionLabel>Zastępstwo</SectionLabel>
-            {detail.substitutes.length === 0 ? (
-              <p className="text-xs italic" style={{ color: '#a89e92' }}>Brak przypisanego zastępstwa</p>
-            ) : (
-              <div className="space-y-1.5">
-                {detail.substitutes.map(s => (
-                  <div key={s.id} className="flex items-center gap-3 py-1.5 px-2.5 rounded-xl"
-                    style={{ background: '#fff', border: '1px solid #e4ddd4' }}>
-                    <Avatar url={s.avatar_url} name={s.name} size="sm" />
-                    <p className="text-xs font-semibold flex-1 min-w-0 truncate" style={{ color: '#1a1410' }}>{s.name}</p>
-                    <StatusBadge status={s.status} size="sm" />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
 
           {/* Productions */}
           <div className="px-5 py-4" style={{ borderBottom: '1px solid #ede8e0' }}>
@@ -1104,6 +1112,7 @@ export default function ArtistsPage() {
   const searchParams = useSearchParams()
   const selectParam  = searchParams.get('select')
   const editParam    = searchParams.get('edit')
+  const tabParam     = searchParams.get('tab')
 
   useEffect(() => {
     if (!selectParam || artists.length === 0) return
@@ -1186,7 +1195,7 @@ export default function ArtistsPage() {
     setDetailLoading(true)
     const now = new Date().toISOString()
 
-    const [{ data: apData }, { data: avData }, { data: eaData }, { data: subData }, { data: confData }, { data: msgData }] = await Promise.all([
+    const [{ data: apData }, { data: avData }, { data: eaData }, { data: confData }, { data: msgData }] = await Promise.all([
       supabase.from('artist_productions')
         .select('productions(id, title, status, theatres(name))')
         .eq('artist_id', artistId),
@@ -1198,9 +1207,6 @@ export default function ArtistsPage() {
       supabase.from('event_artists')
         .select('event_id')
         .eq('artist_id', artistId),
-      supabase.from('actor_substitutes')
-        .select('substitute_id, artists!actor_substitutes_substitute_id_fkey(id, name, avatar_url, status)')
-        .eq('actor_id', artistId),
       supabase.from('event_confirmations')
         .select('id, status, sent_at, responded_at, comment, events(id, title, type, start_time, end_time, productions(title))')
         .eq('artist_id', artistId)
@@ -1253,11 +1259,6 @@ export default function ArtistsPage() {
 
     const avRaw = ((avData ?? []) as any[])
 
-    const substitutes: SubstituteRef[] = ((subData ?? []) as any[]).map(r => {
-      const a = Array.isArray(r.artists) ? r.artists[0] : r.artists
-      return a ? { id: a.id, name: a.name, avatar_url: a.avatar_url ?? null, status: a.status ?? null } : null
-    }).filter(Boolean) as SubstituteRef[]
-
     const confirmations: ConfirmationRef[] = ((confData ?? []) as any[]).map(c => {
       const ev = Array.isArray(c.events) ? c.events[0] : c.events
       const prod = ev ? (Array.isArray(ev.productions) ? ev.productions[0] : ev.productions) : null
@@ -1282,7 +1283,7 @@ export default function ArtistsPage() {
       pastEvents,
       vacations:  avRaw.filter(r => r.type === 'Urlop'),
       sicknesses: avRaw.filter(r => r.type === 'Choroba'),
-      substitutes,
+      substitutes: [],
       confirmations,
       messages,
     })
@@ -1446,6 +1447,8 @@ export default function ArtistsPage() {
               onEdit={() => setModal(selectedArtist)}
               onClose={() => { setSelectedId(null); setDetail(null) }}
               onDetailRefresh={() => { if (selectedId) fetchDetail(selectedId) }}
+              allActors={artists.map(a => ({ id: a.id, name: a.name, role: a.role, avatar_url: a.avatar_url }))}
+              initialTab={tabParam === 'subs' ? 'subs' : undefined}
             />
           )}
         </div>

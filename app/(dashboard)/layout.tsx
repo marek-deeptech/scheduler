@@ -109,6 +109,7 @@ function Breadcrumbs() {
       '/actor': 'Aktor',
       '/actor/calendar': 'Kalendarz',
       '/actor/messages': 'Wiadomości',
+      '/actor/substitutes': 'Dublerzy',
     }
     if (map[href]) return map[href]
     if (/^[0-9a-f]{8}-/i.test(seg)) return 'Szczegóły'
@@ -530,6 +531,7 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
           <p className="sidebar-section mb-1.5">Moje konto</p>
           <Link href="/actor/calendar" className={lnk('/actor/calendar')}>{icons.calendar}Kalendarz</Link>
           <Link href="/actor/messages" className={lnk('/actor/messages')}>{icons.mail}Wiadomości</Link>
+          <Link href="/actor/substitutes" className={lnk('/actor/substitutes')}>{icons.user}Dublerzy</Link>
         </nav>
       )}
 
@@ -660,6 +662,7 @@ function MobileTabBar() {
     : [
         { href: '/actor/calendar', label: 'Kalendarz',  icon: icons.calendar, badge: 0 },
         { href: '/actor/messages', label: 'Wiadomości', icon: icons.mail, badge: unread },
+        { href: '/actor/substitutes', label: 'Dublerzy', icon: icons.user, badge: 0 },
       ]
 
   return (
