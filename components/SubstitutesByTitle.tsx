@@ -46,6 +46,7 @@ function MiniAvatar({ actor }: { actor: ActorRef }) {
 
 export default function SubstitutesByTitle({ actorId, productions, allActors, editable = false, onChange }: Props) {
   const [byProd,    setByProd]    = useState<Record<string, string[]>>({})
+  const [extra,     setExtra]     = useState<Map<string, ActorRef>>(new Map())
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState<string | null>(null)
   const [addingFor, setAddingFor] = useState<string | null>(null)
@@ -58,23 +59,41 @@ export default function SubstitutesByTitle({ actorId, productions, allActors, ed
     return m
   }, [allActors])
 
+  // Tożsamość dublera bierzemy z listy rodzica, a gdy go tam brak (np. lista
+  // koordynatora ogranicza się do zespołu Cast) — z doczytanych rekordów.
+  const lookup = (id: string): ActorRef | undefined => actorById.get(id) ?? extra.get(id)
+
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setError(null)
-    supabase.from('actor_production_substitutes')
-      .select('production_id, substitute_id')
-      .eq('actor_id', actorId)
-      .then(({ data, error: err }) => {
-        if (cancelled) return
-        if (err) { setError(err.message); setLoading(false); return }
-        const map: Record<string, string[]> = {}
-        for (const r of (data ?? []) as any[]) {
-          (map[r.production_id] ??= []).push(r.substitute_id)
+    ;(async () => {
+      const { data, error: err } = await supabase
+        .from('actor_production_substitutes')
+        .select('production_id, substitute_id')
+        .eq('actor_id', actorId)
+      if (cancelled) return
+      if (err) { setError(err.message); setLoading(false); return }
+      const map: Record<string, string[]> = {}
+      for (const r of (data ?? []) as any[]) {
+        (map[r.production_id] ??= []).push(r.substitute_id)
+      }
+      setByProd(map)
+
+      // Doczytaj tożsamość dublerów wprost (niezależnie od listy rodzica, która
+      // u koordynatora ogranicza się do zespołu Cast).
+      const allIds = [...new Set(Object.values(map).flat())]
+      if (allIds.length > 0) {
+        const { data: extraData } = await supabase
+          .from('artists').select('id, name, role, avatar_url').in('id', allIds)
+        if (!cancelled && extraData) {
+          const m = new Map<string, ActorRef>()
+          for (const a of extraData as any[]) m.set(a.id, { id: a.id, name: a.name, role: a.role, avatar_url: a.avatar_url })
+          setExtra(m)
         }
-        setByProd(map)
-        setLoading(false)
-      })
+      }
+      if (!cancelled) setLoading(false)
+    })()
     return () => { cancelled = true }
   }, [actorId])
 
@@ -142,7 +161,7 @@ export default function SubstitutesByTitle({ actorId, productions, allActors, ed
     <div className="space-y-3">
       {productions.map(prod => {
         const subIds = byProd[prod.id] ?? []
-        const subs = subIds.map(id => actorById.get(id)).filter(Boolean) as ActorRef[]
+        const subs = subIds.map(id => lookup(id)).filter(Boolean) as ActorRef[]
         const isAdding = addingFor === prod.id
         const candidates = allActors
           .filter(a => a.id !== actorId && !subIds.includes(a.id) && a.name.toLowerCase().includes(search.toLowerCase()))
