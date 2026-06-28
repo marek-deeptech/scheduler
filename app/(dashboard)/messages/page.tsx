@@ -351,6 +351,7 @@ interface SentMessage {
   subject: string
   body: string
   sentAt: string
+  readAt: string | null
 }
 
 const KIND_LABELS: Record<string, string> = {
@@ -447,6 +448,7 @@ export default function MessagesPage() {
             subject:    m.subject ?? '',
             body:       m.body ?? '',
             sentAt:     m.sent_at,
+            readAt:     m.read_at ?? null,
           }
         }))
       })
@@ -553,6 +555,19 @@ export default function MessagesPage() {
       body: JSON.stringify({ eventId: row.event_id, artistIds: [row.artist_id], eventDetails: row.eventDetails, channel: 'both' }),
     })
   }
+  // Działanie W IMIENIU aktora — koordynator domyka potwierdzenie (np. po telefonie),
+  // z adnotacją audytową widoczną u aktora i w historii.
+  async function confirmOnBehalf(row: { id: string }, status: 'confirmed' | 'maybe' | 'declined', viaPhone: boolean) {
+    const note = viaPhone
+      ? 'Potwierdzone telefonicznie — w imieniu koordynatora'
+      : 'Ustawione w imieniu koordynatora'
+    const { error } = await supabase
+      .from('event_confirmations')
+      .update({ status, comment: note, responded_at: new Date().toISOString() })
+      .eq('id', row.id)
+    if (!error) setPendingPart(prev => prev.filter(r => r.id !== row.id))
+  }
+
   // CTA „Ponów" — ponów zapytanie o dostępność (jeden aktor)
   async function resendSlot(row: { id: string; slotId: string; artistId: string }) {
     setResent(prev => new Set(prev).add('s' + row.id))
@@ -655,19 +670,40 @@ export default function MessagesPage() {
       {/* ── Brak potwierdzenia udziału ── */}
       {activeTab === 'pending' && (
         <div className="mb-4 bg-white border rounded-2xl overflow-hidden" style={{ borderColor: '#fde0c8' }}>
+          <div className="px-5 py-2.5 border-b" style={{ borderColor: '#fde0c8', background: '#fffdf9' }}>
+            <p className="text-[11px]" style={{ color: '#92704a' }}>
+              Możesz <b>potwierdzić w imieniu aktora</b> (np. po rozmowie telefonicznej) — zapisze się z adnotacją „w imieniu koordynatora".
+            </p>
+          </div>
           <div className="divide-y divide-gray-50 max-h-[62vh] overflow-y-auto">
-            {pendingPart.map(r => (
-              <div key={r.id} className="flex items-center gap-3 px-5 py-2.5">
+            {pendingPart.map(r => {
+              const days = r.sentAt ? Math.max(0, Math.floor((Date.now() - new Date(r.sentAt).getTime()) / 86_400_000)) : null
+              return (
+              <div key={r.id} className="flex items-center gap-3 px-5 py-2.5 flex-wrap">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-900 truncate">{r.actorName}</p>
-                  <p className="text-xs text-gray-500 truncate">{r.eventTitle}{r.eventStart ? ` · ${fmtDate(r.eventStart)}` : ''}</p>
+                  <p className="text-xs text-gray-500 truncate">
+                    {r.eventTitle}{r.eventStart ? ` · ${fmtDate(r.eventStart)}` : ''}
+                    {days != null && <span className={`ml-1.5 ${days >= 3 ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>· czeka {days} {days === 1 ? 'dzień' : 'dni'}</span>}
+                  </p>
                 </div>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${r.changed ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
                   {r.changed ? 'ZMIANA — BRAK POTW.' : 'BRAK POTWIERDZENIA'}
                 </span>
+                {/* W imieniu aktora */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => confirmOnBehalf(r, 'confirmed', false)} title="W imieniu aktora: będzie" className="px-2 py-1 text-[10px] font-bold rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors">Będzie</button>
+                  <button onClick={() => confirmOnBehalf(r, 'maybe', false)} title="W imieniu aktora: może" className="px-2 py-1 text-[10px] font-bold rounded-lg bg-orange-500 text-white hover:bg-orange-600 transition-colors">Może</button>
+                  <button onClick={() => confirmOnBehalf(r, 'declined', false)} title="W imieniu aktora: nie będzie" className="px-2 py-1 text-[10px] font-bold rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors">Nie</button>
+                  <button onClick={() => confirmOnBehalf(r, 'confirmed', true)} title="Potwierdził telefonicznie" className="px-2 py-1 text-[12px] rounded-lg border transition-colors hover:bg-gray-50" style={{ borderColor: '#e4ddd4' }}>📞</button>
+                </div>
                 <RetryButton done={resent.has('c' + r.id)} onClick={() => resendConfirmation(r)} />
               </div>
-            ))}
+              )
+            })}
+            {pendingPart.length === 0 && (
+              <p className="px-5 py-8 text-center text-sm text-gray-400">Wszyscy potwierdzili 🎉</p>
+            )}
           </div>
         </div>
       )}
@@ -766,6 +802,11 @@ export default function MessagesPage() {
                       {KIND_LABELS[m.kind] ?? m.kind}
                     </span>
                     <span className="text-[10px] text-gray-400">{fmtDate(m.sentAt)}</span>
+                    {m.direction === 'to_actor' && (
+                      m.readAt
+                        ? <span className="text-[9px] font-bold text-green-600" title={`Przeczytane w apce: ${fmtDate(m.readAt)}`}>✓✓ Przeczytane</span>
+                        : <span className="text-[9px] font-medium text-gray-400" title="Wysłane — aktor nie otworzył w aplikacji">✓ Wysłane</span>
+                    )}
                   </div>
                 </div>
               ))}
