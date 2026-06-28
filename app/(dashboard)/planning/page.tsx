@@ -76,7 +76,7 @@ function monthLabelPl(key: string) { const [y, m] = key.split('-'); return `${MO
 
 // Etapy cyklu życia repertuaru miesiąca
 type MonthStage = 'brak' | 'planowanie' | 'zatwierdzony' | 'wdrozony'
-interface MonthProp { id: string; label: string; stage: MonthStage }
+interface MonthProp { id: string; label: string; stage: MonthStage; proposal_data: ProposalEvent[] }
 const STAGE_CFG: Record<MonthStage, { label: string; bg: string; color: string; dot: string }> = {
   brak:         { label: 'Do zaplanowania', bg: '#f2ede6', color: '#7a7068', dot: '#b8b0a4' },
   planowanie:   { label: 'W planowaniu',    bg: '#e6efff', color: '#1d4ed8', dot: '#3b82f6' },
@@ -104,7 +104,7 @@ export default function PlanningPage() {
   // Planowanie jest procedowane osobno dla każdego teatru; legacy propozycje globalne
   // (theatre_id = null, sprzed podziału na teatry) pokazujemy dla obu teatrów.
   useEffect(() => {
-    supabase.from('repertoire_proposals').select('id, month, label, status, stats, theatre_id').then(({ data }) => {
+    supabase.from('repertoire_proposals').select('id, month, label, status, stats, theatre_id, proposal_data').then(({ data }) => {
       const rel = (data ?? []).filter((p: any) =>
         p.status !== 'rejected' &&
         (!selectedTheatreId || p.theatre_id === selectedTheatreId || p.theatre_id == null))
@@ -113,7 +113,7 @@ export default function PlanningPage() {
         const stage: MonthStage = p.status === 'approved'
           ? ((p.stats as any)?.report_sent_at ? 'wdrozony' : 'zatwierdzony')
           : 'planowanie'
-        ;(byMonth[p.month] ??= []).push({ id: p.id, label: p.label, stage })
+        ;(byMonth[p.month] ??= []).push({ id: p.id, label: p.label, stage, proposal_data: p.proposal_data ?? [] })
       }
       const order: Record<MonthStage, number> = { wdrozony: 0, zatwierdzony: 1, planowanie: 2, brak: 3 }
       for (const k in byMonth) byMonth[k].sort((a, b) => order[a.stage] - order[b.stage] || a.label.localeCompare(b.label, 'pl'))
@@ -564,12 +564,26 @@ export default function PlanningPage() {
                     const pillLabel = p.stage === 'planowanie' ? 'Robocza' : pc.label
                     // Zatwierdzony → Podgląd + Wdróż; Wdrożony → tylko Podgląd; Robocza → Podgląd (otwiera pełne opcje)
                     const canImplement = p.stage === 'zatwierdzony'
+                    // Konflikty obsady — ta sama logika co na pulpicie (detectProposalConflicts).
+                    // Dla roboczych liczymy z danych propozycji; zatwierdzone/wdrożone pomijamy.
+                    const conflictCount = p.stage === 'planowanie' && productionCastMap.size > 0
+                      ? detectProposalConflicts(p.proposal_data ?? [], productionCastMap, artistNamesMap).length
+                      : 0
                     return (
                       <div key={p.id} className="rounded-xl border px-3 py-2 flex flex-col gap-1.5 min-w-[148px]" style={{ borderColor: '#e4ddd4', background: '#faf8f5' }}>
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs font-semibold" style={{ color: '#1a1410' }}>{p.label} <span style={{ color: '#a89e92', fontWeight: 500 }}>/ {monthLabelPl(mo.value)}</span></span>
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0" style={{ background: pc.bg, color: pc.color }}>{pillLabel}</span>
                         </div>
+                        {conflictCount > 0 && (
+                          <Link href={`/planning/${p.id}`}
+                            className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md self-start hover:opacity-90 transition-opacity"
+                            style={{ background: '#fff0f0', color: '#c8102e', border: '1px solid #fecaca' }}
+                            title="Pokaż konflikty obsady w podglądzie">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            {conflictCount} {conflictCount === 1 ? 'konflikt obsady' : conflictCount < 5 ? 'konflikty obsady' : 'konfliktów obsady'}
+                          </Link>
+                        )}
                         <div className="flex items-center gap-3">
                           <Link href={`/planning/${p.id}`} className="text-[11px] font-medium hover:underline" style={{ color: '#7a7068' }}>Podgląd</Link>
                           {canImplement && (
