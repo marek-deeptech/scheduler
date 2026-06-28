@@ -11,6 +11,7 @@ const PUBLIC = [
   '/slot',
   '/api/confirmations/respond',
   '/api/slots/respond',
+  '/api/webhooks',
 ]
 
 function isPublic(path: string): boolean {

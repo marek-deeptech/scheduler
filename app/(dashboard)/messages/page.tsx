@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
 import { lastName } from '@/lib/names'
@@ -76,12 +76,14 @@ function PersonRow({
   onToggle,
   onEmail,
   onSms,
+  onThread,
 }: {
   person: Person
   checked: boolean
   onToggle: () => void
   onEmail: () => void
   onSms: () => void
+  onThread: () => void
 }) {
   return (
     <div className={`${ROW} hover:bg-[#faf8f5]/50 group transition-colors`}>
@@ -96,7 +98,7 @@ function PersonRow({
       <PersonAvatar name={person.name} url={person.avatar_url} />
       {/* name + role (mobile shows status badge inline) */}
       <div className="min-w-0">
-        <p className="text-sm font-semibold text-gray-900 truncate">{person.name}</p>
+        <button onClick={onThread} className="text-sm font-semibold text-gray-900 truncate hover:underline text-left">{person.name}</button>
         <p className="text-xs text-gray-500 truncate">{person.role ?? '—'}</p>
         <span className={`md:hidden inline-block mt-1 text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${statusClasses(person.status)}`}>
           {person.status ?? '—'}
@@ -121,6 +123,13 @@ function PersonRow({
       </div>
       {/* actions — always visible on touch, hover-reveal on desktop */}
       <div className="flex items-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={onThread}
+          className="flex items-center gap-1 text-xs font-medium transition-colors"
+          style={{ color: '#c8102e' }}
+        >
+          💬 Wątek
+        </button>
         {person.email && (
           <button
             onClick={onEmail}
@@ -233,6 +242,8 @@ function ComposeModal({
               )}
             </div>
           </div>
+
+          <TemplatePicker onPick={t => { setSubject(t.subject); setBody(t.body) }} />
 
           {type === 'email' ? (
             <>
@@ -381,6 +392,182 @@ function RetryButton({ done, onClick }: { done: boolean; onClick: () => void }) 
   )
 }
 
+// ── Szablony wiadomości (canned responses) ──────────────────────
+const MSG_TEMPLATES: { label: string; subject: string; body: string }[] = [
+  { label: 'Prośba o potwierdzenie', subject: 'Prośba o potwierdzenie udziału',
+    body: 'Dzień dobry,\nprosimy o potwierdzenie udziału w spektaklu/próbie dnia ___ o godz. ___.\nDziękujemy,\nKoordynacja' },
+  { label: 'Zmiana próby', subject: 'Zmiana terminu próby',
+    body: 'Dzień dobry,\npróba zaplanowana na ___ zostaje przeniesiona na ___ (godz. ___, ___).\nPozdrawiamy,\nKoordynacja' },
+  { label: 'Przypomnienie', subject: 'Przypomnienie — próba',
+    body: 'Przypomnienie: próba jutro o godz. ___, ___. Prosimy o punktualność.' },
+  { label: 'Zastępstwo', subject: 'Prośba o zastępstwo',
+    body: 'Dzień dobry,\nczy byłbyś/byłabyś dostępny/a zagrać zastępstwo dnia ___ o godz. ___? Prosimy o pilną odpowiedź.\nDziękujemy,\nKoordynacja' },
+  { label: 'Podziękowanie', subject: 'Dziękujemy!',
+    body: 'Dziękujemy za dzisiejszy spektakl — świetna praca!' },
+  { label: 'Informacja', subject: 'Informacja organizacyjna',
+    body: 'Dzień dobry,\n___\nPozdrawiamy,\nKoordynacja' },
+]
+
+function TemplatePicker({ onPick }: { onPick: (t: { subject: string; body: string }) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider self-center mr-0.5">Szablon:</span>
+      {MSG_TEMPLATES.map(t => (
+        <button key={t.label} type="button" onClick={() => onPick(t)}
+          className="text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors hover:bg-gray-50"
+          style={{ background: '#fff', color: '#7a7068', borderColor: '#e4ddd4' }}>
+          {t.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ── Wątek z aktorem (pełna korespondencja + odpowiedź + log rozmowy) ──
+function ThreadDrawer({ person, onClose }: { person: Person; onClose: () => void }) {
+  const [msgs, setMsgs]     = useState<any[]>([])
+  const [loading, setLoad]  = useState(true)
+  const [channel, setCh]    = useState<'email' | 'sms'>(person.email ? 'email' : 'sms')
+  const [subject, setSubject] = useState('')
+  const [body, setBody]     = useState('')
+  const [sending, setSending] = useState(false)
+  const [noteOpen, setNoteOpen] = useState(false)
+  const [note, setNote]     = useState('')
+  const [open, setOpen]     = useState(false)
+  useEffect(() => { const t = setTimeout(() => setOpen(true), 10); return () => clearTimeout(t) }, [])
+  const close = () => { setOpen(false); setTimeout(onClose, 200) }
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('actor_messages').select('*')
+      .eq('artist_id', person.id).order('sent_at', { ascending: true }).limit(300)
+    setMsgs(data ?? []); setLoad(false)
+  }, [person.id])
+  useEffect(() => { load() }, [load])
+
+  // Eskalacja: ostatnia wiadomość do aktora nieotwarta w apce
+  const lastToActor = [...msgs].reverse().find(m => (m.direction ?? 'to_actor') === 'to_actor')
+  const unreadEscalation = lastToActor && !lastToActor.read_at
+
+  async function send() {
+    if (!body.trim()) return
+    setSending(true)
+    await fetch('/api/notify/individual-message', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artistId: person.id, subject: channel === 'email' ? (subject || 'Wiadomość') : '', body: body.trim(), channel }),
+    })
+    setBody(''); setSubject('')
+    await load(); setSending(false)
+  }
+
+  async function saveCallNote() {
+    if (!note.trim()) return
+    // Notatka wewnętrzna koordynatora — NIE trafia do skrzynki aktora (direction=to_coordinator),
+    // widoczna w wątku i historii jako zapis rozmowy telefonicznej.
+    await supabase.from('actor_messages').insert({
+      artist_id: person.id, direction: 'to_coordinator', kind: 'message', type: 'email',
+      subject: '📞 Rozmowa telefoniczna', body: note.trim(),
+      sent_at: new Date().toISOString(), read_at: new Date().toISOString(),
+    })
+    setNote(''); setNoteOpen(false); await load()
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80]">
+      <div className={`absolute inset-0 bg-black/30 transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`} onClick={close} />
+      <div className={`absolute right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-2xl flex flex-col transition-transform duration-200 ${open ? 'translate-x-0' : 'translate-x-full'}`}>
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-gray-100 shrink-0 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-base font-bold text-gray-900 truncate">{person.name}</h3>
+            <p className="text-xs text-gray-500 truncate">{person.role ?? '—'}{person.email ? ` · ${person.email}` : ''}{person.phone ? ` · ${person.phone}` : ''}</p>
+          </div>
+          <button onClick={close} className="w-9 h-9 shrink-0 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-xl">×</button>
+        </div>
+
+        {unreadEscalation && (
+          <div className="px-5 py-2 border-b shrink-0 flex items-center gap-2 flex-wrap" style={{ background: '#fffdf9', borderColor: '#fde0c8' }}>
+            <span className="text-[11px]" style={{ color: '#92704a' }}>Aktor nie otworzył ostatniej wiadomości w apce.</span>
+            {person.phone && channel === 'email' && (
+              <button onClick={() => setCh('sms')} className="text-[11px] font-semibold underline" style={{ color: '#c8102e' }}>Spróbuj SMS‑em</button>
+            )}
+          </div>
+        )}
+
+        {/* Thread */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3" style={{ background: '#faf8f5' }}>
+          {loading ? <p className="text-sm text-gray-400 text-center py-8">Ładowanie…</p>
+          : msgs.length === 0 ? <p className="text-sm text-gray-400 text-center py-8">Brak korespondencji</p>
+          : msgs.map(m => {
+            const isNote = (m.subject ?? '').startsWith('📞')
+            if (isNote) return (
+              <div key={m.id} className="text-center">
+                <span className="inline-block text-[11px] px-3 py-1.5 rounded-full" style={{ background: '#ece5dc', color: '#7a7068' }}>
+                  📞 {m.body} <span className="opacity-60">· {fmtDate(m.sent_at)}</span>
+                </span>
+              </div>
+            )
+            const fromCoord = (m.direction ?? 'to_actor') === 'to_actor'
+            return (
+              <div key={m.id} className={`flex ${fromCoord ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 ${fromCoord ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200'}`}>
+                  {m.subject && <p className={`text-[11px] font-semibold mb-0.5 ${fromCoord ? 'text-white' : 'text-gray-900'}`}>{m.subject}</p>}
+                  <p className={`text-sm whitespace-pre-wrap ${fromCoord ? 'text-gray-100' : 'text-gray-700'}`}>{m.body}</p>
+                  <p className={`text-[10px] mt-1 ${fromCoord ? 'text-gray-400' : 'text-gray-400'}`}>
+                    <span className="uppercase">{m.type ?? 'email'}</span> · {fmtDate(m.sent_at)}
+                    {fromCoord && (m.read_at ? ' · ✓✓ przeczytane' : ' · ✓ wysłane')}
+                  </p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Composer */}
+        <div className="border-t border-gray-100 px-5 py-3 shrink-0 space-y-2">
+          {noteOpen ? (
+            <div className="space-y-2">
+              <textarea rows={2} value={note} onChange={e => setNote(e.target.value)} autoFocus
+                placeholder="Notatka z rozmowy telefonicznej (widoczna tylko dla koordynacji)…"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              <div className="flex justify-end gap-2">
+                <button onClick={() => { setNoteOpen(false); setNote('') }} className="text-[11px] text-gray-400">Anuluj</button>
+                <button onClick={saveCallNote} disabled={!note.trim()} className="text-[11px] font-bold px-3 py-1.5 rounded-lg text-white disabled:opacity-40" style={{ background: '#1a1410' }}>Zapisz notatkę</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <TemplatePicker onPick={t => { setSubject(t.subject); setBody(t.body) }} />
+              {channel === 'email' && (
+                <input type="text" value={subject} onChange={e => setSubject(e.target.value)} placeholder="Temat"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              )}
+              <textarea rows={2} value={body} onChange={e => setBody(e.target.value)} placeholder="Napisz wiadomość…"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              <div className="flex items-center gap-2 flex-wrap">
+                {(['email', 'sms'] as const).map(c => {
+                  const dis = c === 'email' ? !person.email : !person.phone
+                  const on = channel === c
+                  return (
+                    <button key={c} disabled={dis} onClick={() => setCh(c)}
+                      className="text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors disabled:opacity-30"
+                      style={on ? { background: '#1a1410', color: '#fff', borderColor: '#1a1410' } : { background: '#fff', color: '#7a7068', borderColor: '#e4ddd4' }}>
+                      {c === 'email' ? 'E-mail' : 'SMS'}
+                    </button>
+                  )
+                })}
+                <button onClick={() => setNoteOpen(true)} className="text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors hover:bg-gray-50" style={{ borderColor: '#e4ddd4', color: '#7a7068' }}>📞 Zanotuj rozmowę</button>
+                <button onClick={send} disabled={sending || !body.trim()} className="ml-auto text-[11px] font-bold px-3.5 py-1.5 rounded-lg text-white transition-colors disabled:opacity-40" style={{ background: '#c8102e' }}>
+                  {sending ? 'Wysyłanie…' : 'Wyślij'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── Main page ─────────────────────────────────────────────────── */
 export default function MessagesPage() {
   const { t } = useLanguage()
@@ -404,6 +591,7 @@ export default function MessagesPage() {
   const [sortBy, setSortBy] = useState<'name' | 'team' | 'status'>('name')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [compose, setCompose] = useState<{ type: 'email' | 'sms'; ids: string[] } | null>(null)
+  const [thread, setThread] = useState<Person | null>(null)
 
   useEffect(() => {
     // Load actor responses
@@ -924,6 +1112,7 @@ export default function MessagesPage() {
                   onToggle={() => togglePerson(person.id)}
                   onEmail={() => setCompose({ type: 'email', ids: [person.id] })}
                   onSms={() => setCompose({ type: 'sms', ids: [person.id] })}
+                  onThread={() => setThread(person)}
                 />
               ))}
             </div>
@@ -980,6 +1169,9 @@ export default function MessagesPage() {
           onClose={() => setCompose(null)}
         />
       )}
+
+      {/* Wątek z aktorem */}
+      {thread && <ThreadDrawer person={thread} onClose={() => setThread(null)} />}
     </div>
   )
 }
