@@ -730,13 +730,23 @@ export default function RepertuarPage() {
     }, {})
   ).sort((a, b) => a.month.localeCompare(b.month))
 
-  // Kolejność paska: bieżący miesiąc i kolejne najpierw (po lewej), przeszłe na
-  // koniec — koniec roku widać bez przewijania, a historia zostaje dostępna.
+  // Pasek miesięcy: CIĄGŁY zakres od bieżącego miesiąca do końca roku (a jeśli są
+  // zatwierdzone miesiące dalej — aż do nich). Miesiące bez zatwierdzonego
+  // repertuaru pokazujemy jako „niezaplanowany".
   const nowKey = new Date().toISOString().slice(0, 7)
-  const orderedMonths: Proposal[] = [
-    ...months.filter(m => m.month >= nowKey),
-    ...months.filter(m => m.month <  nowKey),
-  ]
+  const proposalByMonth = new Map(months.map(m => [m.month, m]))
+  const addMonths = (key: string, n: number) => {
+    const [y, mm] = key.split('-').map(Number)
+    const d = new Date(y, mm - 1 + n, 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  }
+  const endOfYear   = `${nowKey.slice(0, 4)}-12`
+  const lastApproved = months.length ? months[months.length - 1].month : nowKey
+  const endKey      = endOfYear >= lastApproved ? endOfYear : lastApproved
+  const barMonths: { month: string; proposal?: Proposal }[] = []
+  for (let cur = nowKey, guard = 0; cur <= endKey && guard < 60; cur = addMonths(cur, 1), guard++) {
+    barMonths.push({ month: cur, proposal: proposalByMonth.get(cur) })
+  }
 
   // Each month has ONE proposal per theatre. Pick the proposal matching the
   // selected theatre (Repertuar always has a single theatre selected). This
@@ -875,17 +885,18 @@ export default function RepertuarPage() {
           style={{ background: '#faf8f5', borderBottom: '1px solid #e4ddd4' }}
         >
           <div className="flex items-end overflow-x-auto gap-0" style={{ scrollbarWidth: 'none' }}>
-            {orderedMonths.map(p => {
-              const [y, mo] = p.month.split('-')
-              const name    = MONTH_PL[mo] ?? mo
-              const isActive = p.month === activeMonth
+            {barMonths.map(b => {
+              const [y, mo]  = b.month.split('-')
+              const name     = MONTH_PL[mo] ?? mo
+              const isActive = b.month === activeMonth
+              const planned  = !!b.proposal
               return (
                 <button
-                  key={p.month}
-                  onClick={() => setActiveMonth(p.month)}
+                  key={b.month}
+                  onClick={() => setActiveMonth(b.month)}
                   className="relative shrink-0 px-4 md:px-6 py-3.5 md:py-4 whitespace-nowrap transition-all"
                   style={{
-                    color:        isActive ? '#1a1410' : '#a89e92',
+                    color:        isActive ? '#1a1410' : planned ? '#a89e92' : '#c4bcae',
                     background:   'transparent',
                     border:       'none',
                     borderBottom: isActive ? `2px solid ${accent}` : '2px solid transparent',
@@ -904,6 +915,14 @@ export default function RepertuarPage() {
                   >
                     {y}
                   </span>
+                  {!planned && (
+                    <span
+                      className="ml-1.5 text-[9px] font-medium normal-case"
+                      style={{ color: '#c19a8e', letterSpacing: 'normal' }}
+                    >
+                      · niezaplanowany
+                    </span>
+                  )}
                 </button>
               )
             })}
@@ -965,6 +984,23 @@ export default function RepertuarPage() {
             propConflicts={propConflicts}
             onConflictClick={setConflictModal}
           />
+        </div>
+      )}
+
+      {/* Wybrany miesiąc bez zatwierdzonego repertuaru */}
+      {!loading && !activeProposal && activeMonth && (
+        <div className="flex flex-col items-center justify-center text-center" style={{ padding: '64px 16px' }}>
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"
+               className="mb-3" style={{ color: '#e4ddd4' }}>
+            <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
+          </svg>
+          <p className="text-sm font-semibold" style={{ color: '#a89e92' }}>
+            {(MONTH_PL[activeMonth.split('-')[1]] ?? '')} {activeMonth.split('-')[0]} — repertuar niezaplanowany
+          </p>
+          <p className="text-xs mt-1" style={{ color: '#b8b0a4' }}>
+            Ten miesiąc nie ma jeszcze zatwierdzonego repertuaru. Przejdź do{' '}
+            <Link href="/planning" className="underline">Planowania</Link>, aby go przygotować.
+          </p>
         </div>
       )}
 
