@@ -4,9 +4,10 @@ import {
   type FinanceParams, type PriceCategory, type Stage,
 } from '@/lib/finance'
 import {
-  generateOption, OBJECTIVE_LABEL, DEFAULT_DARK_WEEKDAYS, DEFAULT_STAGE_MONTHLY_CAP,
+  generateOption, OBJECTIVE_LABEL,
   type Objective, type OptProduction, type OptInputs,
 } from '@/lib/repertoire-optimizer'
+import { profileFor, buildSlots, BASE_VARIANT } from '@/lib/repertoire-base'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
       return r.error ? await supabase.from('productions').select(sel(false)) : r
     })(),
     supabase.from('artist_productions').select('artist_id, production_id'),
-    supabase.from('theatres').select('id'),
+    supabase.from('theatres').select('id, name'),
     supabase.from('rooms').select('id, name, theatre_id'),
     supabase.from('repertoire_slots').select('production_id, locked_dates, productions(theatre_id)').eq('month', month).eq('status', 'planned'),
     supabase.from('actor_day_status').select('artist_id, date, status').gte('date', monthStart).lte('date', monthEnd),
@@ -66,15 +67,6 @@ export async function POST(request: Request) {
       .neq('theatre_id', theatreId),
     loadFinanceParams(),
   ])
-
-  // Konfiguracja planowania (dni ciemne, limit grań na scenę/miesiąc)
-  const { data: planCfg } = await supabase.from('app_settings').select('key, value')
-    .in('key', ['planning_dark_weekdays', 'planning_stage_monthly_cap'])
-  const cfg: Record<string, string> = {}
-  for (const r of planCfg ?? []) cfg[r.key] = r.value ?? ''
-  let darkWeekdays = DEFAULT_DARK_WEEKDAYS
-  try { if (cfg.planning_dark_weekdays) darkWeekdays = new Set(JSON.parse(cfg.planning_dark_weekdays)) } catch {}
-  const stageMonthlyCap = cfg.planning_stage_monthly_cap ? parseInt(cfg.planning_stage_monthly_cap) : DEFAULT_STAGE_MONTHLY_CAP
 
   // Obsada per produkcja
   const castByProd: Record<string, string[]> = {}
@@ -157,12 +149,16 @@ export async function POST(request: Request) {
     }
   }
 
+  // Bazowy kształt (empiryczny rytm per teatr) — finanse/Favourites/CORE go modyfikują.
+  const theatreName = ((theatres ?? []) as any[]).find(t => t.id === theatreId)?.name ?? ''
+  const profile = profileFor(theatreName)
+  const baseSlots = buildSlots(BASE_VARIANT, month, profile)
+
   const inp: OptInputs = {
-    days: daysInMonth(month),
+    slots: baseSlots,
     theatres: [theatreId],            // generujemy TYLKO dla wybranego teatru
     prods: optProds,
     lockedByProd, unavailByDate, finance: fp, stageRoom,
-    darkWeekdays, stageMonthlyCap,
   }
 
   // Usuń poprzednie wersje robocze tego miesiąca DLA TEGO TEATRU
@@ -183,7 +179,7 @@ export async function POST(request: Request) {
     const proposal_data = res.performances.map(p => ({
       date: p.date, production_id: p.production_id, production_title: p.production_title,
       theatre_id: p.theatre_id, room_id: p.room_id, type: 'spektakl',
-      start_time: '19:00:00', end_time: '21:30:00',
+      start_time: p.start_time, end_time: p.end_time,
     }))
 
     const { data: inserted } = await supabase.from('repertoire_proposals').insert({

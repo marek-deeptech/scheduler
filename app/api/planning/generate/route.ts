@@ -2,6 +2,10 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import path from 'path'
+import {
+  profileFor, VARIANTS, buildSlots, prevDate,
+  type Variant, type Profile,
+} from '@/lib/repertoire-base'
 
 function getAnthropicKey(): string {
   if (process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY
@@ -37,30 +41,9 @@ interface Show {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-// Święta — repertuar JE OBEJMUJE (analiza realnych repertuarów: teatry grają w
-// święta). Trzymamy listę tylko informacyjnie; nie wykluczamy tych dni.
-const PL_HOLIDAYS = new Set([
-  '2026-01-01','2026-01-06','2026-04-05','2026-04-06',
-  '2026-05-01','2026-05-03','2026-06-04','2026-08-15',
-  '2026-11-01','2026-11-11','2026-12-25','2026-12-26',
-])
-
-function getDaysInMonth(month: string): string[] {
-  const [y, m] = month.split('-').map(Number)
-  const count  = new Date(y, m, 0).getDate()
-  return Array.from({ length: count }, (_, i) =>
-    `${month}-${String(i + 1).padStart(2, '0')}`
-  )
-}
-
 function localMonthEnd(month: string): string {
   const [y, m] = month.split('-').map(Number)
   const d = new Date(y, m, 0)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function prevDate(date: string): string {
-  const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate() - 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
@@ -74,56 +57,10 @@ function extractJson(text: string): any | null {
   return null
 }
 
-// ── BAZOWY WZORZEC GENEROWANIA ───────────────────────────────────────────────
-// Wyprowadzony z analizy realnych repertuarów Teatru Polonia i Och-Teatru
-// (IV 2025 – X 2026, 1437 spektakli). Kluczowe wzorce:
-//  • grają NIEMAL CODZIENNIE 1 wieczorny spektakl 19:00; poniedziałek najlżejszy
-//  • weekendowe poranki/popołudnia (głównie niedziela) → dni z 2 spektaklami;
-//    Och dodatkowo sporadyczne poranki 12:00 w tygodniu (szkolne)
-//  • tytuły grane w BLOKACH 2 kolejnych dni, potem przerwa ~3–4 tygodnie
-//  • gęstość: Polonia ~28 spektakli/mies, Och ~35; ~14 tytułów × ~2 grania
-//  • grają w święta; rytm stabilny cały rok
-// To jest BAZA — finanse / założenia dodatkowe / sloty Favourites modyfikują ją.
-
-interface Profile {
-  key:             string
-  eveningTarget:   number              // ile dni z wieczornym spektaklem (reszta = ciemne)
-  matSun:          number              // odsetek niedziel z dodatkowym porankiem
-  matSat:          number              // odsetek sobót z porankiem
-  matWeekday:      number              // odsetek dni roboczych z porankiem (Och: 12:00 szkolne)
-  matWeekendTime:  [string, string]
-  matWeekdayTime:  [string, string]
-}
-
-function profileFor(name: string): Profile {
-  const n = (name || '').toLowerCase()
-  if (n.includes('och'))
-    return { key: 'Och', eveningTarget: 28, matSun: 0.50, matSat: 0.45, matWeekday: 0.14,
-             matWeekendTime: ['16:00:00', '18:00:00'], matWeekdayTime: ['12:00:00', '14:00:00'] }
-  // Domyślnie profil typu „Polonia" (jedna duża scena, mniej poranków)
-  return { key: 'Polonia', eveningTarget: 26, matSun: 0.45, matSat: 0.20, matWeekday: 0,
-           matWeekendTime: ['16:00:00', '18:00:00'], matWeekdayTime: ['12:00:00', '14:00:00'] }
-}
-
-// Waga dnia tygodnia (0=Ndz … 6=Sob): pn najlżej, ndz najciężej — z rozkładu realnego.
-const DOW_W: Record<number, number> = { 0: 1.05, 1: 0.78, 2: 0.92, 3: 0.92, 4: 0.90, 5: 0.95, 6: 1.0 }
-
-interface Variant { label: string; dEve: number; matMul: number; block: number; hint: string }
-const VARIANTS: Variant[] = [
-  { label: 'Propozycja 1', dEve:  0, matMul: 1.0, block: 2, hint: 'bazowy wzorzec — realny rytm grania' },
-  { label: 'Propozycja 2', dEve: -2, matMul: 0.6, block: 2, hint: 'lżejszy miesiąc' },
-  { label: 'Propozycja 3', dEve: +1, matMul: 1.4, block: 2, hint: 'gęstszy — więcej weekendowych poranków' },
-  { label: 'Propozycja 4', dEve:  0, matMul: 1.0, block: 1, hint: 'większa różnorodność tytułów' },
-]
-
-// Wybierz k elementów równomiernie rozłożonych po liście (deterministycznie).
-function pickEvenly(arr: string[], k: number): Set<string> {
-  if (k <= 0) return new Set()
-  if (k >= arr.length) return new Set(arr)
-  const out = new Set<string>(); const step = arr.length / k
-  for (let i = 0; i < k; i++) out.add(arr[Math.floor(i * step + step / 2)])
-  return out
-}
+// ── BAZOWY WZORZEC — wypełnianie slotów tytułami (rotacja + bloki) ────────────
+// Kształt (kiedy/ile spektakli) pochodzi z lib/repertoire-base (buildSlots),
+// wyprowadzonego z analizy realnych repertuarów Polonia/Och. Tu dobieramy TYTUŁY:
+// bloki 2 kolejnych dni, potem rotacja najdłużej nieobecnego, twarde konflikty.
 
 function buildSchedule(
   variant:    Variant,
@@ -134,42 +71,8 @@ function buildSchedule(
   profile:    Profile,
   room:       Room | null,
 ): Show[] {
-  const days = getDaysInMonth(month).map(d => ({ date: d, dow: new Date(d + 'T12:00:00').getDay() }))
-  const eveningTarget = Math.max(1, profile.eveningTarget + variant.dEve)
+  const slots = buildSlots(variant, month, profile)
 
-  // Dni ciemne: tyle dni o najniższej wadze, by zostało ~eveningTarget dni grania.
-  // Jitter wg kolejności wystąpienia dnia tygodnia rozkłada ciemne dni (nie zeruje
-  // całego dnia tygodnia) — poniedziałki wypadają najczęściej, ale nie wszystkie.
-  const darkCount = Math.max(0, days.length - eveningTarget)
-  const occ: Record<number, number> = {}
-  const scored = days.map(d => {
-    occ[d.dow] = (occ[d.dow] || 0) + 1
-    return { date: d.date, s: (DOW_W[d.dow] ?? 0.9) + (occ[d.dow] - 1) * 0.5 }
-  })
-  scored.sort((a, b) => a.s - b.s || a.date.localeCompare(b.date))
-  const dark = new Set(scored.slice(0, darkCount).map(d => d.date))
-
-  // Poranki/popołudnia (dni z 2 spektaklami): weekend (ndz > sob) + Och w tygodniu.
-  const sundays   = days.filter(d => d.dow === 0 && !dark.has(d.date)).map(d => d.date)
-  const saturdays = days.filter(d => d.dow === 6 && !dark.has(d.date)).map(d => d.date)
-  const weekdays  = days.filter(d => d.dow >= 1 && d.dow <= 5 && !dark.has(d.date)).map(d => d.date)
-  const matDays = new Map<string, [string, string]>()
-  for (const d of pickEvenly(sundays,   Math.round(sundays.length   * profile.matSun     * variant.matMul))) matDays.set(d, profile.matWeekendTime)
-  for (const d of pickEvenly(saturdays, Math.round(saturdays.length * profile.matSat     * variant.matMul))) matDays.set(d, profile.matWeekendTime)
-  if (profile.matWeekday > 0)
-    for (const d of pickEvenly(weekdays, Math.round(weekdays.length  * profile.matWeekday * variant.matMul)))
-      if (!matDays.has(d)) matDays.set(d, profile.matWeekdayTime)
-
-  // Sloty chronologicznie: poranek (jeśli jest) przed wieczorem.
-  const slots: { date: string; dow: number; start: string; end: string }[] = []
-  for (const d of days) {
-    if (dark.has(d.date)) continue
-    const mt = matDays.get(d.date)
-    if (mt) slots.push({ date: d.date, dow: d.dow, start: mt[0], end: mt[1] })
-    slots.push({ date: d.date, dow: d.dow, start: '19:00:00', end: '21:30:00' })
-  }
-
-  // Połowa obsady dostępna = tytuł może grać danego dnia.
   const canPlay = (pid: string, date: string) => {
     const c = castMap[pid] ?? []; const b = unavailMap[date] ?? new Set<string>()
     return c.filter(a => !b.has(a)).length >= Math.ceil(c.length / 2)
@@ -221,7 +124,7 @@ function buildSchedule(
   return result.sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time))
 }
 
-function summarise(shows: Show[], month: string): string {
+function summarise(shows: Show[]): string {
   const total = shows.length
   const weekendDays = shows.filter(s => {
     const d = new Date(s.date + 'T12:00:00').getDay()
@@ -380,7 +283,7 @@ export async function POST(request: Request) {
     .toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })
 
   const summaryLines = strategies.map((s, i) =>
-    `Propozycja ${i + 1} (${s.hint}): ${summarise(s.shows, month)}`
+    `Propozycja ${i + 1} (${s.hint}): ${summarise(s.shows)}`
   ).join('\n')
 
   const descPrompt = `Napisz PO JEDNYM krótkim zdaniu po polsku opisującym strategię każdej propozycji repertuaru na ${monthName}:

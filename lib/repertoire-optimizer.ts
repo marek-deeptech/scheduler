@@ -1,12 +1,16 @@
-// Deterministyczny generator repertuaru — Etap 3–4.
-// Zatwierdzone dni Favourites = twarda zajętość; nie-Favourites dokładane
-// greedy pod jeden z 4 celów finansowych. Bloki (montaż/demontaż raz)
-// premiowane przez bonus za kontynuację tytułu na sąsiednim dniu.
+// Generator repertuaru — ścieżka FINANSOWA. Startuje z bazowego kształtu
+// (empiryczne sloty z lib/repertoire-base: kiedy/ile spektakli, poranki, pn-light,
+// granie w święta) i DOBIERA tytuły do tych slotów wg celu finansowego.
+// Czyli: finanse / Favourites / CORE MODYFIKUJĄ bazowy wzorzec, nie zastępują go.
+//  • zatwierdzone Favourites = twarda zajętość (wieczór),
+//  • reszta slotów wypełniana greedy pod cel (przychód / frekwencja / koszt / dochód),
+//  • bonus za kontynuację tytułu na sąsiednim dniu (bloki 2-dniowe).
 
 import {
   stageCapacity, asp, isWeekend,
   type PriceCategory, type Stage, type FinanceParams,
 } from './finance'
+import { prevDate, type Slot } from './repertoire-base'
 
 export type Objective = 'max_revenue' | 'max_attendance' | 'min_cost' | 'balanced'
 
@@ -33,22 +37,13 @@ export interface OptProduction {
 }
 
 export interface OptInputs {
-  days: string[]                              // 'YYYY-MM-DD' całego miesiąca
-  theatres: string[]                          // theatre ids
+  slots: Slot[]                               // empiryczne sloty (data × pora) z bazowego wzorca
+  theatres: string[]                          // theatre ids (jeden — planujemy per teatr)
   prods: OptProduction[]
   lockedByProd: Record<string, string[]>      // production_id -> zatwierdzone daty (Favourites)
-  unavailByDate: Record<string, Set<string>>  // data -> artistId niedostępni (urlop/choroba)
+  unavailByDate: Record<string, Set<string>>  // data -> artistId niedostępni (urlop/choroba/CORE)
   finance: FinanceParams
   stageRoom: (theatreId: string, stage: 'duza' | 'mala') => string | null // -> room_id
-  darkWeekdays: Set<number>                   // dni ciemne (0=Nd..6=Sb), domyślnie poniedziałek
-  stageMonthlyCap: number                     // max grań na scenę/miesiąc (z Favourites)
-}
-
-export const DEFAULT_DARK_WEEKDAYS = new Set([1]) // poniedziałek
-export const DEFAULT_STAGE_MONTHLY_CAP = 14
-
-function weekday(date: string): number {
-  return new Date(date + 'T12:00:00').getDay()
 }
 
 export interface Perf {
@@ -58,8 +53,8 @@ export interface Perf {
   theatre_id: string
   room_id: string | null
   type: string
-  start_time: string
-  end_time: string
+  start_time: string   // 'HH:MM:SS'
+  end_time: string     // 'HH:MM:SS'
 }
 
 export interface OptionResult {
@@ -69,8 +64,11 @@ export interface OptionResult {
   byProduction: Record<string, number>
 }
 
-const NONFAV_CAP_DEFAULT = 8
-const NONFAV_CAP_MINCOST = 4
+// Limit grań tytułu/miesiąc — empirycznie ~2 (Polonia) / ~2,4 (Och). Trzymamy
+// realną różnorodność (~12–15 tytułów), a cel finansowy decyduje KTÓRE tytuły.
+const NONFAV_CAP_DEFAULT = 2
+const NONFAV_CAP_MINCOST = 2
+const BLOCK_CAP = 2   // maks. długość bloku kolejnych dni; po nim tytuł odpoczywa
 
 function perfFinance(p: OptProduction, date: string, fp: FinanceParams) {
   const cap = stageCapacity(p.stage, p.theatreId)
@@ -85,10 +83,12 @@ function perfFinance(p: OptProduction, date: string, fp: FinanceParams) {
 }
 
 export function generateOption(objective: Objective, inp: OptInputs): OptionResult {
-  const cellUsed = new Set<string>()                 // `${date}|${theatre}|${stage}`
+  const theatre = inp.theatres[0]
+  const usedSlot = new Set<string>()                 // `${date}|${start}`
   const castBusy = new Map<string, Set<string>>()    // date -> artistId zajęci
   const titleCount = new Map<string, number>()
-  const stageCount = new Map<string, number>()       // `${theatre}|${stage}` -> liczba grań w miesiącu
+  const lastDate = new Map<string, string>()         // prodId -> ostatni dzień grania
+  const runLen   = new Map<string, number>()         // prodId -> długość bieżącego bloku
   const perfs: Perf[] = []
   const prodById: Record<string, OptProduction> = {}
   inp.prods.forEach(p => prodById[p.id] = p)
@@ -100,79 +100,61 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
     if (!s) { s = new Set<string>(); castBusy.set(date, s) }
     return s
   }
-  function markBusy(date: string, ids: string[]) {
-    const s = busyOf(date)
-    ids.forEach(i => s.add(i))
-  }
-  function place(p: OptProduction, date: string) {
-    const stage = p.stage
+  function place(p: OptProduction, date: string, start: string, end: string) {
     perfs.push({
       date, production_id: p.id, production_title: p.title,
-      theatre_id: p.theatreId, room_id: inp.stageRoom(p.theatreId, stage),
-      type: 'spektakl', start_time: `${date}T19:00:00`, end_time: `${date}T21:30:00`,
+      theatre_id: p.theatreId, room_id: inp.stageRoom(p.theatreId, p.stage),
+      type: 'spektakl', start_time: start, end_time: end,
     })
-    cellUsed.add(`${date}|${p.theatreId}|${stage}`)
-    markBusy(date, p.castIds)
+    usedSlot.add(`${date}|${start}`)
+    const bs = busyOf(date); for (const a of p.castIds) bs.add(a)
     titleCount.set(p.id, (titleCount.get(p.id) ?? 0) + 1)
-    const sk = `${p.theatreId}|${stage}`
-    stageCount.set(sk, (stageCount.get(sk) ?? 0) + 1)
+    runLen.set(p.id, (lastDate.get(p.id) === prevDate(date) ? (runLen.get(p.id) ?? 0) : 0) + 1)
+    lastDate.set(p.id, date)
   }
 
-  // 1) Zablokowane Favourites — twarda zajętość
+  // 1) Zablokowane Favourites — twarda zajętość (slot wieczorny danego dnia)
   for (const [pid, dates] of Object.entries(inp.lockedByProd)) {
     const p = prodById[pid]
     if (!p) continue
-    for (const date of dates) place(p, date)
+    for (const date of [...dates].sort()) place(p, date, '19:00:00', '21:30:00')
   }
 
-  // 2) Dokładanie nie-Favourites greedy
-  // śledzenie ostatnio postawionego tytułu w (theatre,stage) dla bonusu blokowego
-  const lastInCell: Record<string, { date: string; prodId: string }> = {}
+  // 2) Wypełnianie pozostałych slotów wg celu finansowego
+  for (const slot of inp.slots) {
+    if (usedSlot.has(`${slot.date}|${slot.start}`)) continue   // np. zajęty przez Favourite
+    const busy = busyOf(slot.date)
+    const unav = inp.unavailByDate[slot.date] ?? new Set<string>()
 
-  for (const date of inp.days) {
-    if (inp.darkWeekdays.has(weekday(date))) continue   // dzień ciemny — bez dokładania
-    const busy = busyOf(date)
-    const unav = inp.unavailByDate[date] ?? new Set<string>()
-    for (const theatre of inp.theatres) {
-      for (const stage of ['duza', 'mala'] as const) {
-        const key = `${date}|${theatre}|${stage}`
-        if (cellUsed.has(key)) continue
-        if ((stageCount.get(`${theatre}|${stage}`) ?? 0) >= inp.stageMonthlyCap) continue
+    const yd = prevDate(slot.date)
+    const cands = inp.prods.filter(p =>
+      !p.isFavourite &&
+      p.theatreId === theatre &&
+      p.castIds.length > 0 &&
+      (titleCount.get(p.id) ?? 0) < cap &&
+      !(lastDate.get(p.id) === yd && (runLen.get(p.id) ?? 0) >= BLOCK_CAP) && // po bloku — odpoczynek
+      p.castIds.every(a => !busy.has(a)) &&        // brak konfliktu obsady tego dnia
+      p.castIds.every(a => !unav.has(a))           // pełna obsada dostępna (urlop/choroba/CORE)
+    )
+    if (cands.length === 0) continue
 
-        const cands = inp.prods.filter(p =>
-          !p.isFavourite &&
-          p.theatreId === theatre &&
-          p.stage === stage &&
-          p.castIds.length > 0 &&
-          (titleCount.get(p.id) ?? 0) < cap &&
-          p.castIds.every(a => !busy.has(a)) &&        // brak konfliktu tego dnia
-          p.castIds.every(a => !unav.has(a))           // pełna obsada dostępna
-        )
-        if (cands.length === 0) continue
+    const scored = cands.map(p => {
+      const fin = perfFinance(p, slot.date, inp.finance)
+      let base =
+        objective === 'max_revenue'    ? fin.revenue :
+        objective === 'max_attendance' ? fin.attendance * 100000 :
+        objective === 'min_cost'       ? -fin.cost :
+                                         fin.margin
+      // bonus blokowy: kontynuacja tytułu z wczoraj, dopóki blok < BLOCK_CAP
+      if (lastDate.get(p.id) === yd && (runLen.get(p.id) ?? 0) < BLOCK_CAP) base *= 1.25
+      return { p, fin, score: base }
+    })
 
-        const cellKey = `${theatre}|${stage}`
-        const prev = lastInCell[cellKey]
-        const scored = cands.map(p => {
-          const fin = perfFinance(p, date, inp.finance)
-          let base =
-            objective === 'max_revenue'    ? fin.revenue :
-            objective === 'max_attendance' ? fin.attendance * 100000 :
-            objective === 'min_cost'       ? -fin.cost :
-                                             fin.margin
-          // bonus blokowy: kontynuacja tego samego tytułu z poprzedniego dnia
-          if (prev && prev.prodId === p.id) base *= 1.25
-          return { p, fin, score: base }
-        })
-
-        let pool = scored
-        if (objective === 'min_cost') pool = pool.filter(s => s.fin.margin > 0)
-        if (pool.length === 0) continue
-        pool.sort((a, b) => b.score - a.score)
-        const chosen = pool[0].p
-        place(chosen, date)
-        lastInCell[cellKey] = { date, prodId: chosen.id }
-      }
-    }
+    let pool = scored
+    if (objective === 'min_cost') pool = pool.filter(s => s.fin.margin > 0)
+    if (pool.length === 0) continue
+    pool.sort((a, b) => b.score - a.score)
+    place(pool[0].p, slot.date, slot.start, slot.end)
   }
 
   // Totals
@@ -188,8 +170,6 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
   }
   totals.margin = totals.revenue - totals.cost
 
-  // sort chronologicznie
-  perfs.sort((a, b) => a.date.localeCompare(b.date) || a.theatre_id.localeCompare(b.theatre_id))
-
+  perfs.sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time))
   return { objective, performances: perfs, totals, byProduction }
 }
