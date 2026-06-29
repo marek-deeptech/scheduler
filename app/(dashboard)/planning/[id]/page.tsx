@@ -110,6 +110,44 @@ function detectConflicts(
   return result
 }
 
+// Strukturalne pary konfliktów (do panelu rozwiązywania).
+// Ta sama logika co pulpit/lista: para spektakli w tym samym dniu z nakładającym
+// się czasem i wspólną obsadą = 1 konflikt.
+interface ConflictPair {
+  date:        string
+  a:           ProposalEvent
+  b:           ProposalEvent
+  sharedNames: string[]
+}
+
+function detectConflictPairs(
+  shows:           ProposalEvent[],
+  castIdsByProdId: Record<string, string[]>,
+  idToName:        Map<string, string>,
+): ConflictPair[] {
+  const byDate: Record<string, ProposalEvent[]> = {}
+  for (const s of shows) (byDate[s.date] ??= []).push(s)
+
+  const out: ConflictPair[] = []
+  for (const [date, ds] of Object.entries(byDate)) {
+    for (let i = 0; i < ds.length; i++) {
+      for (let j = i + 1; j < ds.length; j++) {
+        const a = ds[i], b = ds[j]
+        if (!a.production_id || !b.production_id) continue
+        if (a.production_id === b.production_id) continue
+        const aS = (a.start_time || '').slice(0, 5), aE = (a.end_time || '').slice(0, 5)
+        const bS = (b.start_time || '').slice(0, 5), bE = (b.end_time || '').slice(0, 5)
+        if (aS >= bE || bS >= aE) continue   // brak nakładania czasu
+        const castA = new Set(castIdsByProdId[a.production_id] ?? [])
+        const shared = (castIdsByProdId[b.production_id] ?? []).filter(id => castA.has(id))
+        if (shared.length === 0) continue
+        out.push({ date, a, b, sharedNames: shared.map(id => idToName.get(id) ?? id) })
+      }
+    }
+  }
+  return out.sort((x, y) => x.date.localeCompare(y.date) || x.a.start_time.localeCompare(y.a.start_time))
+}
+
 // ── Alternatives helper ───────────────────────────────────────────────────────
 
 function getAlternatives(
@@ -153,6 +191,7 @@ export default function ProposalDetailPage() {
   const [approving,    setApproving]    = useState(false)
   const [error,        setError]        = useState<string | null>(null)
   const [openDropdown, setOpenDropdown] = useState<string | null>(null) // "date||prodId"
+  const [panelSwapKey, setPanelSwapKey] = useState<string | null>(null) // panel konfliktów: które alternatywy rozwinięte
   const [favouriteSet, setFavouriteSet] = useState<Set<string>>(new Set())
   const [conflictModal, setConflictModal] = useState<{
     artistId:    string
@@ -353,11 +392,18 @@ export default function ProposalDetailPage() {
   const byProd: Record<string, number> = {}
   for (const s of localShows) byProd[s.production_title] = (byProd[s.production_title] ?? 0) + 1
 
-  // Conflict map: "date||production_id" → conflicting actor names
+  // Conflict map: "date||production_id" → conflicting actor names (do podświetleń w grafiku)
   const conflicts = availData
     ? detectConflicts(localShows, availData.castByProdId)
     : new Map<string, string[]>()
-  const conflictCount = conflicts.size
+
+  // Strukturalne pary konfliktów (panel + licznik) — spójne z pulpitem/listą.
+  const idToName = new Map<string, string>()
+  if (availData) for (const [name, aid] of Object.entries(availData.artistIdByName)) idToName.set(aid, name)
+  const conflictPairs = availData
+    ? detectConflictPairs(localShows, availData.castIdsByProdId, idToName)
+    : []
+  const conflictCount = conflictPairs.length
 
   return (
     <div className="space-y-5" ref={dropdownRef}>
@@ -474,6 +520,98 @@ export default function ProposalDetailPage() {
               </svg>
               Drukuj
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Panel konfliktów obsady — jedno miejsce do rozwiązywania */}
+      {isDraft && conflictPairs.length > 0 && (
+        <div className="no-print bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid #fecaca' }}>
+          <div className="px-5 py-3 flex items-start gap-2.5" style={{ background: '#fff5f5', borderBottom: '1px solid #fecaca' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c8102e" strokeWidth="2.2" className="shrink-0 mt-0.5">
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M12 9v4M12 17h.01" strokeLinecap="round"/>
+            </svg>
+            <div>
+              <p className="text-sm font-bold" style={{ color: '#7a2020' }}>Konflikty obsady ({conflictPairs.length})</p>
+              <p className="text-[11px] mt-0.5" style={{ color: '#a06a6a' }}>
+                Ten sam aktor gra w dwóch spektaklach naraz. Rozwiąż każdy przed zatwierdzeniem — podmień jeden z tytułów na alternatywę lub usuń spektakl.
+              </p>
+            </div>
+          </div>
+
+          <div className="divide-y max-h-[460px] overflow-y-auto" style={{ borderColor: '#f7e4e4' }}>
+            {conflictPairs.map((c, idx) => {
+              const dow = new Date(c.date + 'T12:00:00').getDay()
+              return (
+                <div key={`${c.date}-${c.a.production_id}-${c.b.production_id}-${idx}`} className="px-5 py-3">
+                  <div className="flex items-center gap-2 flex-wrap mb-2">
+                    <span className="text-xs font-bold" style={{ color: '#1a1410' }}>
+                      {DOW_FULL[dow]} {parseInt(c.date.slice(8), 10)}.{c.date.slice(5, 7)}
+                    </span>
+                    <span className="text-[11px]" style={{ color: '#a06a6a' }}>
+                      wspólna obsada: <b style={{ color: '#7a2020' }}>{c.sharedNames.join(', ')}</b>
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    {[c.a, c.b].map((show, si) => {
+                      const key  = `${c.date}||${show.production_id}`
+                      const open = panelSwapKey === key
+                      const alts = (availData && open) ? getAlternatives(c.date, show, localShows, availData) : []
+                      return (
+                        <div key={si} className="rounded-xl" style={{ background: '#faf8f5', border: '1px solid #f2ede6' }}>
+                          <div className="flex items-center gap-2 px-3 py-2 flex-wrap">
+                            <span className="text-sm font-semibold" style={{ color: '#1a1410' }}>{show.production_title}</span>
+                            <span className="text-[11px] font-mono" style={{ color: '#a89e92' }}>
+                              {show.start_time?.slice(0, 5)}–{show.end_time?.slice(0, 5)}
+                            </span>
+                            {show.room_name && <span className="text-[11px]" style={{ color: '#a89e92' }}>· {show.room_name}</span>}
+                            <div className="ml-auto flex items-center gap-1.5">
+                              <button
+                                onClick={() => setPanelSwapKey(open ? null : key)}
+                                className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold rounded-lg border transition-colors"
+                                style={open ? { background: '#1a1410', color: '#fff', borderColor: '#1a1410' } : { color: '#7a7068', borderColor: '#e4ddd4' }}
+                              >
+                                Zmień tytuł
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={`transition-transform ${open ? 'rotate-180' : ''}`}><path d="M6 9l6 6 6-6" strokeLinecap="round"/></svg>
+                              </button>
+                              <button
+                                onClick={() => deleteShow(c.date, show.production_id)}
+                                className="px-2 py-0.5 text-[11px] font-semibold text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                              >
+                                Usuń
+                              </button>
+                            </div>
+                          </div>
+                          {open && (
+                            <div className="border-t" style={{ borderColor: '#f2ede6' }}>
+                              {alts.length === 0 ? (
+                                <p className="px-3 py-2 text-xs italic" style={{ color: '#a89e92' }}>Brak dostępnych alternatyw w tym dniu — rozważ usunięcie spektaklu.</p>
+                              ) : (
+                                <div className="divide-y" style={{ borderColor: '#f2ede6' }}>
+                                  {alts.map(alt => (
+                                    <button
+                                      key={alt.id}
+                                      onClick={() => { replaceShow(c.date, show.production_id, alt); setPanelSwapKey(null) }}
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white transition-colors"
+                                    >
+                                      <TheatreBadge name={alt.theatreName} />
+                                      <span className="text-xs font-medium flex-1" style={{ color: '#1a1410' }}>{alt.title}</span>
+                                      <span className="text-[10px] font-semibold shrink-0" style={{ color: '#c8102e' }}>Wybierz →</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
