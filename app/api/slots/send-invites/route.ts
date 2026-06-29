@@ -17,9 +17,16 @@ function fmtRange(start: string, end: string): string {
   return `${s} – ${e}`
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 export async function POST(request: Request) {
-  const { slotId, artistId } = await request.json() as { slotId: string; artistId?: string }
+  const { slotId, artistId, message } = await request.json() as { slotId: string; artistId?: string; message?: string }
   if (!slotId) return Response.json({ ok: false, error: 'Missing slotId' }, { status: 400 })
+
+  // Własna treść ankiety (edytowalna w modalu); pusta → domyślna.
+  const customMessage = (message ?? '').trim() || null
 
   const { data: slot } = await supabase
     .from('repertoire_slots')
@@ -74,12 +81,15 @@ export async function POST(request: Request) {
     let notified = false
 
     if (m.email) {
+      const intro = customMessage
+        ? `<p style="color:#374151;margin:0 0 16px;font-size:14px;white-space:pre-wrap">${escapeHtml(customMessage)}</p>`
+        : `<p style="color:#6b7280;margin:0 0 16px;font-size:14px">
+            Cześć ${m.name}, planujemy <b>${title}</b> w oknie <b>${rangeLabel}</b>.
+            Zaznacz dni, w które możesz zagrać (max ${(slot as any).target_performances} grań).
+          </p>`
       const html = emailWrapper(`
         <h2 style="font-size:18px;font-weight:700;margin:0 0 8px">Dostępność na spektakl — ${title}</h2>
-        <p style="color:#6b7280;margin:0 0 16px;font-size:14px">
-          Cześć ${m.name}, planujemy <b>${title}</b> w oknie <b>${rangeLabel}</b>.
-          Zaznacz dni, w które możesz zagrać (max ${(slot as any).target_performances} grań).
-        </p>
+        ${intro}
         <div style="margin:8px 0 20px">
           <a href="${link}" style="display:inline-block;padding:12px 24px;border-radius:10px;background:#c8102e;color:#fff;font-size:15px;font-weight:700;text-decoration:none">Podaj dostępność</a>
         </div>
@@ -88,11 +98,13 @@ export async function POST(request: Request) {
       const ok = await sendEmail(m.email, `[Dostępność] ${title} — ${rangeLabel}`, html)
       if (ok) {
         notified = true
-        logRows.push({ artist_id: m.id, type: 'email', kind: 'message', subject: `Ankieta dostępności: ${title}`, body: `Podaj dni, w które możesz zagrać w „${title}" (${rangeLabel}).`, related_production_id: (slot as any).production_id })
+        logRows.push({ artist_id: m.id, type: 'email', kind: 'message', subject: `Ankieta dostępności: ${title}`, body: customMessage ?? `Podaj dni, w które możesz zagrać w „${title}" (${rangeLabel}).`, related_production_id: (slot as any).production_id })
       }
     }
     if (m.phone) {
-      const sms = `Dostepnosc na "${title}" (${rangeLabel}). Zaznacz dni, w ktore mozesz zagrac: ${link}`
+      const sms = customMessage
+        ? `${customMessage} ${link}`
+        : `Dostepnosc na "${title}" (${rangeLabel}). Zaznacz dni, w ktore mozesz zagrac: ${link}`
       const ok = await sendSms(m.phone, sms)
       if (ok) {
         notified = true

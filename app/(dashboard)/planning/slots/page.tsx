@@ -274,6 +274,7 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
 }) {
   const [sending, setSending] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [surveyText, setSurveyText] = useState('')
   const [chosen, setChosen] = useState<Set<string>>(new Set(slot.locked_dates ?? []))
   const [saving, setSaving] = useState(false)
 
@@ -287,11 +288,14 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
   const respondedCount = submittedSet.size
   const castCount = castSorted.length
 
+  // Domyślna treść ankiety — edytowalna w modalu przed wysłaniem.
+  const defaultSurvey = `Prośba do obsady o zaznaczenie dni, w które mogą zagrać „${prod?.title ?? 'tytuł'}".\nOkno grania: ${fmtDayShort(slot.window_start)} – ${fmtDayShort(slot.window_end)} · docelowo ${slot.target_performances} grań.`
+
   async function sendInvites() {
     setSending(true)
     await fetch('/api/slots/send-invites', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slotId: slot.id }),
+      body: JSON.stringify({ slotId: slot.id, message: surveyText.trim() || undefined }),
     })
     setSending(false)
     setConfirmOpen(false)
@@ -335,7 +339,7 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
           <span className="text-[11px] px-2 py-1 rounded-full" style={{ background: '#f2ede6', color: '#7a7068' }}>
             Odpowiedzi: {respondedCount}/{castCount}
           </span>
-          <button onClick={() => setConfirmOpen(true)} disabled={sending || castCount === 0}
+          <button onClick={() => { setSurveyText(defaultSurvey); setConfirmOpen(true) }} disabled={sending || castCount === 0}
             className="text-xs font-medium px-3 py-1.5 rounded-lg text-white disabled:opacity-40" style={{ background: '#1a1410' }}>
             {sending ? 'Wysyłam…' : respondedCount > 0 ? 'Wyślij ponownie' : 'Wyślij ankiety'}
           </button>
@@ -347,7 +351,8 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
           title={`Ankieta dostępności — ${prod?.title ?? 'Tytuł'}`}
           channelLabel="Ankieta dostępności (e-mail / SMS)"
           recipients={castSorted.map(c => ({ name: c.name }))}
-          content={`Prośba do obsady o zaznaczenie dni, w które mogą zagrać „${prod?.title ?? 'tytuł'}".\nOkno grania: ${fmtDayShort(slot.window_start)} – ${fmtDayShort(slot.window_end)} · docelowo ${slot.target_performances} grań.`}
+          content={surveyText}
+          onContentChange={setSurveyText}
           note={respondedCount > 0 ? `Część obsady (${respondedCount}/${castCount}) już odpowiedziała — ankieta zostanie wysłana ponownie do wszystkich.` : undefined}
           confirmLabel={`Wyślij ankietę do ${castCount} ${castCount === 1 ? 'osoby' : 'osób'}`}
           sending={sending}

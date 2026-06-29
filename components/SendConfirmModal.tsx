@@ -15,6 +15,7 @@ export default function SendConfirmModal({
   channelLabel,
   recipients,
   content,
+  onContentChange,
   note,
   confirmLabel,
   sending = false,
@@ -26,6 +27,7 @@ export default function SendConfirmModal({
   channelLabel?: string
   recipients: SendRecipient[]
   content?: React.ReactNode
+  onContentChange?: (text: string) => void   // gdy podane i content jest tekstem → treść edytowalna
   note?: string
   confirmLabel?: string
   sending?: boolean
@@ -51,10 +53,23 @@ export default function SendConfirmModal({
           {/* Treść */}
           {content != null && (
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#b8b0a4' }}>Treść</p>
-              <div className="rounded-xl p-3 text-sm whitespace-pre-wrap" style={{ background: '#faf8f5', border: '1px solid #f2ede6', color: '#3e3830' }}>
-                {content}
-              </div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#b8b0a4' }}>
+                Treść {onContentChange && typeof content === 'string' && <span className="font-normal normal-case tracking-normal" style={{ color: '#cbb' }}>· edytowalna</span>}
+              </p>
+              {onContentChange && typeof content === 'string' ? (
+                <textarea
+                  value={content}
+                  onChange={e => onContentChange(e.target.value)}
+                  disabled={sending}
+                  rows={Math.min(10, Math.max(4, content.split('\n').length + 1))}
+                  className="w-full rounded-xl p-3 text-sm whitespace-pre-wrap resize-y focus:outline-none focus:ring-2 disabled:opacity-60"
+                  style={{ background: '#fff', border: '1px solid #e4ddd4', color: '#3e3830' }}
+                />
+              ) : (
+                <div className="rounded-xl p-3 text-sm whitespace-pre-wrap" style={{ background: '#faf8f5', border: '1px solid #f2ede6', color: '#3e3830' }}>
+                  {content}
+                </div>
+              )}
             </div>
           )}
 
