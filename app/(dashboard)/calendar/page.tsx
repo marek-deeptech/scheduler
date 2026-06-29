@@ -730,6 +730,14 @@ export default function RepertuarPage() {
     }, {})
   ).sort((a, b) => a.month.localeCompare(b.month))
 
+  // Kolejność paska: bieżący miesiąc i kolejne najpierw (po lewej), przeszłe na
+  // koniec — koniec roku widać bez przewijania, a historia zostaje dostępna.
+  const nowKey = new Date().toISOString().slice(0, 7)
+  const orderedMonths: Proposal[] = [
+    ...months.filter(m => m.month >= nowKey),
+    ...months.filter(m => m.month <  nowKey),
+  ]
+
   // Each month has ONE proposal per theatre. Pick the proposal matching the
   // selected theatre (Repertuar always has a single theatre selected). This
   // replaces the old dedup-by-month + cycle-tagging that dropped a theatre and
@@ -867,7 +875,7 @@ export default function RepertuarPage() {
           style={{ background: '#faf8f5', borderBottom: '1px solid #e4ddd4' }}
         >
           <div className="flex items-end overflow-x-auto gap-0" style={{ scrollbarWidth: 'none' }}>
-            {months.map(p => {
+            {orderedMonths.map(p => {
               const [y, mo] = p.month.split('-')
               const name    = MONTH_PL[mo] ?? mo
               const isActive = p.month === activeMonth
