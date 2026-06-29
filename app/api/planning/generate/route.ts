@@ -24,20 +24,6 @@ const supabase = createClient(
 interface Production { id: string; title: string; theatreId: string }
 interface Room       { id: string; name: string;  theatreId: string }
 
-interface DayTheatre {
-  theatreId:      string
-  theatreName:    string
-  rooms:          Room[]
-  availableProds: Production[]
-}
-
-interface DaySlot {
-  date:      string
-  dow:       number   // 0=Sun … 6=Sat
-  isWeekend: boolean  // Fri(5) Sat(6) Sun(0)
-  byTheatre: Record<string, DayTheatre>
-}
-
 interface Show {
   date:             string
   production_id:    string | null
@@ -51,6 +37,8 @@ interface Show {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+// Święta — repertuar JE OBEJMUJE (analiza realnych repertuarów: teatry grają w
+// święta). Trzymamy listę tylko informacyjnie; nie wykluczamy tych dni.
 const PL_HOLIDAYS = new Set([
   '2026-01-01','2026-01-06','2026-04-05','2026-04-06',
   '2026-05-01','2026-05-03','2026-06-04','2026-08-15',
@@ -71,6 +59,11 @@ function localMonthEnd(month: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+function prevDate(date: string): string {
+  const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate() - 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function extractJson(text: string): any | null {
   const stripped = text.replace(/```(?:json)?/gi, '').trim()
   try { return JSON.parse(stripped) } catch {}
@@ -81,133 +74,164 @@ function extractJson(text: string): any | null {
   return null
 }
 
-// ── Scheduling algorithm ──────────────────────────────────────────────────────
-//
-// strategy 1 — weekend-max:   all weekends (2 rooms), weekdays (1 room)
-// strategy 2 — even:          every day, 1 room only
-// strategy 3 — diversity-max: every day, all rooms, rotate productions maximally
-// strategy 4 — balanced:      weekends (2 rooms), Tue+Thu (1 room)
+// ── BAZOWY WZORZEC GENEROWANIA ───────────────────────────────────────────────
+// Wyprowadzony z analizy realnych repertuarów Teatru Polonia i Och-Teatru
+// (IV 2025 – X 2026, 1437 spektakli). Kluczowe wzorce:
+//  • grają NIEMAL CODZIENNIE 1 wieczorny spektakl 19:00; poniedziałek najlżejszy
+//  • weekendowe poranki/popołudnia (głównie niedziela) → dni z 2 spektaklami;
+//    Och dodatkowo sporadyczne poranki 12:00 w tygodniu (szkolne)
+//  • tytuły grane w BLOKACH 2 kolejnych dni, potem przerwa ~3–4 tygodnie
+//  • gęstość: Polonia ~28 spektakli/mies, Och ~35; ~14 tytułów × ~2 grania
+//  • grają w święta; rytm stabilny cały rok
+// To jest BAZA — finanse / założenia dodatkowe / sloty Favourites modyfikują ją.
 
-const MAX_CONFLICTS = 1
+interface Profile {
+  key:             string
+  eveningTarget:   number              // ile dni z wieczornym spektaklem (reszta = ciemne)
+  matSun:          number              // odsetek niedziel z dodatkowym porankiem
+  matSat:          number              // odsetek sobót z porankiem
+  matWeekday:      number              // odsetek dni roboczych z porankiem (Och: 12:00 szkolne)
+  matWeekendTime:  [string, string]
+  matWeekdayTime:  [string, string]
+}
+
+function profileFor(name: string): Profile {
+  const n = (name || '').toLowerCase()
+  if (n.includes('och'))
+    return { key: 'Och', eveningTarget: 28, matSun: 0.50, matSat: 0.45, matWeekday: 0.14,
+             matWeekendTime: ['16:00:00', '18:00:00'], matWeekdayTime: ['12:00:00', '14:00:00'] }
+  // Domyślnie profil typu „Polonia" (jedna duża scena, mniej poranków)
+  return { key: 'Polonia', eveningTarget: 26, matSun: 0.45, matSat: 0.20, matWeekday: 0,
+           matWeekendTime: ['16:00:00', '18:00:00'], matWeekdayTime: ['12:00:00', '14:00:00'] }
+}
+
+// Waga dnia tygodnia (0=Ndz … 6=Sob): pn najlżej, ndz najciężej — z rozkładu realnego.
+const DOW_W: Record<number, number> = { 0: 1.05, 1: 0.78, 2: 0.92, 3: 0.92, 4: 0.90, 5: 0.95, 6: 1.0 }
+
+interface Variant { label: string; dEve: number; matMul: number; block: number; hint: string }
+const VARIANTS: Variant[] = [
+  { label: 'Propozycja 1', dEve:  0, matMul: 1.0, block: 2, hint: 'bazowy wzorzec — realny rytm grania' },
+  { label: 'Propozycja 2', dEve: -2, matMul: 0.6, block: 2, hint: 'lżejszy miesiąc' },
+  { label: 'Propozycja 3', dEve: +1, matMul: 1.4, block: 2, hint: 'gęstszy — więcej weekendowych poranków' },
+  { label: 'Propozycja 4', dEve:  0, matMul: 1.0, block: 1, hint: 'większa różnorodność tytułów' },
+]
+
+// Wybierz k elementów równomiernie rozłożonych po liście (deterministycznie).
+function pickEvenly(arr: string[], k: number): Set<string> {
+  if (k <= 0) return new Set()
+  if (k >= arr.length) return new Set(arr)
+  const out = new Set<string>(); const step = arr.length / k
+  for (let i = 0; i < k; i++) out.add(arr[Math.floor(i * step + step / 2)])
+  return out
+}
 
 function buildSchedule(
-  strategy: 1 | 2 | 3 | 4,
-  daySlots: DaySlot[],
-  castMap: Record<string, string[]>,   // production_id → actor names
+  variant:    Variant,
+  month:      string,
+  prods:      Production[],
+  castMap:    Record<string, string[]>,
+  unavailMap: Record<string, Set<string>>,
+  profile:    Profile,
+  room:       Room | null,
 ): Show[] {
-  const counts: Record<string, number>     = {} // shows per production
-  const lastInRoom: Record<string, string> = {} // room id → last production id
-  const actorsByDate: Record<string, Set<string>> = {} // date → actors already committed
-  let conflictsUsed = 0
+  const days = getDaysInMonth(month).map(d => ({ date: d, dow: new Date(d + 'T12:00:00').getDay() }))
+  const eveningTarget = Math.max(1, profile.eveningTarget + variant.dEve)
+
+  // Dni ciemne: tyle dni o najniższej wadze, by zostało ~eveningTarget dni grania.
+  // Jitter wg kolejności wystąpienia dnia tygodnia rozkłada ciemne dni (nie zeruje
+  // całego dnia tygodnia) — poniedziałki wypadają najczęściej, ale nie wszystkie.
+  const darkCount = Math.max(0, days.length - eveningTarget)
+  const occ: Record<number, number> = {}
+  const scored = days.map(d => {
+    occ[d.dow] = (occ[d.dow] || 0) + 1
+    return { date: d.date, s: (DOW_W[d.dow] ?? 0.9) + (occ[d.dow] - 1) * 0.5 }
+  })
+  scored.sort((a, b) => a.s - b.s || a.date.localeCompare(b.date))
+  const dark = new Set(scored.slice(0, darkCount).map(d => d.date))
+
+  // Poranki/popołudnia (dni z 2 spektaklami): weekend (ndz > sob) + Och w tygodniu.
+  const sundays   = days.filter(d => d.dow === 0 && !dark.has(d.date)).map(d => d.date)
+  const saturdays = days.filter(d => d.dow === 6 && !dark.has(d.date)).map(d => d.date)
+  const weekdays  = days.filter(d => d.dow >= 1 && d.dow <= 5 && !dark.has(d.date)).map(d => d.date)
+  const matDays = new Map<string, [string, string]>()
+  for (const d of pickEvenly(sundays,   Math.round(sundays.length   * profile.matSun     * variant.matMul))) matDays.set(d, profile.matWeekendTime)
+  for (const d of pickEvenly(saturdays, Math.round(saturdays.length * profile.matSat     * variant.matMul))) matDays.set(d, profile.matWeekendTime)
+  if (profile.matWeekday > 0)
+    for (const d of pickEvenly(weekdays, Math.round(weekdays.length  * profile.matWeekday * variant.matMul)))
+      if (!matDays.has(d)) matDays.set(d, profile.matWeekdayTime)
+
+  // Sloty chronologicznie: poranek (jeśli jest) przed wieczorem.
+  const slots: { date: string; dow: number; start: string; end: string }[] = []
+  for (const d of days) {
+    if (dark.has(d.date)) continue
+    const mt = matDays.get(d.date)
+    if (mt) slots.push({ date: d.date, dow: d.dow, start: mt[0], end: mt[1] })
+    slots.push({ date: d.date, dow: d.dow, start: '19:00:00', end: '21:30:00' })
+  }
+
+  // Połowa obsady dostępna = tytuł może grać danego dnia.
+  const canPlay = (pid: string, date: string) => {
+    const c = castMap[pid] ?? []; const b = unavailMap[date] ?? new Set<string>()
+    return c.filter(a => !b.has(a)).length >= Math.ceil(c.length / 2)
+  }
+
+  const lastDate: Record<string, string> = {}
+  const runLen:   Record<string, number> = {}
+  const count:    Record<string, number> = {}
+  const todaysActors: Record<string, Set<string>> = {}
+  const todaysTitles: Record<string, Set<string>> = {}
   const result: Show[] = []
 
-  function actorConflict(prodId: string, date: string): boolean {
-    const cast = castMap[prodId] ?? []
-    const busy = actorsByDate[date] ?? new Set()
-    return cast.some(a => busy.has(a))
-  }
+  for (const s of slots) {
+    todaysActors[s.date] ??= new Set()
+    todaysTitles[s.date] ??= new Set()
+    const yd = prevDate(s.date)
+    const conflict = (pid: string) => (castMap[pid] ?? []).some(a => todaysActors[s.date].has(a))
 
-  function pick(
-    avail: Production[],
-    usedToday: Set<string>,
-    roomId: string,
-    date: string,
-  ): Production | null {
-    const prev = lastInRoom[roomId]
+    // Kandydaci: mogą grać, nie grają już dziś, brak konfliktu obsady (twardo).
+    const elig = prods.filter(p => canPlay(p.id, s.date) && !todaysTitles[s.date].has(p.id) && !conflict(p.id))
+    if (!elig.length) continue
 
-    // Sort candidates by least-used first (constant across all filter levels)
-    const byCount = (a: Production, b: Production) =>
-      (counts[a.id] ?? 0) - (counts[b.id] ?? 0)
-
-    // Level 1 — ideal: not used today, not yesterday, no actor conflict
-    const ideal = avail.filter(p =>
-      !usedToday.has(p.id) && p.id !== prev && !actorConflict(p.id, date)
-    )
-    if (ideal.length) return [...ideal].sort(byCount)[0]
-
-    // Level 2 — allow yesterday's production, still no actor conflict
-    const noConflict = avail.filter(p =>
-      !usedToday.has(p.id) && !actorConflict(p.id, date)
-    )
-    if (noConflict.length) return [...noConflict].sort(byCount)[0]
-
-    // Level 3 — use conflict budget (max 1 per whole proposal)
-    if (conflictsUsed < MAX_CONFLICTS) {
-      const withConflict = avail.filter(p => !usedToday.has(p.id))
-      if (withConflict.length) {
-        conflictsUsed++
-        return [...withConflict].sort(byCount)[0]
-      }
+    // Priorytet 1: kontynuacja bloku (grał wczoraj, blok < variant.block).
+    const cont = elig.filter(p => lastDate[p.id] === yd && (runLen[p.id] ?? 0) < variant.block)
+    let chosen: Production
+    if (cont.length) {
+      cont.sort((a, b) => (runLen[a.id] ?? 0) - (runLen[b.id] ?? 0) || (count[a.id] ?? 0) - (count[b.id] ?? 0))
+      chosen = cont[0]
+    } else {
+      // Priorytet 2: najdłużej nieobecny tytuł (rozkłada granie), potem najmniej grany.
+      const gap = (p: Production) => lastDate[p.id]
+        ? (new Date(s.date).getTime() - new Date(lastDate[p.id]).getTime()) / 864e5 : 9999
+      elig.sort((a, b) => gap(b) - gap(a) || (count[a.id] ?? 0) - (count[b.id] ?? 0))
+      chosen = elig[0]
     }
 
-    // Budget exhausted — skip this slot rather than add another conflict
-    return null
+    result.push({
+      date: s.date, production_id: chosen.id, production_title: chosen.title,
+      room_id: room?.id ?? null, room_name: room?.name ?? null,
+      start_time: s.start, end_time: s.end, type: 'spektakl',
+    })
+    runLen[chosen.id] = (lastDate[chosen.id] === yd ? (runLen[chosen.id] ?? 0) : 0) + 1
+    lastDate[chosen.id] = s.date
+    count[chosen.id] = (count[chosen.id] ?? 0) + 1
+    todaysTitles[s.date].add(chosen.id)
+    for (const a of (castMap[chosen.id] ?? [])) todaysActors[s.date].add(a)
   }
 
-  // For strategy 1 sort weekends first so they get priority when filling
-  const slots = strategy === 1
-    ? [...daySlots].sort((a, b) => Number(b.isWeekend) - Number(a.isWeekend) || a.date.localeCompare(b.date))
-    : daySlots
-
-  for (const slot of slots) {
-    actorsByDate[slot.date] ??= new Set()
-
-    for (const [, th] of Object.entries(slot.byTheatre)) {
-      if (!th.availableProds.length || !th.rooms.length) continue
-
-      // How many rooms to fill
-      let roomCount: number
-      if      (strategy === 1) roomCount = slot.isWeekend ? th.rooms.length : 1
-      else if (strategy === 2) roomCount = 1
-      else if (strategy === 3) roomCount = th.rooms.length
-      else { // 4 — balanced
-        if   (slot.isWeekend)                      roomCount = th.rooms.length
-        else if (slot.dow === 2 || slot.dow === 4) roomCount = 1  // Tue / Thu
-        else                                       roomCount = 0
-      }
-
-      const usedToday = new Set<string>()
-      for (let i = 0; i < roomCount && i < th.rooms.length; i++) {
-        const room = th.rooms[i]
-        const prod = pick(th.availableProds, usedToday, room.id, slot.date)
-        if (!prod) continue
-
-        result.push({
-          date:             slot.date,
-          production_id:    prod.id,
-          production_title: prod.title,
-          room_id:          room.id,
-          room_name:        room.name,
-          start_time:       '19:00:00',
-          end_time:         '21:30:00',
-          type:             'spektakl',
-        })
-        counts[prod.id]       = (counts[prod.id]   ?? 0) + 1
-        lastInRoom[room.id]   = prod.id
-        usedToday.add(prod.id)
-
-        // Register this production's actors as committed for the day
-        for (const actor of (castMap[prod.id] ?? [])) {
-          actorsByDate[slot.date].add(actor)
-        }
-      }
-    }
-  }
-
-  return result.sort((a, b) => a.date.localeCompare(b.date))
+  return result.sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time))
 }
 
 function summarise(shows: Show[], month: string): string {
   const total = shows.length
-  const days  = getDaysInMonth(month)
   const weekendDays = shows.filter(s => {
     const d = new Date(s.date + 'T12:00:00').getDay()
     return d === 0 || d === 5 || d === 6
   })
+  const matinees = shows.filter(s => s.start_time < '17:00:00').length
   const byProd: Record<string, number> = {}
   for (const s of shows) byProd[s.production_title] = (byProd[s.production_title] ?? 0) + 1
   const prodStr = Object.entries(byProd).map(([t, n]) => `${t}×${n}`).join(', ')
-  return `${total} spektakli | weekendy: ${new Set(weekendDays.map(s => s.date)).size} dni | ${prodStr}`
+  return `${total} spektakli | weekendy: ${new Set(weekendDays.map(s => s.date)).size} dni | poranki: ${matinees} | ${prodStr}`
 }
 
 // ── PATCH — update proposal_data (edit shows) ────────────────────────────────
@@ -284,7 +308,6 @@ export async function POST(request: Request) {
   const apiKey = getAnthropicKey()
   if (!apiKey) return Response.json({ error: 'ANTHROPIC_API_KEY not set' }, { status: 500 })
 
-  const [y, m] = month.split('-').map(Number)
   const monthStart = month + '-01'
   const monthEnd   = localMonthEnd(month)
 
@@ -329,88 +352,27 @@ export async function POST(request: Request) {
   const theatreNames: Record<string, string> = {}
   for (const t of (theatres ?? []) as any[]) theatreNames[t.id] = t.name
 
-  // Active productions (with cast, per theatre)
+  // Active productions (with cast) for this theatre
   const activeProds: Production[] = ((productions ?? []) as any[])
     .filter(p => (castMap[p.id]?.length ?? 0) > 0)
-    .map(p => ({ id: p.id, title: p.title, theatreId: p.theatre_id ?? 'unknown' }))
+    .map(p => ({ id: p.id, title: p.title, theatreId: p.theatre_id ?? theatreId }))
 
-  // Rooms per theatre
-  const roomsByTheatre: Record<string, Room[]> = {}
-  for (const r of (rooms ?? []) as any[]) {
-    const tid = r.theatre_id ?? 'unknown'
-    roomsByTheatre[tid] ??= []
-    roomsByTheatre[tid].push({ id: r.id, name: r.name, theatreId: tid })
+  if (activeProds.length === 0) {
+    return Response.json({ error: 'Brak aktywnych tytułów z obsadą dla tego teatru' }, { status: 400 })
   }
 
-  // Fallback: if rooms have no theatre_id, assign to first production's theatre
-  const allRooms: Room[] = (rooms ?? []) as any[]
-  if (Object.keys(roomsByTheatre).length === 0 || (Object.keys(roomsByTheatre).length === 1 && Object.keys(roomsByTheatre)[0] === 'unknown')) {
-    const firstTheatre = activeProds[0]?.theatreId ?? 'unknown'
-    roomsByTheatre[firstTheatre] = allRooms.map(r => ({ ...r, theatreId: firstTheatre }))
-  }
+  // Główna scena teatru (do przypisania spektaklom)
+  const mainRoom: Room | null = ((rooms ?? []) as any[])[0]
+    ? { id: (rooms as any[])[0].id, name: (rooms as any[])[0].name, theatreId }
+    : null
 
-  // ── Build DaySlots ──────────────────────────────────────────────────────────
-  const days = getDaysInMonth(month)
-
-  function canPlay(prodId: string, date: string): boolean {
-    const cast    = castMap[prodId] ?? []
-    const blocked = unavailMap[date] ?? new Set()
-    const avail   = cast.filter(n => !blocked.has(n))
-    return avail.length >= Math.ceil(cast.length / 2)
-  }
-
-  // Collect all theatre IDs that have both rooms and productions
-  const theatreIds = [
-    ...new Set([
-      ...activeProds.map(p => p.theatreId),
-      ...Object.keys(roomsByTheatre),
-    ])
-  ].filter(tid => tid !== 'unknown' || Object.keys(roomsByTheatre).includes('unknown'))
-
-  const daySlots: DaySlot[] = days
-    .filter(d => !PL_HOLIDAYS.has(d))
-    .map(d => {
-      const dow       = new Date(d + 'T12:00:00').getDay()
-      const byTheatre: Record<string, DayTheatre> = {}
-
-      for (const tid of theatreIds) {
-        const tRooms = roomsByTheatre[tid] ?? []
-        const tProds = activeProds.filter(p => p.theatreId === tid)
-        const avail  = tProds.filter(p => canPlay(p.id, d))
-        if (tRooms.length > 0 && tProds.length > 0) {
-          byTheatre[tid] = {
-            theatreId:      tid,
-            theatreName:    theatreNames[tid] ?? tid,
-            rooms:          tRooms,
-            availableProds: avail,
-          }
-        }
-      }
-
-      return {
-        date:      d,
-        dow,
-        isWeekend: dow === 0 || dow === 5 || dow === 6,
-        byTheatre,
-      }
-    })
-    .filter(s => Object.values(s.byTheatre).some(t => t.availableProds.length > 0))
-
-  if (daySlots.length === 0) {
-    return Response.json({ error: 'Brak dostępnych terminów w tym miesiącu' }, { status: 400 })
-  }
-
-  // ── Run 4 algorithms ────────────────────────────────────────────────────────
-  const [shows1, shows2, shows3, shows4] = ([1, 2, 3, 4] as const).map(s =>
-    buildSchedule(s, daySlots, castMap)
-  )
-
-  const strategies = [
-    { label: 'Propozycja 1', shows: shows1, hint: 'weekendy priorytet, obie sale' },
-    { label: 'Propozycja 2', shows: shows2, hint: 'równomierny rozkład, 1 sala/dzień' },
-    { label: 'Propozycja 3', shows: shows3, hint: 'max różnorodność, wszystkie sale' },
-    { label: 'Propozycja 4', shows: shows4, hint: 'weekendy + wt/czw' },
-  ]
+  // ── Bazowy wzorzec: 4 warianty wokół realnego profilu teatru ─────────────────
+  const profile = profileFor(theatreNames[theatreId] ?? '')
+  const strategies = VARIANTS.map(v => ({
+    label: v.label,
+    shows: buildSchedule(v, month, activeProds, castMap, unavailMap, profile, mainRoom),
+    hint:  v.hint,
+  }))
 
   // ── Claude: descriptions only (~50 tokens output) ──────────────────────────
   const [yearN, monthN] = month.split('-').map(Number)
