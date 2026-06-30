@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { getBaseUrl } from '@/lib/base-url'
 import { randomUUID } from 'node:crypto'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
@@ -9,7 +10,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 
 function fmtRange(start: string, end: string): string {
   const s = new Date(start + 'T12:00:00').toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' })
@@ -22,6 +22,7 @@ function escapeHtml(s: string): string {
 }
 
 export async function POST(request: Request) {
+  const APP_URL = getBaseUrl(request)
   const { slotId, artistId, message } = await request.json() as { slotId: string; artistId?: string; message?: string }
   if (!slotId) return Response.json({ ok: false, error: 'Missing slotId' }, { status: 400 })
 

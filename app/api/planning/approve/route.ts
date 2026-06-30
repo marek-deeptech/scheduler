@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { getBaseUrl } from '@/lib/base-url'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
 import { logMessages, type MessageLogRow } from '@/lib/message-log'
@@ -10,7 +11,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 
 const MONTH_NAMES = ['stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca',
   'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia']
@@ -49,7 +49,7 @@ interface InsertedEvent {
 
 /** Po zatwierdzeniu: każdy aktor z obsady dostaje zestawienie swoich dat
  *  + prośby o potwierdzenie (event_confirmations) w jednym mailu. */
-async function notifyCastAfterApproval(insertedEvents: InsertedEvent[], month: string) {
+async function notifyCastAfterApproval(insertedEvents: InsertedEvent[], month: string, APP_URL: string) {
   const productionIds = [...new Set(insertedEvents.map(e => e.production_id).filter(Boolean))] as string[]
   if (productionIds.length === 0) return { notified: 0 }
 
@@ -192,6 +192,7 @@ async function notifyCastAfterApproval(insertedEvents: InsertedEvent[], month: s
 }
 
 export async function POST(request: Request) {
+  const APP_URL = getBaseUrl(request)
   const { proposalId, action } = await request.json() as {
     proposalId: string
     action: 'approve' | 'reject'
@@ -257,7 +258,7 @@ export async function POST(request: Request) {
   // Notify cast — błąd powiadomień nie blokuje zatwierdzenia
   let notified = 0
   try {
-    const result = await notifyCastAfterApproval(insertedEvents, proposal.month)
+    const result = await notifyCastAfterApproval(insertedEvents, proposal.month, APP_URL)
     notified = result.notified
   } catch (err) {
     console.error('Cast notification error:', err)

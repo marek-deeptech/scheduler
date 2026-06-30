@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { getBaseUrl } from '@/lib/base-url'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
 import { logMessages, type MessageLogRow } from '@/lib/message-log'
@@ -8,7 +9,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 
 function fmtPolish(iso: string) {
   const d = new Date(iso)
@@ -24,6 +24,7 @@ function fillTemplate(template: string, vars: Record<string, string>): string {
 }
 
 export async function POST(request: Request) {
+  const APP_URL = getBaseUrl(request)
   const { eventId, artistIds, eventDetails, channel = 'email' } = await request.json() as {
     eventId: string
     artistIds: string[]

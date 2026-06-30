@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { getBaseUrl } from '@/lib/base-url'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
 import { logMessages, type MessageLogRow } from '@/lib/message-log'
@@ -10,7 +11,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 
 function fmtPolish(iso: string) {
   return new Date(iso).toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -21,6 +21,7 @@ function fmtTime(iso: string) {
 }
 
 export async function POST(request: Request) {
+  const APP_URL = getBaseUrl(request)
   const { removedArtistId, substituteId, eventIds, productionTitle } = await request.json() as {
     removedArtistId: string
     substituteId: string

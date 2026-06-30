@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { getBaseUrl } from '@/lib/base-url'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,7 +9,6 @@ const supabase = createClient(
 const VALID_STATUSES = ['confirmed', 'declined', 'maybe'] as const
 type ValidStatus = typeof VALID_STATUSES[number]
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 
 function monthOf(iso: string): string { return iso.slice(0, 7) }
 function lastDay(month: string): string {
@@ -18,7 +18,7 @@ function lastDay(month: string): string {
 
 // Etap 6: po 100% potwierdzeń dla zatwierdzonego miesiąca — automatyczny raport
 // do Dyrektora Finansowego (guard: report_sent_at na zatwierdzonej propozycji).
-async function maybeTriggerFinanceReport(eventId: string) {
+async function maybeTriggerFinanceReport(eventId: string, baseUrl: string) {
   try {
     const { data: ev } = await supabase.from('events').select('start_time, theatre_id').eq('id', eventId).single()
     if (!ev?.start_time) return
@@ -44,7 +44,7 @@ async function maybeTriggerFinanceReport(eventId: string) {
     if (all.length === 0 || !all.every((c: any) => c.status === 'confirmed')) return
 
     // 100% potwierdzeń dla teatru — wyślij raport
-    await fetch(`${APP_URL}/api/planning/send-finance-report`, {
+    await fetch(`${baseUrl}/api/planning/send-finance-report`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ month, theatreId }),
     })
@@ -107,7 +107,7 @@ export async function POST(request: Request) {
 
   // Etap 6 — auto-raport gdy ten potwierdzony dopełnia 100% miesiąca
   if (data.status === 'confirmed' && (data as any).event_id) {
-    await maybeTriggerFinanceReport((data as any).event_id)
+    await maybeTriggerFinanceReport((data as any).event_id, getBaseUrl(request))
   }
 
   return Response.json({ ok: true, status: data.status, comment: data.comment })
