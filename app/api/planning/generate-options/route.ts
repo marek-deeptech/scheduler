@@ -54,6 +54,7 @@ export async function POST(request: Request) {
       // Tolerancyjnie na brak migracji 'stage' / 'setup-teardown' — ponawiamy z mniejszym zestawem kolumn.
       const base = 'id, title, theatre_id, is_favourite, price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost'
       let r = await supabase.from('productions').select(`${base}, stage, setup_days, teardown_days`)
+      if (r.error) r = await supabase.from('productions').select(`${base}, setup_days, teardown_days`)
       if (r.error) r = await supabase.from('productions').select(`${base}, stage`)
       if (r.error) r = await supabase.from('productions').select(base)
       return r

@@ -98,13 +98,17 @@ function buildSchedule(
     // demontaż poprzedniego + montaż nowego (dni robocze).
     const stageFree = (p: Production) => {
       const st = stageState[p.stage]
-      if (!st || st.title === p.id) return true
+      if (!st) return true
+      // Kontynuacja bloku (ten sam tytuł, kolejny dzień) — scenografia stoi, bez changeover.
+      if (st.title === p.id && st.date === yd) return true
+      // Inaczej (inny tytuł albo powrót po przerwie) — musi minąć demontaż + montaż.
       return changeoverOk({ date: st.date, teardown: st.teardown }, s.date, p.setup)
     }
 
-    // Kandydaci: mogą grać, nie grają już dziś, brak konfliktu obsady, scena wolna.
+    // Kandydaci: mogą grać, nie grają już dziś, brak konfliktu, scena wolna, blok < limit.
     const elig = prods.filter(p =>
-      canPlay(p.id, s.date) && !todaysTitles[s.date].has(p.id) && !conflict(p.id) && stageFree(p))
+      canPlay(p.id, s.date) && !todaysTitles[s.date].has(p.id) && !conflict(p.id) && stageFree(p) &&
+      !(lastDate[p.id] === yd && (runLen[p.id] ?? 0) >= variant.block))
     if (!elig.length) continue
 
     // Priorytet 1: kontynuacja bloku (grał wczoraj, blok < variant.block).
@@ -238,10 +242,13 @@ export async function POST(request: Request) {
     { data: dayStatuses },
   ] = await Promise.all([
     (async () => {
-      // Tolerancyjnie na brak migracji stage / setup-teardown.
-      const sel = (extra: boolean) => `id, title, status, theatre_id${extra ? ', stage, setup_days, teardown_days' : ''}`
-      const r = await supabase.from('productions').select(sel(true)).eq('theatre_id', theatreId).order('title')
-      return r.error ? await supabase.from('productions').select(sel(false)).eq('theatre_id', theatreId).order('title') : r
+      // Tolerancyjnie na brak migracji stage / setup-teardown — każda kolumna niezależnie.
+      const q = (cols: string) => supabase.from('productions').select(cols).eq('theatre_id', theatreId).order('title')
+      let r = await q('id, title, status, theatre_id, stage, setup_days, teardown_days')
+      if (r.error) r = await q('id, title, status, theatre_id, setup_days, teardown_days')
+      if (r.error) r = await q('id, title, status, theatre_id, stage')
+      if (r.error) r = await q('id, title, status, theatre_id')
+      return r
     })(),
     supabase.from('artist_productions').select('artist_id, production_id'),
     supabase.from('artists').select('id, name'),

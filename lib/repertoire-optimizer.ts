@@ -122,7 +122,8 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
   // demontaż poprzedniego + montaż p (dni robocze).
   function stageFree(p: OptProduction, date: string): boolean {
     const st = stageState[p.stage]
-    if (!st || st.title === p.id) return true
+    if (!st) return true
+    if (st.title === p.id && st.date === prevDate(date)) return true  // kontynuacja bloku (kolejny dzień)
     return changeoverOk({ date: st.date, teardown: st.teardown }, date, p.setup)
   }
 
