@@ -811,13 +811,15 @@ export default function DashboardPage() {
   const statCards = [
     {
       label: 'Brak potwierdzeń', value: notConfirmedCount,
-      sub: notConfirmedCount > 0
+      sub: notConfirmedCount > 0 ? '' : 'wszystko potwierdzone',
+      // Rozbicie na kategorie — jedna pod drugą, z jasnym opisem czego brakuje.
+      subLines: notConfirmedCount > 0
         ? [
-            notConfBreakdown.udzial.length     ? `${notConfBreakdown.udzial.length}× udział` : null,
-            notConfBreakdown.dostepnosc.length ? `${notConfBreakdown.dostepnosc.length}× dostępność` : null,
-            notConfBreakdown.wiadomosci.length ? `${notConfBreakdown.wiadomosci.length}× wiadomość` : null,
-          ].filter(Boolean).join(' · ')
-        : 'wszystko potwierdzone',
+            notConfBreakdown.udzial.length     ? { n: notConfBreakdown.udzial.length,     label: 'nie potwierdziło udziału',   dot: 'bg-amber-400' } : null,
+            notConfBreakdown.dostepnosc.length ? { n: notConfBreakdown.dostepnosc.length, label: 'nie podało dostępności',      dot: 'bg-gray-400'  } : null,
+            notConfBreakdown.wiadomosci.length ? { n: notConfBreakdown.wiadomosci.length, label: 'bez odpowiedzi na wiadomość', dot: 'bg-blue-500'  } : null,
+          ].filter(Boolean) as { n: number; label: string; dot: string }[]
+        : undefined,
       warn: notConfirmedCount > 0,
       tip: notConfirmedTip, tipAlign: 'left' as const,
       cta: notConfirmedCount > 0 ? { label: 'Wyślij ponaglenie', href: '/messages' } : undefined,
@@ -928,10 +930,22 @@ export default function DashboardPage() {
               )}
             </div>
             <Tooltip tip={s.tip} align={s.tipAlign}>
-              <span className={`text-xs font-medium mt-0.5 md:mt-1 underline decoration-dotted underline-offset-2 cursor-help transition-colors
-                ${s.warn ? 'text-red-500 decoration-red-300' : 'text-gray-500 decoration-gray-300'}`}>
-                {s.sub}
-              </span>
+              {(s as any).subLines ? (
+                <span className="flex flex-col gap-1 mt-1 cursor-help">
+                  {((s as any).subLines as { n: number; label: string; dot: string }[]).map((l, i) => (
+                    <span key={i} className="flex items-center gap-1.5 text-[11px] leading-tight" style={{ color: '#7a7068' }}>
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${l.dot}`} />
+                      <b className="tabular-nums" style={{ color: s.warn ? '#c8102e' : '#1a1410' }}>{l.n}</b>
+                      <span className="truncate">{l.label}</span>
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span className={`text-xs font-medium mt-0.5 md:mt-1 underline decoration-dotted underline-offset-2 cursor-help transition-colors
+                  ${s.warn ? 'text-red-500 decoration-red-300' : 'text-gray-500 decoration-gray-300'}`}>
+                  {s.sub}
+                </span>
+              )}
             </Tooltip>
             {s.cta && (
               <div className="mt-auto pt-2 md:pt-3" onClick={e => e.stopPropagation()}>
