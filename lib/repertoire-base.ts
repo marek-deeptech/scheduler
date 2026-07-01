@@ -50,6 +50,26 @@ export function prevDate(date: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// Dni robocze (pn–pt) ŚCIŚLE między a i b (a < b). Do liczenia montażu/demontażu.
+export function workingDaysBetween(a: string, b: string): number {
+  let n = 0
+  const d = new Date(a + 'T12:00:00'); d.setDate(d.getDate() + 1)
+  const end = new Date(b + 'T12:00:00')
+  while (d < end) { const w = d.getDay(); if (w >= 1 && w <= 5) n++; d.setDate(d.getDate() + 1) }
+  return n
+}
+
+// Czy tytuł B może wejść na scenę w dniu D po tytule A (stan sceny): musi minąć
+// tyle dni roboczych, ile trwa demontaż A + montaż B. Gdy brak poprzednika — OK.
+export function changeoverOk(
+  last: { date: string; teardown: number } | undefined,
+  date: string,
+  setupOfNext: number,
+): boolean {
+  if (!last) return true
+  return workingDaysBetween(last.date, date) >= (last.teardown + setupOfNext)
+}
+
 // Wybierz k elementów równomiernie rozłożonych po liście (deterministycznie).
 export function pickEvenly(arr: string[], k: number): Set<string> {
   if (k <= 0) return new Set()

@@ -10,7 +10,7 @@ import {
   stageCapacity, asp, isWeekend,
   type PriceCategory, type Stage, type FinanceParams,
 } from './finance'
-import { prevDate, type Slot } from './repertoire-base'
+import { prevDate, changeoverOk, type Slot } from './repertoire-base'
 
 export type Objective = 'max_revenue' | 'max_attendance' | 'min_cost' | 'balanced'
 
@@ -34,6 +34,8 @@ export interface OptProduction {
   priceLastMinute: number
   assumedAttendance: number
   fixedCost: number
+  setup: number      // montaż scenografii (dni robocze)
+  teardown: number   // demontaż scenografii (dni robocze)
 }
 
 export interface OptInputs {
@@ -89,6 +91,8 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
   const titleCount = new Map<string, number>()
   const lastDate = new Map<string, string>()         // prodId -> ostatni dzień grania
   const runLen   = new Map<string, number>()         // prodId -> długość bieżącego bloku
+  // Stan sceny (montaż/demontaż): ostatni tytuł na scenie i jego demontaż.
+  const stageState: Record<Stage, { date: string; title: string; teardown: number } | undefined> = { duza: undefined, mala: undefined }
   const perfs: Perf[] = []
   const prodById: Record<string, OptProduction> = {}
   inp.prods.forEach(p => prodById[p.id] = p)
@@ -111,50 +115,72 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
     titleCount.set(p.id, (titleCount.get(p.id) ?? 0) + 1)
     runLen.set(p.id, (lastDate.get(p.id) === prevDate(date) ? (runLen.get(p.id) ?? 0) : 0) + 1)
     lastDate.set(p.id, date)
+    stageState[p.stage] = { date, title: p.id, teardown: p.teardown }
   }
 
-  // 1) Zablokowane Favourites — twarda zajętość (slot wieczorny danego dnia)
+  // Scena wolna dla tytułu p w dniu D: ten sam tytuł kontynuuje albo minął
+  // demontaż poprzedniego + montaż p (dni robocze).
+  function stageFree(p: OptProduction, date: string): boolean {
+    const st = stageState[p.stage]
+    if (!st || st.title === p.id) return true
+    return changeoverOk({ date: st.date, teardown: st.teardown }, date, p.setup)
+  }
+
+  // Przetwarzanie CHRONOLOGICZNE (by montaż/demontaż i bloki liczyły się poprawnie):
+  // najpierw zablokowane Favourites danego dnia (twardo, wieczór), potem pozostałe sloty.
+  const favByDate = new Map<string, string[]>()
   for (const [pid, dates] of Object.entries(inp.lockedByProd)) {
-    const p = prodById[pid]
-    if (!p) continue
-    for (const date of [...dates].sort()) place(p, date, '19:00:00', '21:30:00')
+    if (!prodById[pid]) continue
+    for (const d of dates) { const arr = favByDate.get(d) ?? []; arr.push(pid); favByDate.set(d, arr) }
   }
+  const slotsByDate = new Map<string, Slot[]>()
+  for (const s of inp.slots) { const arr = slotsByDate.get(s.date) ?? []; arr.push(s); slotsByDate.set(s.date, arr) }
+  const allDates = [...new Set([...favByDate.keys(), ...slotsByDate.keys()])].sort()
 
-  // 2) Wypełnianie pozostałych slotów wg celu finansowego
-  for (const slot of inp.slots) {
-    if (usedSlot.has(`${slot.date}|${slot.start}`)) continue   // np. zajęty przez Favourite
-    const busy = busyOf(slot.date)
-    const unav = inp.unavailByDate[slot.date] ?? new Set<string>()
+  for (const date of allDates) {
+    // a) Favourites (zatwierdzone, twarda zajętość wieczoru)
+    for (const pid of favByDate.get(date) ?? []) {
+      const p = prodById[pid]
+      if (!p || usedSlot.has(`${date}|19:00:00`)) continue
+      place(p, date, '19:00:00', '21:30:00')
+    }
+    // b) Pozostałe sloty tego dnia — wg celu finansowego
+    for (const slot of slotsByDate.get(date) ?? []) {
+      if (usedSlot.has(`${date}|${slot.start}`)) continue   // np. zajęty przez Favourite
+      const busy = busyOf(date)
+      const unav = inp.unavailByDate[date] ?? new Set<string>()
+      const yd = prevDate(date)
 
-    const yd = prevDate(slot.date)
-    const cands = inp.prods.filter(p =>
-      !p.isFavourite &&
-      p.theatreId === theatre &&
-      p.castIds.length > 0 &&
-      (titleCount.get(p.id) ?? 0) < cap &&
-      !(lastDate.get(p.id) === yd && (runLen.get(p.id) ?? 0) >= BLOCK_CAP) && // po bloku — odpoczynek
-      p.castIds.every(a => !busy.has(a)) &&        // brak konfliktu obsady tego dnia
-      p.castIds.every(a => !unav.has(a))           // pełna obsada dostępna (urlop/choroba/CORE)
-    )
-    if (cands.length === 0) continue
+      const cands = inp.prods.filter(p =>
+        !p.isFavourite &&
+        p.theatreId === theatre &&
+        p.castIds.length > 0 &&
+        (titleCount.get(p.id) ?? 0) < cap &&
+        !(lastDate.get(p.id) === yd && (runLen.get(p.id) ?? 0) >= BLOCK_CAP) && // po bloku — odpoczynek
+        stageFree(p, date) &&                        // scena wolna (montaż/demontaż)
+        p.castIds.every(a => !busy.has(a)) &&        // brak konfliktu obsady tego dnia
+        p.castIds.every(a => !unav.has(a))           // pełna obsada dostępna (urlop/choroba/CORE)
+      )
+      if (cands.length === 0) continue
 
-    const scored = cands.map(p => {
-      const fin = perfFinance(p, slot.date, inp.finance)
-      let base =
-        objective === 'max_revenue'    ? fin.revenue :
-        objective === 'max_attendance' ? fin.attendance * 100000 :
-        objective === 'min_cost'       ? -fin.cost :
-                                         fin.margin
-      // bonus blokowy: kontynuacja tytułu z wczoraj, dopóki blok < BLOCK_CAP
-      if (lastDate.get(p.id) === yd && (runLen.get(p.id) ?? 0) < BLOCK_CAP) base *= 1.25
-      return { p, fin, score: base }
-    })
+      const scored = cands.map(p => {
+        const fin = perfFinance(p, date, inp.finance)
+        let base =
+          objective === 'max_revenue'    ? fin.revenue :
+          objective === 'max_attendance' ? fin.attendance * 100000 :
+          objective === 'min_cost'       ? -fin.cost :
+                                           fin.margin
+        // bonus blokowy: kontynuacja tytułu z wczoraj, dopóki blok < BLOCK_CAP
+        if (lastDate.get(p.id) === yd && (runLen.get(p.id) ?? 0) < BLOCK_CAP) base *= 1.25
+        return { p, fin, score: base }
+      })
 
-    let pool = scored
-    if (objective === 'min_cost') pool = pool.filter(s => s.fin.margin > 0)
-    if (pool.length === 0) continue
-    pool.sort((a, b) => b.score - a.score)
-    place(pool[0].p, slot.date, slot.start, slot.end)
+      let pool = scored
+      if (objective === 'min_cost') pool = pool.filter(s => s.fin.margin > 0)
+      if (pool.length === 0) continue
+      pool.sort((a, b) => b.score - a.score)
+      place(pool[0].p, date, slot.start, slot.end)
+    }
   }
 
   // Totals

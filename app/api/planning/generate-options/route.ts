@@ -51,10 +51,12 @@ export async function POST(request: Request) {
     { data: slots }, { data: dayStatuses }, { data: otherEvents }, fp,
   ] = await Promise.all([
     (async () => {
-      // Tolerancyjnie na brak migracji 'stage' — ponów bez tej kolumny.
-      const sel = (withStage: boolean): string => `id, title, theatre_id, is_favourite, ${withStage ? 'stage, ' : ''}price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost`
-      const r = await supabase.from('productions').select(sel(true))
-      return r.error ? await supabase.from('productions').select(sel(false)) : r
+      // Tolerancyjnie na brak migracji 'stage' / 'setup-teardown' — ponawiamy z mniejszym zestawem kolumn.
+      const base = 'id, title, theatre_id, is_favourite, price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost'
+      let r = await supabase.from('productions').select(`${base}, stage, setup_days, teardown_days`)
+      if (r.error) r = await supabase.from('productions').select(`${base}, stage`)
+      if (r.error) r = await supabase.from('productions').select(base)
+      return r
     })(),
     supabase.from('artist_productions').select('artist_id, production_id'),
     supabase.from('theatres').select('id, name'),
@@ -99,6 +101,8 @@ export async function POST(request: Request) {
         priceLastMinute: p.price_last_minute ?? def.lastMinute,
         assumedAttendance: p.assumed_attendance ?? fp.defaultAttendance,
         fixedCost: p.fixed_cost ?? fp.defaultFixedCost,
+        setup: p.setup_days ?? 0,
+        teardown: p.teardown_days ?? 0,
       }
     })
 

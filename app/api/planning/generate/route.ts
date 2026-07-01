@@ -3,9 +3,11 @@ import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import path from 'path'
 import {
-  profileFor, VARIANTS, buildSlots, prevDate,
+  profileFor, VARIANTS, buildSlots, prevDate, changeoverOk,
   type Variant, type Profile,
 } from '@/lib/repertoire-base'
+
+type StageKey = 'duza' | 'mala'
 
 function getAnthropicKey(): string {
   if (process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY
@@ -25,7 +27,7 @@ const supabase = createClient(
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-interface Production { id: string; title: string; theatreId: string }
+interface Production { id: string; title: string; theatreId: string; stage: StageKey; setup: number; teardown: number }
 interface Room       { id: string; name: string;  theatreId: string }
 
 interface Show {
@@ -69,7 +71,7 @@ function buildSchedule(
   castMap:    Record<string, string[]>,
   unavailMap: Record<string, Set<string>>,
   profile:    Profile,
-  room:       Room | null,
+  stageRoom:  (stage: StageKey) => Room | null,
 ): Show[] {
   const slots = buildSlots(variant, month, profile)
 
@@ -83,6 +85,8 @@ function buildSchedule(
   const count:    Record<string, number> = {}
   const todaysActors: Record<string, Set<string>> = {}
   const todaysTitles: Record<string, Set<string>> = {}
+  // Stan sceny (montaż/demontaż): ostatni tytuł na scenie i jego demontaż.
+  const stageState: Record<StageKey, { date: string; title: string; teardown: number } | undefined> = { duza: undefined, mala: undefined }
   const result: Show[] = []
 
   for (const s of slots) {
@@ -90,9 +94,17 @@ function buildSchedule(
     todaysTitles[s.date] ??= new Set()
     const yd = prevDate(s.date)
     const conflict = (pid: string) => (castMap[pid] ?? []).some(a => todaysActors[s.date].has(a))
+    // Scena wolna: ten sam tytuł kontynuuje (bez zmiany scenografii) albo minął
+    // demontaż poprzedniego + montaż nowego (dni robocze).
+    const stageFree = (p: Production) => {
+      const st = stageState[p.stage]
+      if (!st || st.title === p.id) return true
+      return changeoverOk({ date: st.date, teardown: st.teardown }, s.date, p.setup)
+    }
 
-    // Kandydaci: mogą grać, nie grają już dziś, brak konfliktu obsady (twardo).
-    const elig = prods.filter(p => canPlay(p.id, s.date) && !todaysTitles[s.date].has(p.id) && !conflict(p.id))
+    // Kandydaci: mogą grać, nie grają już dziś, brak konfliktu obsady, scena wolna.
+    const elig = prods.filter(p =>
+      canPlay(p.id, s.date) && !todaysTitles[s.date].has(p.id) && !conflict(p.id) && stageFree(p))
     if (!elig.length) continue
 
     // Priorytet 1: kontynuacja bloku (grał wczoraj, blok < variant.block).
@@ -109,6 +121,7 @@ function buildSchedule(
       chosen = elig[0]
     }
 
+    const room = stageRoom(chosen.stage)
     result.push({
       date: s.date, production_id: chosen.id, production_title: chosen.title,
       room_id: room?.id ?? null, room_name: room?.name ?? null,
@@ -117,6 +130,7 @@ function buildSchedule(
     runLen[chosen.id] = (lastDate[chosen.id] === yd ? (runLen[chosen.id] ?? 0) : 0) + 1
     lastDate[chosen.id] = s.date
     count[chosen.id] = (count[chosen.id] ?? 0) + 1
+    stageState[chosen.stage] = { date: s.date, title: chosen.id, teardown: chosen.teardown }
     todaysTitles[s.date].add(chosen.id)
     for (const a of (castMap[chosen.id] ?? [])) todaysActors[s.date].add(a)
   }
@@ -223,7 +237,12 @@ export async function POST(request: Request) {
     { data: theatres },
     { data: dayStatuses },
   ] = await Promise.all([
-    supabase.from('productions').select('id, title, status, theatre_id').eq('theatre_id', theatreId).order('title'),
+    (async () => {
+      // Tolerancyjnie na brak migracji stage / setup-teardown.
+      const sel = (extra: boolean) => `id, title, status, theatre_id${extra ? ', stage, setup_days, teardown_days' : ''}`
+      const r = await supabase.from('productions').select(sel(true)).eq('theatre_id', theatreId).order('title')
+      return r.error ? await supabase.from('productions').select(sel(false)).eq('theatre_id', theatreId).order('title') : r
+    })(),
     supabase.from('artist_productions').select('artist_id, production_id'),
     supabase.from('artists').select('id, name'),
     supabase.from('rooms').select('id, name, theatre_id').eq('theatre_id', theatreId).limit(20),
@@ -258,22 +277,33 @@ export async function POST(request: Request) {
   // Active productions (with cast) for this theatre
   const activeProds: Production[] = ((productions ?? []) as any[])
     .filter(p => (castMap[p.id]?.length ?? 0) > 0)
-    .map(p => ({ id: p.id, title: p.title, theatreId: p.theatre_id ?? theatreId }))
+    .map(p => ({
+      id: p.id, title: p.title, theatreId: p.theatre_id ?? theatreId,
+      stage: (p.stage === 'mala' ? 'mala' : 'duza') as StageKey,
+      setup: p.setup_days ?? 0, teardown: p.teardown_days ?? 0,
+    }))
 
   if (activeProds.length === 0) {
     return Response.json({ error: 'Brak aktywnych tytułów z obsadą dla tego teatru' }, { status: 400 })
   }
 
-  // Główna scena teatru (do przypisania spektaklom)
-  const mainRoom: Room | null = ((rooms ?? []) as any[])[0]
-    ? { id: (rooms as any[])[0].id, name: (rooms as any[])[0].name, theatreId }
-    : null
+  // Sale wg sceny (Duża / Mała) — montaż/demontaż liczony osobno per scena.
+  const stageRoomMap: Record<StageKey, Room | null> = { duza: null, mala: null }
+  for (const r of (rooms ?? []) as any[]) {
+    const n = (r.name ?? '').toLowerCase()
+    const room: Room = { id: r.id, name: r.name, theatreId }
+    if (n.includes('mała') || n.includes('mala') || n.includes('cafe')) stageRoomMap.mala ??= room
+    else stageRoomMap.duza ??= room
+  }
+  const firstRoom: Room | null = ((rooms ?? []) as any[])[0]
+    ? { id: (rooms as any[])[0].id, name: (rooms as any[])[0].name, theatreId } : null
+  const stageRoom = (stage: StageKey): Room | null => stageRoomMap[stage] ?? firstRoom
 
   // ── Bazowy wzorzec: 4 warianty wokół realnego profilu teatru ─────────────────
   const profile = profileFor(theatreNames[theatreId] ?? '')
   const strategies = VARIANTS.map(v => ({
     label: v.label,
-    shows: buildSchedule(v, month, activeProds, castMap, unavailMap, profile, mainRoom),
+    shows: buildSchedule(v, month, activeProds, castMap, unavailMap, profile, stageRoom),
     hint:  v.hint,
   }))
 

@@ -181,6 +181,8 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
     priceLastMinute: '' as string,
     attendancePct:   '75' as string,  // % w UI, zapis jako 0–1
     fixedCost:       '8000' as string,
+    setupDays:       '0' as string,    // montaż scenografii (dni robocze)
+    teardownDays:    '0' as string,    // demontaż scenografii (dni robocze)
   })
 
   // Pojemność sceny tytułu — do podglądu progu rentowności
@@ -227,7 +229,8 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
       const cat: PriceCategory = (data as any).price_category === 'premium' ? 'premium' : 'standard'
       const stage: Stage = ((data as any).stage === 'mala' || (!(data as any).stage && (data as any).price_category === 'mala')) ? 'mala' : 'duza'
       const def = CATEGORY_DEFAULTS[cat] ?? CATEGORY_DEFAULTS.standard
-      setFin({
+      setFin(f => ({
+        ...f,
         stage,
         priceCategory:   cat,
         priceNormal:     String((data as any).price_normal      ?? def.normal),
@@ -235,7 +238,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
         priceLastMinute: String((data as any).price_last_minute ?? def.lastMinute),
         attendancePct:   String(Math.round(((data as any).assumed_attendance ?? 0.75) * 100)),
         fixedCost:       String((data as any).fixed_cost ?? 8000),
-      })
+      }))
     })()
   }, [production?.id])
 
@@ -249,6 +252,20 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
           ...f,
           favourite_level: (data as any).favourite_level ?? f.favourite_level,
           hit_level:       (data as any).hit_level       ?? 0,
+        }))
+      })
+  }, [production?.id])
+
+  // Montaż / demontaż (tolerancyjnie — gdy brak migracji setup-teardown)
+  useEffect(() => {
+    if (!production) return
+    supabase.from('productions').select('setup_days, teardown_days').eq('id', production.id).single()
+      .then(({ data, error }) => {
+        if (error || !data) return
+        setFin(f => ({
+          ...f,
+          setupDays:    String((data as any).setup_days    ?? 0),
+          teardownDays: String((data as any).teardown_days ?? 0),
         }))
       })
   }, [production?.id])
@@ -346,6 +363,11 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
       const { error: catErr } = await supabase.from('productions')
         .update({ favourite_level: form.favourite_level, hit_level: form.hit_level }).eq('id', productionId)
       if (catErr) console.warn('Zapis kategorii (favourite_level/hit_level) pominięty — uruchom supabase-migration-categories.sql:', catErr.message)
+
+      // Montaż / demontaż — osobno i tolerancyjnie (gdy brak migracji setup-teardown)
+      const { error: stErr } = await supabase.from('productions')
+        .update({ setup_days: parseInt(fin.setupDays) || 0, teardown_days: parseInt(fin.teardownDays) || 0 }).eq('id', productionId)
+      if (stErr) console.warn('Zapis montażu/demontażu pominięty — uruchom supabase-migration-setup-teardown.sql:', stErr.message)
     }
 
     setSaving(false)
@@ -472,6 +494,31 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
               <p className="mt-1 text-[11px] text-gray-400">
                 Tytuł gra na jednej scenie (unikalna scenografia) — ustawia pojemność widowni i sugerowany koszt.
               </p>
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Scenografia — montaż / demontaż <span className="font-normal text-gray-400">(dni robocze)</span></label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <input
+                    type="number" min={0} step={1}
+                    value={fin.setupDays}
+                    onChange={e => setFin(f => ({ ...f, setupDays: e.target.value }))}
+                    className={inputCls}
+                    placeholder="Montaż"
+                  />
+                  <p className="mt-1 text-[11px] text-gray-400">Montaż — dni na postawienie scenografii przed 1. spektaklem.</p>
+                </div>
+                <div>
+                  <input
+                    type="number" min={0} step={1}
+                    value={fin.teardownDays}
+                    onChange={e => setFin(f => ({ ...f, teardownDays: e.target.value }))}
+                    className={inputCls}
+                    placeholder="Demontaż"
+                  />
+                  <p className="mt-1 text-[11px] text-gray-400">Demontaż — po ostatnim spektaklu scena zablokowana tyle dni.</p>
+                </div>
+              </div>
             </div>
             <div>
               <label className={labelCls}>Status</label>
