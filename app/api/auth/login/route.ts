@@ -34,9 +34,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Nieprawidłowy teatr.' }, { status: 401 })
   }
 
+  // Siatka bezpieczeństwa rollout: dla org bazowej (Fundacja) akceptuj też hasła z
+  // env (COORD_PASSWORD/ACTOR_PASSWORD), by nie zablokować prod. Inne org — tylko DB.
+  const FUNDACJA_ID = '11111111-1111-1111-1111-111111111111'
+  const envCoord = org.id === FUNDACJA_ID ? process.env.COORD_PASSWORD : undefined
+  const envActor = org.id === FUNDACJA_ID ? process.env.ACTOR_PASSWORD : undefined
+
   let role: Role | null = null
-  if (org.coord_password && password === org.coord_password) role = 'coordinator'
-  else if (org.actor_password && password === org.actor_password) role = 'actor'
+  if ((org.coord_password && password === org.coord_password) || (envCoord && password === envCoord)) role = 'coordinator'
+  else if ((org.actor_password && password === org.actor_password) || (envActor && password === envActor)) role = 'actor'
   if (!role) return NextResponse.json({ error: 'Nieprawidłowe hasło.' }, { status: 401 })
 
   const token = await signSession(role, org.id, secret)

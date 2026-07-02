@@ -46,8 +46,8 @@ begin
     join pg_class rel on rel.oid = con.conrelid
     join pg_namespace n on n.oid = rel.relnamespace
     where n.nspname = 'public' and rel.relname = 'app_settings' and con.contype in ('u','p')
-      and (select array_agg(att.attname order by att.attnum)
-           from unnest(con.conkey) k join pg_attribute att on att.attrelid = con.conrelid and att.attnum = k) = array['key']
+      and (select array_agg(att.attname::text order by att.attnum)
+           from unnest(con.conkey) k join pg_attribute att on att.attrelid = con.conrelid and att.attnum = k) = array['key']::text[]
   loop
     execute format('alter table public.app_settings drop constraint %I', c.conname);
   end loop;
