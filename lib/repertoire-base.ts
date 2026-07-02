@@ -8,27 +8,40 @@
 
 export interface Profile {
   key:            string
-  eveningTarget:  number              // ile dni z wieczornym spektaklem (reszta = ciemne)
+  eveningTarget:  number              // ile DNI grania (reszta = ciemne)
   matSun:         number              // odsetek niedziel z dodatkowym porankiem
   matSat:         number              // odsetek sobót z porankiem
   matWeekday:     number              // odsetek dni roboczych z porankiem (Och: 12:00 szkolne)
   matWeekendTime: [string, string]
   matWeekdayTime: [string, string]
+  // Sloty WIECZORNE emitowane na każdy dzień grania. Teatry jednoscenowe
+  // (Polonia/Och) mają 1; TD (4 sceny) gra kilka wieczorów RÓWNOLEGLE na różnych
+  // scenach — kolejne sloty mają przesunięte godziny (19:00/19:30/18:00), by były
+  // odrębne i by generator obsadził je różnymi tytułami na różnych scenach.
+  eveSlots:       Array<[string, string]>
 }
 
 export function profileFor(name: string): Profile {
   const n = (name || '').toLowerCase()
   if (n.includes('och'))
     return { key: 'Och', eveningTarget: 28, matSun: 0.50, matSat: 0.45, matWeekday: 0.14,
-             matWeekendTime: ['16:00:00', '18:00:00'], matWeekdayTime: ['12:00:00', '14:00:00'] }
-  // Teatr Dramatyczny — teatr państwowy, 3 sceny, repertuar codzienny z porankami
-  // szkolnymi w tygodniu. Profil placeholderowy (docelowo z realnego repertuaru TD).
+             matWeekendTime: ['16:00:00', '18:00:00'], matWeekdayTime: ['12:00:00', '14:00:00'],
+             eveSlots: [['19:00:00', '21:30:00']] }
+  // Teatr Dramatyczny im. G. Holoubka — teatr państwowy, 4 sceny grające RÓWNOLEGLE.
+  // Profil wyprowadzony z realnego repertuaru TD (teatrdramatyczny.pl, VII+IX 2026):
+  //  • ~1,6 spektaklu/dzień grania w próbce letniej → w pełnym sezonie 2 sceny/wieczór
+  //    (eveSlots ×2: 19:00 i 19:30 — obie pory dominują w danych),
+  //  • wieczór 19:00/19:30; weekendowe wczesne 17:00–19:00; szkolne poranki 11:00 w tygodniu,
+  //  • poniedziałek najlżejszy/ciemny, weekend cięższy (ndz≈sob),
+  //  • bloki 2-dniowe (13/18 przebiegów w danych), tytuł ~2× w oknie — jak Polonia/Och.
   if (n.includes('dramatyczny'))
-    return { key: 'TD', eveningTarget: 30, matSun: 0.40, matSat: 0.30, matWeekday: 0.25,
-             matWeekendTime: ['17:00:00', '19:00:00'], matWeekdayTime: ['11:00:00', '13:00:00'] }
+    return { key: 'TD', eveningTarget: 26, matSun: 0.55, matSat: 0.45, matWeekday: 0.15,
+             matWeekendTime: ['17:00:00', '19:00:00'], matWeekdayTime: ['11:00:00', '13:00:00'],
+             eveSlots: [['19:00:00', '21:00:00'], ['19:30:00', '21:30:00']] }
   // Domyślnie profil typu „Polonia" (jedna duża scena, mniej poranków)
   return { key: 'Polonia', eveningTarget: 26, matSun: 0.45, matSat: 0.20, matWeekday: 0,
-           matWeekendTime: ['16:00:00', '18:00:00'], matWeekdayTime: ['12:00:00', '14:00:00'] }
+           matWeekendTime: ['16:00:00', '18:00:00'], matWeekdayTime: ['12:00:00', '14:00:00'],
+           eveSlots: [['19:00:00', '21:30:00']] }
 }
 
 // Waga dnia tygodnia (0=Ndz … 6=Sob): pn najlżej, ndz najciężej — z rozkładu realnego.
@@ -119,7 +132,9 @@ export function buildSlots(variant: Variant, month: string, profile: Profile): S
     if (dark.has(d.date)) continue
     const mt = matDays.get(d.date)
     if (mt) slots.push({ date: d.date, dow: d.dow, start: mt[0], end: mt[1], kind: 'mat' })
-    slots.push({ date: d.date, dow: d.dow, start: '19:00:00', end: '21:30:00', kind: 'eve' })
+    // Wieczory: 1 (Polonia/Och) lub kilka RÓWNOLEGŁYCH scen (TD) — po jednym slocie
+    // na scenę, z przesuniętymi godzinami (odrębne date|start w generatorze).
+    for (const [s, e] of profile.eveSlots) slots.push({ date: d.date, dow: d.dow, start: s, end: e, kind: 'eve' })
   }
   return slots
 }
