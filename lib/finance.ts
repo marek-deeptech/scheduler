@@ -92,7 +92,9 @@ const DEFAULT_SCENES: Scene[] = [
 ]
 
 // Rejestr scen per teatr (klucz = theatre_id). Pojemności wg stron WWW:
-// Polonia Duża 266 / Mała 90; Och Duża 450 / Och-Cafe 100; TD 3 sceny (placeholdery).
+// Polonia Duża 266 / Mała 90; Och Duża 450 / Och-Cafe 100.
+// TD (im. G. Holoubka) — 4 realne sceny wg teatrdramatyczny.pl + theatre-architecture.eu:
+// Duża Scena (Holoubka) 650, Scena na Woli (Łomnickiego) ~400, Mała Scena ~120, Przodownik ~100.
 export const THEATRE_SCENES: Record<string, Scene[]> = {
   [THEATRE_ID.polonia]: [
     { key: 'duza', label: 'Duża', capacity: 266, fixedCost: 12000, priceCategory: 'standard' },
@@ -103,9 +105,10 @@ export const THEATRE_SCENES: Record<string, Scene[]> = {
     { key: 'mala', label: 'Och-Cafe', capacity: 100, fixedCost: 3000,  priceCategory: 'mala', roomMatch: ['mała', 'mala', 'cafe'] },
   ],
   [THEATRE_ID.td]: [
-    { key: 'duza',       label: 'Duża Scena',      capacity: 600, fixedCost: 18000, priceCategory: 'standard', roomMatch: ['duża', 'duza'] },
-    { key: 'kameralna',  label: 'Scena Kameralna', capacity: 140, fixedCost: 6000,  priceCategory: 'mala',     roomMatch: ['kameralna'] },
-    { key: 'przodownik', label: 'Scena Przodownik', capacity: 90, fixedCost: 4000,  priceCategory: 'mala',     roomMatch: ['przodownik'] },
+    { key: 'duza',       label: 'Duża Scena',       capacity: 650, fixedCost: 18000, priceCategory: 'standard', roomMatch: ['duża', 'duza', 'holoubk'] },
+    { key: 'nawoli',     label: 'Scena na Woli',    capacity: 400, fixedCost: 12000, priceCategory: 'standard', roomMatch: ['woli', 'łomnick', 'lomnick'] },
+    { key: 'mala',       label: 'Mała Scena',       capacity: 120, fixedCost: 6000,  priceCategory: 'mala',     roomMatch: ['mała', 'mala'] },
+    { key: 'przodownik', label: 'Scena Przodownik', capacity: 100, fixedCost: 4000,  priceCategory: 'mala',     roomMatch: ['przodownik'] },
   ],
 }
 
