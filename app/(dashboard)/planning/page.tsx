@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
+import { useOrg } from '@/lib/org-context'
 import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import SendConfirmModal from '@/components/SendConfirmModal'
 import { CategoryMarks } from '@/components/CategoryMarks'
@@ -88,7 +89,10 @@ const STAGE_CFG: Record<MonthStage, { label: string; bg: string; color: string; 
 
 export default function PlanningPage() {
   const { selectedTheatreId, setSelectedTheatreId } = useTheatre()
-  const allMonths = getNextMonths(13)   // bieżący + 12 miesięcy do przodu
+  const { planningHorizon } = useOrg()
+  // Horyzont planowania per organizacja: bieżący + `planningHorizon` miesięcy do przodu
+  // (TD planuje 2 mies., Fundacja 6). Steruje pickerem miesiąca i osią przeglądu.
+  const allMonths = getNextMonths(planningHorizon + 1)
   // Bieżący miesiąc (YYYY-MM) — planujemy tylko miesiące przyszłe.
   const thisMonthKey = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })()
   const [approvedMonths, setApprovedMonths] = useState<Set<string>>(new Set())
@@ -97,8 +101,8 @@ export default function PlanningPage() {
   const [monthsReady,    setMonthsReady]    = useState(false)
   const [theatreName,    setTheatreName]    = useState<string>('')
 
-  // Przegląd statusów: bieżący miesiąc + 12 kolejnych
-  const overviewMonths = getNextMonths(13)
+  // Przegląd statusów: bieżący miesiąc + horyzont planowania organizacji
+  const overviewMonths = getNextMonths(planningHorizon + 1)
 
   // Propozycje pogrupowane per miesiąc + status etapu — PER TEATR.
   // Planowanie jest procedowane osobno dla każdego teatru; legacy propozycje globalne

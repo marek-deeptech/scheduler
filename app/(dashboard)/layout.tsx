@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { LanguageProvider, useLanguage } from '@/lib/language-context'
 import { TheatreProvider, useTheatre } from '@/lib/theatre-context'
+import { OrgProvider, useOrg } from '@/lib/org-context'
 import { ProfileProvider, useProfile } from '@/lib/profile-context'
 import { supabase } from '@/lib/supabase'
 import { sortByLastName } from '@/lib/names'
@@ -399,8 +400,13 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
   const { t } = useLanguage()
   const { selectedTheatreId, setSelectedTheatreId } = useTheatre()
   const { mode } = useProfile()
+  const { org } = useOrg()
   const [theatres, setTheatres] = useState<Theatre[] | null>(null)
   const pathname = usePathname()
+
+  // Logo/nazwa organizacji w nagłówku. Fundacja zachowuje logo Polonia nawet
+  // bez kolumny logo_url (fallback po slugu); pozostałe org pokazują nazwę.
+  const orgLogo = org?.logoUrl ?? (org?.slug === 'fundacja-kj' ? '/logo-teatr-polonia.jpg' : null)
 
   useEffect(() => {
     supabase.from('theatres').select('id, name').order('name')
@@ -440,14 +446,20 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
       style={{ background: '#faf6f0', borderRight: mobile ? 'none' : '1px solid #e4ddd4' }}
     >
 
-      {/* Logo */}
-      <div className="px-4 pt-5 pb-4 flex items-center justify-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/logo-teatr-polonia.jpg"
-          alt="Teatr Polonia"
-          className="w-full max-w-[148px] h-auto"
-        />
+      {/* Logo / nazwa organizacji */}
+      <div className="px-4 pt-5 pb-4 flex items-center justify-center min-h-[60px]">
+        {orgLogo ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={orgLogo}
+            alt={org?.name ?? 'Logo'}
+            className="w-full max-w-[148px] h-auto"
+          />
+        ) : (
+          <span className="text-center text-[15px] font-bold leading-tight" style={{ color: '#1a1410' }}>
+            {org?.name ?? ' '}
+          </span>
+        )}
       </div>
 
       {/* Crimson divider */}
@@ -707,6 +719,8 @@ function MobileTabBar() {
 function Shell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const pathname = usePathname()
+  const { org } = useOrg()
+  const orgLogo = org?.logoUrl ?? (org?.slug === 'fundacja-kj' ? '/logo-teatr-polonia.jpg' : null)
 
   // Close the drawer after navigation
   useEffect(() => { setDrawerOpen(false) }, [pathname])
@@ -773,8 +787,12 @@ function Shell({ children }: { children: React.ReactNode }) {
               <path d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-teatr-polonia.jpg" alt="Teatr Polonia" className="h-6 w-auto shrink-0" />
+          {orgLogo ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={orgLogo} alt={org?.name ?? 'Logo'} className="h-6 w-auto shrink-0" />
+          ) : (
+            <span className="text-[13px] font-bold truncate max-w-[150px]" style={{ color: '#1a1410' }}>{org?.name ?? ''}</span>
+          )}
 
           {/* Logged-in user + Zaloguj/Wyloguj */}
           <MobileUserChip onOpenDrawer={() => setDrawerOpen(true)} />
@@ -805,11 +823,13 @@ function Shell({ children }: { children: React.ReactNode }) {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <LanguageProvider>
-      <TheatreProvider>
-        <ProfileProvider>
-          <Shell>{children}</Shell>
-        </ProfileProvider>
-      </TheatreProvider>
+      <OrgProvider>
+        <TheatreProvider>
+          <ProfileProvider>
+            <Shell>{children}</Shell>
+          </ProfileProvider>
+        </TheatreProvider>
+      </OrgProvider>
     </LanguageProvider>
   )
 }

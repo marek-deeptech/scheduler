@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useTheatre } from '@/lib/theatre-context'
+import { useOrg } from '@/lib/org-context'
 import { supabase } from '@/lib/supabase'
 import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import { CategoryMarks } from '@/components/CategoryMarks'
@@ -616,6 +617,7 @@ function MonthTable({ month, events, accentColor, prodMap, propConflicts, onConf
 
 export default function RepertuarPage() {
   const { selectedTheatreId, setSelectedTheatreId } = useTheatre()
+  const { planningHorizon } = useOrg()
 
   const [proposals,   setProposals]   = useState<Proposal[]>([])
   const [theatres,    setTheatres]    = useState<Theatre[]>([])
@@ -740,9 +742,11 @@ export default function RepertuarPage() {
     const d = new Date(y, mm - 1 + n, 1)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   }
-  const endOfYear   = `${nowKey.slice(0, 4)}-12`
+  // Oś Repertuaru sięga w przód o horyzont planowania organizacji (TD 2 mies.,
+  // Fundacja 6), ale nigdy nie ucina już zatwierdzonych, dalszych miesięcy.
+  const horizonEnd  = addMonths(nowKey, planningHorizon)
   const lastApproved = months.length ? months[months.length - 1].month : nowKey
-  const endKey      = endOfYear >= lastApproved ? endOfYear : lastApproved
+  const endKey      = horizonEnd >= lastApproved ? horizonEnd : lastApproved
   const barMonths: { month: string; proposal?: Proposal }[] = []
   for (let cur = nowKey, guard = 0; cur <= endKey && guard < 60; cur = addMonths(cur, 1), guard++) {
     barMonths.push({ month: cur, proposal: proposalByMonth.get(cur) })
