@@ -4,9 +4,21 @@
 export type PriceCategory = 'premium' | 'standard' | 'mala'
 
 // Scena, na której gra tytuł — twardy atrybut (unikalna scenografia).
-// Niezależny od kategorii cenowej; steruje pojemnością i sugerowanym kosztem.
-export type Stage = 'duza' | 'mala'
-export const STAGE_LABEL: Record<Stage, string> = { duza: 'Duża', mala: 'Mała' }
+// Klucz sceny (`stage`) jest teraz per teatr: dwuscenowe teatry Fundacji używają
+// 'duza'/'mala', TD ma 3 sceny o własnych kluczach. Wartości (pojemność, koszt,
+// etykieta, mapowanie na salę) pochodzą z rejestru THEATRE_SCENES poniżej.
+export type Stage = string
+export const STAGE_LABEL: Record<'duza' | 'mala', string> = { duza: 'Duża', mala: 'Mała' }
+
+/** Definicja sceny teatru — jednostka pojemności/kosztu/etykiety w prognozie. */
+export interface Scene {
+  key: string                    // wartość productions.stage
+  label: string                  // etykieta w UI (np. „Duża", „Kameralna")
+  capacity: number               // pojemność widowni
+  fixedCost: number              // domyślny koszt ryczałtowy per spektakl (zł)
+  priceCategory?: PriceCategory  // sugerowana kategoria cenowa
+  roomMatch?: string[]           // fragmenty nazwy sali → mapowanie stage→room_id
+}
 
 export interface TicketMix {
   normal: number       // udział biletów normalnych (0–1)
@@ -41,6 +53,7 @@ export interface ProductionFinance {
   id: string
   title: string
   stage: Stage
+  theatreId?: string | null   // teatr tytułu — kontekst dla sceny (pojemność/etykieta)
   priceCategory: PriceCategory
   priceNormal: number
   priceReduced: number
@@ -68,19 +81,75 @@ export const STAGE_FIXED_COST: Record<'duza' | 'mala', number> = {
 export const THEATRE_ID = {
   polonia: '96187687-13eb-4b49-ab60-cc587f58119e',
   och:     '8ea01433-7d8b-4710-aba3-b5dcd567eb57',
+  // Teatr Dramatyczny — jeden teatr, trzy sceny (państwowy). UUID stały (seed TD).
+  td:      '22222222-0000-0000-0000-000000000010',
 } as const
+
+// Sceny generyczne — dla teatru spoza rejestru (dwuscenowy fallback).
+const DEFAULT_SCENES: Scene[] = [
+  { key: 'duza', label: 'Duża', capacity: 266, fixedCost: STAGE_FIXED_COST.duza, priceCategory: 'standard' },
+  { key: 'mala', label: 'Mała', capacity: 90,  fixedCost: STAGE_FIXED_COST.mala, priceCategory: 'mala', roomMatch: ['mała', 'mala', 'cafe'] },
+]
+
+// Rejestr scen per teatr (klucz = theatre_id). Pojemności wg stron WWW:
+// Polonia Duża 266 / Mała 90; Och Duża 450 / Och-Cafe 100; TD 3 sceny (placeholdery).
+export const THEATRE_SCENES: Record<string, Scene[]> = {
+  [THEATRE_ID.polonia]: [
+    { key: 'duza', label: 'Duża', capacity: 266, fixedCost: 12000, priceCategory: 'standard' },
+    { key: 'mala', label: 'Mała', capacity: 90,  fixedCost: 3000,  priceCategory: 'mala', roomMatch: ['mała', 'mala', 'cafe'] },
+  ],
+  [THEATRE_ID.och]: [
+    { key: 'duza', label: 'Duża',     capacity: 450, fixedCost: 12000, priceCategory: 'standard' },
+    { key: 'mala', label: 'Och-Cafe', capacity: 100, fixedCost: 3000,  priceCategory: 'mala', roomMatch: ['mała', 'mala', 'cafe'] },
+  ],
+  [THEATRE_ID.td]: [
+    { key: 'duza',       label: 'Duża Scena',      capacity: 600, fixedCost: 18000, priceCategory: 'standard', roomMatch: ['duża', 'duza'] },
+    { key: 'kameralna',  label: 'Scena Kameralna', capacity: 140, fixedCost: 6000,  priceCategory: 'mala',     roomMatch: ['kameralna'] },
+    { key: 'przodownik', label: 'Scena Przodownik', capacity: 90, fixedCost: 4000,  priceCategory: 'mala',     roomMatch: ['przodownik'] },
+  ],
+}
+
+/** Lista scen teatru — do pickera i mapowania sal. Fallback: sceny generyczne. */
+export function scenesForTheatre(theatreId: string | null): Scene[] {
+  return (theatreId && THEATRE_SCENES[theatreId]) || DEFAULT_SCENES
+}
+
+/** Scena danego tytułu (po kluczu `stage`) w kontekście teatru; fallback = 1. scena. */
+export function sceneOf(stage: Stage, theatreId: string | null): Scene {
+  const scenes = scenesForTheatre(theatreId)
+  return scenes.find(s => s.key === stage) ?? scenes[0]
+}
 
 /** Pojemność sceny, na której gra tytuł — wg sceny i teatru. */
 export function stageCapacity(stage: Stage, theatreId: string | null): number {
-  const mala = stage === 'mala'
-  if (theatreId === THEATRE_ID.och)     return mala ? 100 : 450
-  if (theatreId === THEATRE_ID.polonia) return mala ? 90  : 266
-  return mala ? 90 : 266 // fallback
+  return sceneOf(stage, theatreId).capacity
 }
 
 /** Domyślny koszt ryczałtowy wynikający ze sceny. */
-export function costForStage(stage: Stage): number {
-  return stage === 'mala' ? STAGE_FIXED_COST.mala : STAGE_FIXED_COST.duza
+export function costForStage(stage: Stage, theatreId: string | null = null): number {
+  return sceneOf(stage, theatreId).fixedCost
+}
+
+/** Etykieta sceny (np. „Duża", „Kameralna") w kontekście teatru. */
+export function stageLabel(stage: Stage, theatreId: string | null): string {
+  return sceneOf(stage, theatreId).label
+}
+
+/** Mapa scena→room_id: dopasowanie sal teatru do scen po fragmencie nazwy. */
+export function mapRoomsToScenes(
+  scenes: Scene[],
+  rooms: { id: string; name: string | null }[],
+): Record<string, string | null> {
+  const map: Record<string, string | null> = {}
+  for (const s of scenes) map[s.key] = null
+  // Scena bez roomMatch = domyślna (łapie sale nieprzypisane do żadnej innej sceny).
+  const fallback = scenes.find(s => !s.roomMatch) ?? scenes[0]
+  for (const r of rooms) {
+    const n = (r.name ?? '').toLowerCase()
+    const sc = scenes.find(s => s.roomMatch?.some(t => n.includes(t))) ?? fallback
+    if (sc && map[sc.key] == null) map[sc.key] = r.id
+  }
+  return map
 }
 
 /** Średnia cena biletu (ASP) wg mixu typów — wartość brutto. */

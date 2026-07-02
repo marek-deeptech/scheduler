@@ -45,7 +45,7 @@ export interface OptInputs {
   lockedByProd: Record<string, string[]>      // production_id -> zatwierdzone daty (Favourites)
   unavailByDate: Record<string, Set<string>>  // data -> artistId niedostępni (urlop/choroba/CORE)
   finance: FinanceParams
-  stageRoom: (theatreId: string, stage: 'duza' | 'mala') => string | null // -> room_id
+  stageRoom: (theatreId: string, stage: Stage) => string | null // -> room_id
 }
 
 export interface Perf {
@@ -92,7 +92,8 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
   const lastDate = new Map<string, string>()         // prodId -> ostatni dzień grania
   const runLen   = new Map<string, number>()         // prodId -> długość bieżącego bloku
   // Stan sceny (montaż/demontaż): ostatni tytuł na scenie i jego demontaż.
-  const stageState: Record<Stage, { date: string; title: string; teardown: number } | undefined> = { duza: undefined, mala: undefined }
+  // Klucz = dowolny `stage` (2 sceny Fundacji lub 3 sceny TD) — mapa dynamiczna.
+  const stageState: Record<string, { date: string; title: string; teardown: number } | undefined> = {}
   const perfs: Perf[] = []
   const prodById: Record<string, OptProduction> = {}
   inp.prods.forEach(p => prodById[p.id] = p)

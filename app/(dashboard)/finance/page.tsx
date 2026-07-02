@@ -6,7 +6,7 @@ import { useTheatre } from '@/lib/theatre-context'
 import { CategoryMarks } from '@/components/CategoryMarks'
 import {
   DEFAULT_PARAMS, CATEGORY_DEFAULTS, FAVOURITE_ATTENDANCE, forecastEvent, breakEvenAttendance,
-  stageCapacity, asp, fmtPln, fmtPct, isWeekend, STAGE_LABEL,
+  stageCapacity, asp, fmtPln, fmtPct, isWeekend, stageLabel,
   type FinanceParams, type ProductionFinance, type PriceCategory, type Stage,
 } from '@/lib/finance'
 
@@ -71,7 +71,7 @@ export default function FinancePage() {
     const prodMap: Record<string, ProductionFinance> = {}
     if (prodIds.length > 0) {
       // Tolerancyjnie na brak migracji — 'stage' i poziomy kategorii niezależnie.
-      const finSel = (s: boolean, l: boolean): string => `id, title, ${s ? 'stage, ' : ''}${l ? 'favourite_level, hit_level, ' : ''}price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost, is_favourite`
+      const finSel = (s: boolean, l: boolean): string => `id, title, theatre_id, ${s ? 'stage, ' : ''}${l ? 'favourite_level, hit_level, ' : ''}price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost, is_favourite`
       let { data: pData, error } = await supabase.from('productions').select(finSel(true, true)).in('id', prodIds)
       if (error) { const r = await supabase.from('productions').select(finSel(false, true)).in('id', prodIds); pData = r.data as any; error = r.error }
       if (error) {
@@ -83,8 +83,8 @@ export default function FinancePage() {
         const cat: PriceCategory = (p.price_category as PriceCategory) || 'standard'
         const def = CATEGORY_DEFAULTS[cat] ?? CATEGORY_DEFAULTS.standard
         prodMap[p.id] = {
-          id: p.id, title: p.title,
-          stage: (p.stage === 'mala' || (!p.stage && p.price_category === 'mala')) ? 'mala' : 'duza',
+          id: p.id, title: p.title, theatreId: p.theatre_id ?? null,
+          stage: p.stage ?? (p.price_category === 'mala' ? 'mala' : 'duza'),
           priceCategory: cat,
           priceNormal:     p.price_normal      ?? def.normal,
           priceReduced:    p.price_reduced     ?? def.reduced,
@@ -293,9 +293,9 @@ export default function FinancePage() {
                       <td className="px-4 py-2.5">
                         <span className="font-medium" style={{ color: '#1a1410' }}>{t.prod.title}</span>
                         <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded"
-                          style={t.prod.stage === 'mala' ? { background: '#eef2ff', color: '#4338ca' } : { background: '#f2ede6', color: '#7a7068' }}
-                          title={`${STAGE_LABEL[t.prod.stage]} Scena`}>
-                          {STAGE_LABEL[t.prod.stage]}
+                          style={t.prod.stage !== 'duza' ? { background: '#eef2ff', color: '#4338ca' } : { background: '#f2ede6', color: '#7a7068' }}
+                          title={`${stageLabel(t.prod.stage, t.prod.theatreId ?? null)} — scena`}>
+                          {stageLabel(t.prod.stage, t.prod.theatreId ?? null)}
                         </span>
                         <CategoryMarks favLevel={t.prod.favLevel ?? 0} hitLevel={t.prod.hitLevel ?? 0} size={13} className="ml-2 align-middle" />
                         {!t.isFavourite && (t.prod.hitLevel ?? 0) === 0 && (

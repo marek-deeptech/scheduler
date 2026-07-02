@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import {
   DEFAULT_PARAMS, CATEGORY_DEFAULTS, fmtPln, fmtPct,
+  scenesForTheatre, mapRoomsToScenes,
   type FinanceParams, type PriceCategory, type Stage,
 } from '@/lib/finance'
 import {
@@ -81,23 +82,24 @@ export async function POST(request: Request) {
   const castByProd: Record<string, string[]> = {}
   for (const ap of (aps ?? []) as any[]) (castByProd[ap.production_id] ??= []).push(ap.artist_id)
 
-  // Mapa scena -> room_id per teatr
-  const stageRoomMap: Record<string, { duza: string | null; mala: string | null }> = {}
+  // Mapa scena -> room_id per teatr (2 sceny Fundacji lub 3 sceny TD)
+  const roomsByTheatre: Record<string, { id: string; name: string | null }[]> = {}
   for (const r of (rooms ?? []) as any[]) {
     const tid = r.theatre_id; if (!tid) continue
-    const n = (r.name ?? '').toLowerCase()
-    const entry = stageRoomMap[tid] ??= { duza: null, mala: null }
-    if (n.includes('mała') || n.includes('mala') || n.includes('cafe')) entry.mala ??= r.id
-    else entry.duza ??= r.id
+    ;(roomsByTheatre[tid] ??= []).push({ id: r.id, name: r.name })
   }
-  const stageRoom = (tid: string, stage: 'duza' | 'mala') => stageRoomMap[tid]?.[stage] ?? null
+  const stageRoomMap: Record<string, Record<string, string | null>> = {}
+  for (const [tid, trooms] of Object.entries(roomsByTheatre)) {
+    stageRoomMap[tid] = mapRoomsToScenes(scenesForTheatre(tid), trooms)
+  }
+  const stageRoom = (tid: string, stage: Stage) => stageRoomMap[tid]?.[stage] ?? null
 
   // Produkcje z parametrami finansowymi — TYLKO wybrany teatr
   const optProds: OptProduction[] = ((prods ?? []) as any[])
     .filter(p => (castByProd[p.id]?.length ?? 0) > 0 && p.theatre_id === theatreId)
     .map(p => {
       const cat = (p.price_category as PriceCategory) || 'standard'
-      const stage: Stage = p.stage === 'mala' ? 'mala' : 'duza'
+      const stage: Stage = p.stage ?? 'duza'
       const def = CATEGORY_DEFAULTS[cat] ?? CATEGORY_DEFAULTS.standard
       return {
         id: p.id, title: p.title, theatreId: p.theatre_id,

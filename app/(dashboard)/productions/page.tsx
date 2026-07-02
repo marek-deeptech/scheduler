@@ -10,7 +10,7 @@ import SendConfirmModal from '@/components/SendConfirmModal'
 import { CategoryMarks } from '@/components/CategoryMarks'
 import { IconWarning, IconTheatre } from '@/lib/icons'
 import { sortByLastName } from '@/lib/names'
-import { STAGE_LABEL, type Stage } from '@/lib/finance'
+import { stageLabel, type Stage } from '@/lib/finance'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -228,9 +228,9 @@ function ProductionCard({ prod, isSelected, onClick, onEdit, onConflictClick }: 
               <div className="flex items-center gap-1.5 min-w-0">
                 <span className="text-xs font-medium text-gray-500 truncate">{prod.theatreName ?? '—'}</span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0"
-                  style={prod.stage === 'mala' ? { background: '#eef2ff', color: '#4338ca' } : { background: '#f2ede6', color: '#7a7068' }}
-                  title={`${STAGE_LABEL[prod.stage]} Scena`}>
-                  {STAGE_LABEL[prod.stage]}
+                  style={prod.stage !== 'duza' ? { background: '#eef2ff', color: '#4338ca' } : { background: '#f2ede6', color: '#7a7068' }}
+                  title={`${stageLabel(prod.stage, prod.theatre_id)} — scena`}>
+                  {stageLabel(prod.stage, prod.theatre_id)}
                 </span>
               </div>
               <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${style.badge}`}>
@@ -377,7 +377,7 @@ function DetailPanel({ prod, onEdit, onClose, onStatusChange }: {
         </div>
         <p className="text-xs text-gray-500">
           {prod.theatreName ?? ''}
-          {` · ${STAGE_LABEL[prod.stage]} Scena`}
+          {` · ${stageLabel(prod.stage, prod.theatre_id)}`}
           {prod.director ? ` · reż. ${prod.director}` : ''}
         </p>
 
@@ -717,7 +717,7 @@ export default function ProductionsPage() {
         end_date:      p.end_date ?? null,
         theatre_id:    p.theatre_id ?? null,
         theatreName:   th?.name ?? null,
-        stage:         (p.stage === 'mala' || (!p.stage && p.price_category === 'mala')) ? 'mala' : 'duza',
+        stage:         p.stage ?? (p.price_category === 'mala' ? 'mala' : 'duza'),
         status:        p.status ?? 'Bieżące',
         comment:       p.comment ?? null,
         is_favourite:  p.is_favourite ?? false,

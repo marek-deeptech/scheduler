@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import EventModal from '@/components/EventModal'
 import { EVENT_TYPE_CATEGORIES } from '@/types'
 import {
-  CATEGORY_DEFAULTS, DEFAULT_PARAMS, stageCapacity, costForStage, STAGE_LABEL, asp, fmtPln, fmtPct,
+  CATEGORY_DEFAULTS, DEFAULT_PARAMS, stageCapacity, costForStage, stageLabel, scenesForTheatre, asp, fmtPln, fmtPct,
   type PriceCategory, type Stage,
 } from '@/lib/finance'
 
@@ -227,7 +227,9 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
       if (!data) return
       // Kategoria 'mala' wycofana — mapujemy na 'standard' (scena jest osobnym polem).
       const cat: PriceCategory = (data as any).price_category === 'premium' ? 'premium' : 'standard'
-      const stage: Stage = ((data as any).stage === 'mala' || (!(data as any).stage && (data as any).price_category === 'mala')) ? 'mala' : 'duza'
+      // Klucz sceny zapisany wprost; brak → 'mala' gdy stara kategoria 'mala', inaczej 'duza'.
+      const stage: Stage = (data as any).stage
+        ?? ((data as any).price_category === 'mala' ? 'mala' : 'duza')
       const def = CATEGORY_DEFAULTS[cat] ?? CATEGORY_DEFAULTS.standard
       setFin(f => ({
         ...f,
@@ -284,7 +286,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
 
   // Zmiana sceny podstawia sugerowany koszt ryczałtowy (pojemność liczy się automatycznie)
   function applyStage(stage: Stage) {
-    setFin(f => ({ ...f, stage, fixedCost: String(costForStage(stage)) }))
+    setFin(f => ({ ...f, stage, fixedCost: String(costForStage(stage, form.theatre_id || null)) }))
   }
 
   async function loadEvents() {
@@ -468,7 +470,15 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
               <label className={labelCls}>Teatr</label>
               <select
                 value={form.theatre_id}
-                onChange={e => setForm(f => ({ ...f, theatre_id: e.target.value }))}
+                onChange={e => {
+                  const tid = e.target.value
+                  setForm(f => ({ ...f, theatre_id: tid }))
+                  // Reset sceny do 1. sceny nowego teatru, jeśli obecna nie należy do niego.
+                  const scenes = scenesForTheatre(tid || null)
+                  setFin(f => scenes.some(s => s.key === f.stage)
+                    ? f
+                    : { ...f, stage: scenes[0].key, fixedCost: String(scenes[0].fixedCost) })
+                }}
                 className={inputCls}
               >
                 <option value="">Wybierz teatr</option>
@@ -478,16 +488,16 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
             <div className="col-span-2">
               <label className={labelCls}>Scena</label>
               <div className="flex p-0.5 bg-gray-100 rounded-xl">
-                {(['duza', 'mala'] as Stage[]).map(s => (
+                {scenesForTheatre(form.theatre_id || null).map(sc => (
                   <button
-                    key={s}
+                    key={sc.key}
                     type="button"
-                    onClick={() => applyStage(s)}
+                    onClick={() => applyStage(sc.key)}
                     className={`flex-1 py-2 text-xs font-semibold rounded-[10px] transition-colors ${
-                      fin.stage === s ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                      fin.stage === sc.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    {STAGE_LABEL[s]} Scena
+                    {sc.label}
                   </button>
                 ))}
               </div>
@@ -716,7 +726,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
             <div>
               <label className={labelCls}>
                 Kategoria cenowa
-                <span className="ml-2 font-normal text-gray-400">Scena: {STAGE_LABEL[fin.stage]} ({previewCapacity} miejsc) — zmień w „Szczegóły"</span>
+                <span className="ml-2 font-normal text-gray-400">Scena: {stageLabel(fin.stage, form.theatre_id || null)} ({previewCapacity} miejsc) — zmień w „Szczegóły"</span>
               </label>
               <div className="flex p-0.5 bg-gray-100 rounded-xl">
                 {(['premium', 'standard'] as PriceCategory[]).map(cat => (

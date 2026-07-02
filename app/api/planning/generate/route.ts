@@ -6,9 +6,10 @@ import {
   profileFor, VARIANTS, buildSlots, prevDate, changeoverOk,
   type Variant, type Profile,
 } from '@/lib/repertoire-base'
+import { scenesForTheatre, mapRoomsToScenes } from '@/lib/finance'
 import { sessionOrgId } from '@/lib/session-org'
 
-type StageKey = 'duza' | 'mala'
+type StageKey = string  // klucz sceny (2 sceny Fundacji lub 3 sceny TD)
 
 function getAnthropicKey(): string {
   if (process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY
@@ -87,7 +88,8 @@ function buildSchedule(
   const todaysActors: Record<string, Set<string>> = {}
   const todaysTitles: Record<string, Set<string>> = {}
   // Stan sceny (montaż/demontaż): ostatni tytuł na scenie i jego demontaż.
-  const stageState: Record<StageKey, { date: string; title: string; teardown: number } | undefined> = { duza: undefined, mala: undefined }
+  // Klucz = dowolny `stage` — mapa dynamiczna (2 sceny Fundacji lub 3 sceny TD).
+  const stageState: Record<string, { date: string; title: string; teardown: number } | undefined> = {}
   const result: Show[] = []
 
   for (const s of slots) {
@@ -298,7 +300,7 @@ export async function POST(request: Request) {
     .filter(p => (castMap[p.id]?.length ?? 0) > 0)
     .map(p => ({
       id: p.id, title: p.title, theatreId: p.theatre_id ?? theatreId,
-      stage: (p.stage === 'mala' ? 'mala' : 'duza') as StageKey,
+      stage: (p.stage ?? 'duza') as StageKey,
       setup: p.setup_days ?? 0, teardown: p.teardown_days ?? 0,
     }))
 
@@ -306,17 +308,16 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Brak aktywnych tytułów z obsadą dla tego teatru' }, { status: 400 })
   }
 
-  // Sale wg sceny (Duża / Mała) — montaż/demontaż liczony osobno per scena.
-  const stageRoomMap: Record<StageKey, Room | null> = { duza: null, mala: null }
-  for (const r of (rooms ?? []) as any[]) {
-    const n = (r.name ?? '').toLowerCase()
-    const room: Room = { id: r.id, name: r.name, theatreId }
-    if (n.includes('mała') || n.includes('mala') || n.includes('cafe')) stageRoomMap.mala ??= room
-    else stageRoomMap.duza ??= room
-  }
+  // Sale wg sceny — montaż/demontaż liczony osobno per scena (2 Fundacja / 3 TD).
+  const roomById: Record<string, Room> = {}
+  for (const r of (rooms ?? []) as any[]) roomById[r.id] = { id: r.id, name: r.name, theatreId }
+  const sceneRoomIds = mapRoomsToScenes(scenesForTheatre(theatreId), (rooms ?? []) as any[])
   const firstRoom: Room | null = ((rooms ?? []) as any[])[0]
     ? { id: (rooms as any[])[0].id, name: (rooms as any[])[0].name, theatreId } : null
-  const stageRoom = (stage: StageKey): Room | null => stageRoomMap[stage] ?? firstRoom
+  const stageRoom = (stage: StageKey): Room | null => {
+    const rid = sceneRoomIds[stage]
+    return (rid ? roomById[rid] : null) ?? firstRoom
+  }
 
   // ── Bazowy wzorzec: 4 warianty wokół realnego profilu teatru ─────────────────
   const profile = profileFor(theatreNames[theatreId] ?? '')
