@@ -582,7 +582,8 @@ export default function MessagesPage() {
   const [resent, setResent] = useState<Set<string>>(new Set())
   const [subs, setSubs] = useState<{ id: string; actorName: string | null; subject: string; sentAt: string | null }[]>([])
   // Zakładki: odbiorcy (domyślnie) + sekcje statusów
-  const [activeTab, setActiveTab] = useState<'recipients' | 'pending' | 'avail' | 'subs' | 'responses' | 'history'>('recipients')
+  // Domyślnie lądujemy na brakach w komunikacji (najważniejsze); „Odbiorcy" na końcu.
+  const [activeTab, setActiveTab] = useState<'recipients' | 'pending' | 'avail' | 'subs' | 'responses' | 'history'>('pending')
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [teamFilter, setTeamFilter] = useState<string>('all')
@@ -811,12 +812,13 @@ export default function MessagesPage() {
   // Jeśli aktywna zakładka statusu opustoszała (np. po wysłaniu ponaglenia) —
   // wróć na „Odbiorcy".
   useEffect(() => {
+    if (loading) return   // nie przełączaj, dopóki dane się nie wczytają (domyślne „Brak potwierdzeń")
     const counts: Record<string, number> = {
       pending: pendingPart.length, avail: noAvailResp.length, subs: subs.length,
       responses: responses.length, history: sentHistory.length,
     }
     if (activeTab !== 'recipients' && (counts[activeTab] ?? 0) === 0) setActiveTab('recipients')
-  }, [activeTab, pendingPart.length, noAvailResp.length, subs.length, responses.length, sentHistory.length])
+  }, [loading, activeTab, pendingPart.length, noAvailResp.length, subs.length, responses.length, sentHistory.length])
 
   return (
     <div className="pb-24">
@@ -831,12 +833,12 @@ export default function MessagesPage() {
       {/* ── Zakładki sekcji ── */}
       <div className="flex items-center gap-2 mb-5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
         {[
-          { key: 'recipients' as const, label: 'Odbiorcy',           count: null as number | null, alert: false },
           { key: 'pending'    as const, label: 'Brak potwierdzeń',   count: pendingPart.length,    alert: pendingPart.some(p => p.changed) },
           { key: 'avail'      as const, label: 'Brak odpowiedzi',    count: noAvailResp.length,    alert: false },
           { key: 'subs'       as const, label: 'Zastępstwa',         count: subs.length,           alert: false },
           { key: 'responses'  as const, label: 'Odpowiedzi aktorów', count: responses.length,      alert: false },
           { key: 'history'    as const, label: 'Historia',           count: sentHistory.length,    alert: false },
+          { key: 'recipients' as const, label: 'Odbiorcy',           count: null as number | null, alert: false },
         ].filter(t => t.key === 'recipients' || (t.count ?? 0) > 0).map(t => {
           const on = activeTab === t.key
           return (
