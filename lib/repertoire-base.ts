@@ -21,6 +21,11 @@ export function profileFor(name: string): Profile {
   if (n.includes('och'))
     return { key: 'Och', eveningTarget: 28, matSun: 0.50, matSat: 0.45, matWeekday: 0.14,
              matWeekendTime: ['16:00:00', '18:00:00'], matWeekdayTime: ['12:00:00', '14:00:00'] }
+  // Teatr Dramatyczny — teatr państwowy, 3 sceny, repertuar codzienny z porankami
+  // szkolnymi w tygodniu. Profil placeholderowy (docelowo z realnego repertuaru TD).
+  if (n.includes('dramatyczny'))
+    return { key: 'TD', eveningTarget: 30, matSun: 0.40, matSat: 0.30, matWeekday: 0.25,
+             matWeekendTime: ['17:00:00', '19:00:00'], matWeekdayTime: ['11:00:00', '13:00:00'] }
   // Domyślnie profil typu „Polonia" (jedna duża scena, mniej poranków)
   return { key: 'Polonia', eveningTarget: 26, matSun: 0.45, matSat: 0.20, matWeekday: 0,
            matWeekendTime: ['16:00:00', '18:00:00'], matWeekdayTime: ['12:00:00', '14:00:00'] }
