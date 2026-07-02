@@ -255,7 +255,7 @@ function TemplateField({
     setBusy(true)
     await supabase
       .from('app_settings')
-      .upsert({ key: field.key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+      .upsert({ key: field.key, value, updated_at: new Date().toISOString() }, { onConflict: 'org_id,key' })
     setBusy(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)

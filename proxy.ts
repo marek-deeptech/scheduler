@@ -7,6 +7,7 @@ import { verifySession, SESSION_COOKIE } from '@/lib/auth'
 const PUBLIC = [
   '/login',
   '/api/auth',
+  '/api/orgs',
   '/confirm',
   '/slot',
   '/api/confirmations/respond',

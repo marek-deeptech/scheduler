@@ -3,7 +3,7 @@
 // używa wyłącznie Web Crypto (globalne `crypto.subtle`).
 
 export type Role = 'coordinator' | 'actor'
-export interface Session { role: Role; exp: number }
+export interface Session { role: Role; orgId: string; exp: number }
 
 export const SESSION_COOKIE = 'tp_session'
 
@@ -33,8 +33,8 @@ async function hmacKey(secret: string): Promise<CryptoKey> {
 // niezgodne, więc rzutujemy jawnie w jednym miejscu.
 const src = (u: Uint8Array): BufferSource => u as unknown as BufferSource
 
-export async function signSession(role: Role, secret: string, ttlDays = 30): Promise<string> {
-  const payload: Session = { role, exp: Date.now() + ttlDays * 86_400_000 }
+export async function signSession(role: Role, orgId: string, secret: string, ttlDays = 30): Promise<string> {
+  const payload: Session = { role, orgId, exp: Date.now() + ttlDays * 86_400_000 }
   const body = b64url(enc.encode(JSON.stringify(payload)))
   const key = await hmacKey(secret)
   const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, src(enc.encode(body))))
@@ -54,6 +54,7 @@ export async function verifySession(token: string | undefined | null, secret: st
     const s = JSON.parse(dec.decode(fromB64url(body))) as Session
     if (!s.exp || s.exp < Date.now()) return null
     if (s.role !== 'coordinator' && s.role !== 'actor') return null
+    if (typeof s.orgId !== 'string' || !s.orgId) return null   // legacy sesja bez org — wymuś ponowne logowanie
     return s
   } catch {
     return null

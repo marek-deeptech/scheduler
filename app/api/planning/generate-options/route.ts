@@ -8,6 +8,7 @@ import {
   type Objective, type OptProduction, type OptInputs,
 } from '@/lib/repertoire-optimizer'
 import { profileFor, buildSlots, BASE_VARIANT } from '@/lib/repertoire-base'
+import { sessionOrgId } from '@/lib/session-org'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,8 +24,9 @@ function daysInMonth(month: string): string[] {
   return Array.from({ length: n }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`)
 }
 
-async function loadFinanceParams(): Promise<FinanceParams> {
+async function loadFinanceParams(orgId: string): Promise<FinanceParams> {
   const { data } = await supabase.from('app_settings').select('key, value')
+    .eq('org_id', orgId)
     .in('key', ['finance_ticket_mix', 'finance_weekend_uplift', 'finance_vat_rate', 'finance_default_attendance', 'finance_default_fixed_cost'])
   const s: Record<string, string> = {}
   for (const r of data ?? []) s[r.key] = r.value ?? ''
@@ -43,6 +45,9 @@ export async function POST(request: Request) {
   if (!month?.match(/^\d{4}-\d{2}$/)) return Response.json({ error: 'Invalid month' }, { status: 400 })
   if (!theatreId) return Response.json({ error: 'Wybierz teatr (Polonia lub Och) — repertuar planowany jest osobno dla każdego teatru.' }, { status: 400 })
 
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ error: 'Brak sesji organizacji' }, { status: 401 })
+
   const monthStart = `${month}-01`
   const monthEnd = daysInMonth(month).slice(-1)[0]
 
@@ -53,22 +58,23 @@ export async function POST(request: Request) {
     (async () => {
       // Tolerancyjnie na brak migracji 'stage' / 'setup-teardown' — ponawiamy z mniejszym zestawem kolumn.
       const base = 'id, title, theatre_id, is_favourite, price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost'
-      let r = await supabase.from('productions').select(`${base}, stage, setup_days, teardown_days`)
-      if (r.error) r = await supabase.from('productions').select(`${base}, setup_days, teardown_days`)
-      if (r.error) r = await supabase.from('productions').select(`${base}, stage`)
-      if (r.error) r = await supabase.from('productions').select(base)
+      const q = (cols: string) => supabase.from('productions').select(cols).eq('org_id', orgId)
+      let r = await q(`${base}, stage, setup_days, teardown_days`)
+      if (r.error) r = await q(`${base}, setup_days, teardown_days`)
+      if (r.error) r = await q(`${base}, stage`)
+      if (r.error) r = await q(base)
       return r
     })(),
-    supabase.from('artist_productions').select('artist_id, production_id'),
-    supabase.from('theatres').select('id, name'),
-    supabase.from('rooms').select('id, name, theatre_id'),
-    supabase.from('repertoire_slots').select('production_id, locked_dates, productions(theatre_id)').eq('month', month).eq('status', 'planned'),
-    supabase.from('actor_day_status').select('artist_id, date, status').gte('date', monthStart).lte('date', monthEnd),
-    // Wydarzenia INNYCH teatrów w tym miesiącu — zajętość wspólnych aktorów
-    supabase.from('events').select('start_time, production_id, theatre_id')
+    supabase.from('artist_productions').select('artist_id, production_id').eq('org_id', orgId),
+    supabase.from('theatres').select('id, name').eq('org_id', orgId),
+    supabase.from('rooms').select('id, name, theatre_id').eq('org_id', orgId),
+    supabase.from('repertoire_slots').select('production_id, locked_dates, productions(theatre_id)').eq('org_id', orgId).eq('month', month).eq('status', 'planned'),
+    supabase.from('actor_day_status').select('artist_id, date, status').eq('org_id', orgId).gte('date', monthStart).lte('date', monthEnd),
+    // Wydarzenia INNYCH teatrów TEJ SAMEJ org w tym miesiącu — zajętość wspólnych aktorów
+    supabase.from('events').select('start_time, production_id, theatre_id').eq('org_id', orgId)
       .gte('start_time', `${monthStart}T00:00:00`).lte('start_time', `${monthEnd}T23:59:59`)
       .neq('theatre_id', theatreId),
-    loadFinanceParams(),
+    loadFinanceParams(orgId),
   ])
 
   // Obsada per produkcja
@@ -139,11 +145,11 @@ export async function POST(request: Request) {
 
   // Dostępność aktorów CORE — twarde blokady (warunek c, gdy włączony).
   if (useCore) {
-    const core = await supabase.from('artists').select('id, is_core').eq('is_core', true)
+    const core = await supabase.from('artists').select('id, is_core').eq('org_id', orgId).eq('is_core', true)
     const coreIds = core.error ? [] : ((core.data ?? []) as any[]).map(a => a.id)
     if (coreIds.length) {
       const { data: av } = await supabase.from('availabilities').select('artist_id, start_time, end_time')
-        .in('artist_id', coreIds).lte('start_time', `${monthEnd}T23:59:59`).gte('end_time', `${monthStart}T00:00:00`)
+        .eq('org_id', orgId).in('artist_id', coreIds).lte('start_time', `${monthEnd}T23:59:59`).gte('end_time', `${monthStart}T00:00:00`)
       for (const a of (av ?? []) as any[]) {
         const e = new Date(`${String(a.end_time).slice(0, 10)}T12:00:00Z`)
         for (let d = new Date(`${String(a.start_time).slice(0, 10)}T12:00:00Z`); d <= e; d.setUTCDate(d.getUTCDate() + 1)) {
@@ -166,9 +172,9 @@ export async function POST(request: Request) {
     lockedByProd, unavailByDate, finance: fp, stageRoom,
   }
 
-  // Usuń poprzednie wersje robocze tego miesiąca DLA TEGO TEATRU
+  // Usuń poprzednie wersje robocze tego miesiąca DLA TEGO TEATRU (w ramach org)
   await supabase.from('repertoire_proposals').delete()
-    .eq('month', month).eq('status', 'draft').eq('theatre_id', theatreId)
+    .eq('org_id', orgId).eq('month', month).eq('status', 'draft').eq('theatre_id', theatreId)
 
   const lockedCount = Object.values(lockedByProd).reduce((a, d) => a + d.length, 0)
   const summaries: any[] = []
@@ -188,7 +194,7 @@ export async function POST(request: Request) {
     }))
 
     const { data: inserted } = await supabase.from('repertoire_proposals').insert({
-      month, theatre_id: theatreId, label: OBJECTIVE_LABEL[objective], status: 'draft',
+      org_id: orgId, month, theatre_id: theatreId, label: OBJECTIVE_LABEL[objective], status: 'draft',
       proposal_data, reasoning,
       stats: {
         total: t.count, conflicts: 0, by_production: res.byProduction,

@@ -6,6 +6,7 @@ import {
   profileFor, VARIANTS, buildSlots, prevDate, changeoverOk,
   type Variant, type Profile,
 } from '@/lib/repertoire-base'
+import { sessionOrgId } from '@/lib/session-org'
 
 type StageKey = 'duza' | 'mala'
 
@@ -158,6 +159,9 @@ function summarise(shows: Show[]): string {
 // ── PATCH — update proposal_data (edit shows) ────────────────────────────────
 
 export async function PATCH(request: Request) {
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ error: 'Brak sesji organizacji' }, { status: 401 })
+
   const { proposalId, proposal_data } = await request.json() as {
     proposalId: string
     proposal_data: any[]
@@ -170,6 +174,7 @@ export async function PATCH(request: Request) {
   const { error } = await supabase
     .from('repertoire_proposals')
     .update({ proposal_data, stats: { total: proposal_data.length, conflicts: 0, by_production: byProd } })
+    .eq('org_id', orgId)
     .eq('id', proposalId)
     .eq('status', 'draft')
 
@@ -180,12 +185,15 @@ export async function PATCH(request: Request) {
 // ── GET ──────────────────────────────────────────────────────────────────────
 
 export async function GET(request: Request) {
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ error: 'Brak sesji organizacji' }, { status: 401 })
+
   const { searchParams } = new URL(request.url)
   const month = searchParams.get('month')
   const id    = searchParams.get('id')
 
   if (id) {
-    const { data, error } = await supabase.from('repertoire_proposals').select('*').eq('id', id).single()
+    const { data, error } = await supabase.from('repertoire_proposals').select('*').eq('org_id', orgId).eq('id', id).single()
     if (error) return Response.json({ error: error.message }, { status: 500 })
     return Response.json({ proposal: data })
   }
@@ -193,7 +201,7 @@ export async function GET(request: Request) {
   const status  = searchParams.get('status')
   const theatre = searchParams.get('theatre')
 
-  let q = supabase.from('repertoire_proposals').select('*').order('created_at', { ascending: false })
+  let q = supabase.from('repertoire_proposals').select('*').eq('org_id', orgId).order('created_at', { ascending: false })
   if (month)   q = (q as any).eq('month', month)
   if (status)  q = (q as any).eq('status', status)
   if (theatre) q = (q as any).eq('theatre_id', theatre)
@@ -229,10 +237,13 @@ export async function POST(request: Request) {
   const apiKey = getAnthropicKey()
   if (!apiKey) return Response.json({ error: 'ANTHROPIC_API_KEY not set' }, { status: 500 })
 
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ error: 'Brak sesji organizacji' }, { status: 401 })
+
   const monthStart = month + '-01'
   const monthEnd   = localMonthEnd(month)
 
-  // ── Fetch data ──────────────────────────────────────────────────────────────
+  // ── Fetch data (scope: org) ──────────────────────────────────────────────────
   const [
     { data: productions },
     { data: artistProds },
@@ -243,19 +254,20 @@ export async function POST(request: Request) {
   ] = await Promise.all([
     (async () => {
       // Tolerancyjnie na brak migracji stage / setup-teardown — każda kolumna niezależnie.
-      const q = (cols: string) => supabase.from('productions').select(cols).eq('theatre_id', theatreId).order('title')
+      const q = (cols: string) => supabase.from('productions').select(cols).eq('org_id', orgId).eq('theatre_id', theatreId).order('title')
       let r = await q('id, title, status, theatre_id, stage, setup_days, teardown_days')
       if (r.error) r = await q('id, title, status, theatre_id, setup_days, teardown_days')
       if (r.error) r = await q('id, title, status, theatre_id, stage')
       if (r.error) r = await q('id, title, status, theatre_id')
       return r
     })(),
-    supabase.from('artist_productions').select('artist_id, production_id'),
-    supabase.from('artists').select('id, name'),
-    supabase.from('rooms').select('id, name, theatre_id').eq('theatre_id', theatreId).limit(20),
-    supabase.from('theatres').select('id, name'),
+    supabase.from('artist_productions').select('artist_id, production_id').eq('org_id', orgId),
+    supabase.from('artists').select('id, name').eq('org_id', orgId),
+    supabase.from('rooms').select('id, name, theatre_id').eq('org_id', orgId).eq('theatre_id', theatreId).limit(20),
+    supabase.from('theatres').select('id, name').eq('org_id', orgId),
     supabase.from('actor_day_status')
       .select('artist_id, date, status, artists(name)')
+      .eq('org_id', orgId)
       .gte('date', monthStart)
       .lte('date', monthEnd),
   ])
@@ -371,6 +383,7 @@ ${constraints ? `Życzenia koordynatora: ${constraints}\n` : ''}Odpowiedz TYLKO 
     const byProd: Record<string, number> = {}
     for (const e of s.shows) byProd[e.production_title] = (byProd[e.production_title] ?? 0) + 1
     return {
+      org_id:        orgId,
       month,
       theatre_id:    theatreId,
       label:         s.label,
@@ -381,9 +394,9 @@ ${constraints ? `Życzenia koordynatora: ${constraints}\n` : ''}Odpowiedz TYLKO 
     }
   })
 
-  // Usuń poprzednie drafty tego miesiąca dla tego teatru
+  // Usuń poprzednie drafty tego miesiąca dla tego teatru (w ramach org)
   await supabase.from('repertoire_proposals').delete()
-    .eq('month', month).eq('status', 'draft').eq('theatre_id', theatreId)
+    .eq('org_id', orgId).eq('month', month).eq('status', 'draft').eq('theatre_id', theatreId)
 
   const { data: saved, error: dbErr } = await supabase
     .from('repertoire_proposals')

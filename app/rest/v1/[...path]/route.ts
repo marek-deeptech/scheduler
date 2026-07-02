@@ -16,6 +16,9 @@ const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY
 const REQ_HEADERS = ['content-type', 'prefer', 'range', 'range-unit', 'accept', 'accept-profile', 'content-profile', 'x-client-info']
 const RES_HEADERS = ['content-type', 'content-range', 'range-unit', 'content-profile', 'preference-applied']
 
+// Tabele globalne (wspólna taksonomia, bez org_id) — NIE scopujemy.
+const GLOBAL_TABLES = new Set(['teams', 'event_types'])
+
 async function handle(req: NextRequest, path: string[]) {
   if (!SUPA || !SERVICE) {
     return NextResponse.json({ error: 'Proxy bazy nie jest skonfigurowane (brak SUPABASE_SERVICE_ROLE_KEY).' }, { status: 500 })
@@ -24,15 +27,49 @@ async function handle(req: NextRequest, path: string[]) {
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value, process.env.AUTH_SECRET || '')
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const target = `${SUPA}/rest/v1/${path.map(encodeURIComponent).join('/')}${req.nextUrl.search}`
+  const method = req.method
+  const table  = path[0] ?? ''
+  // Izolacja najemcy: scopujemy wszystko poza RPC i tabelami globalnymi.
+  const scope  = table !== 'rpc' && !GLOBAL_TABLES.has(table)
+  const orgId  = session.orgId
+
+  // Query: dla odczytów i PATCH/DELETE doklej filtr org_id=eq.<org>.
+  const search = new URLSearchParams(req.nextUrl.searchParams)
+  if (scope && (method === 'GET' || method === 'HEAD' || method === 'PATCH' || method === 'DELETE')) {
+    search.append('org_id', `eq.${orgId}`)
+  }
+  const qs = search.toString()
+  const target = `${SUPA}/rest/v1/${path.map(encodeURIComponent).join('/')}${qs ? `?${qs}` : ''}`
 
   const headers = new Headers()
   for (const h of REQ_HEADERS) { const v = req.headers.get(h); if (v) headers.set(h, v) }
   headers.set('apikey', SERVICE)
   headers.set('authorization', `Bearer ${SERVICE}`)
 
-  const method = req.method
-  const body = method === 'GET' || method === 'HEAD' ? undefined : await req.arrayBuffer()
+  // Body: dla zapisów wstrzyknij org_id (POST/PUT) albo usuń go (PATCH — nie pozwól
+  // przenieść wiersza do cudzej org). Filtr org_id=eq.<org> wyżej i tak blokuje cudze.
+  let body: ArrayBuffer | string | undefined
+  if (method === 'GET' || method === 'HEAD') {
+    body = undefined
+  } else {
+    const raw = await req.arrayBuffer()
+    if (scope && raw.byteLength && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+      try {
+        const json = JSON.parse(new TextDecoder().decode(raw))
+        const stamp = (row: any) => {
+          if (!row || typeof row !== 'object') return row
+          if (method === 'PATCH') { const { org_id: _drop, ...rest } = row; return rest }
+          return { ...row, org_id: orgId }
+        }
+        body = JSON.stringify(Array.isArray(json) ? json.map(stamp) : stamp(json))
+        headers.set('content-type', 'application/json')
+      } catch {
+        body = raw   // nie-JSON — przekaż jak jest (NOT NULL org_id i tak zablokuje wstawienie bez org)
+      }
+    } else {
+      body = raw
+    }
+  }
 
   const upstream = await fetch(target, { method, headers, body, redirect: 'manual', cache: 'no-store' })
 
