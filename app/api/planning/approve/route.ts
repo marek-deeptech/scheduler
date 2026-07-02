@@ -4,6 +4,7 @@ import { sendEmail, emailWrapper } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
 import { logMessages, type MessageLogRow } from '@/lib/message-log'
 import { bumpInviteSeqs, inviteAttachment } from '@/lib/calendar-invite'
+import { sessionOrgId } from '@/lib/session-org'
 import { localFromStored, type Vevent } from '@/lib/ics'
 
 const supabase = createClient(
@@ -49,13 +50,14 @@ interface InsertedEvent {
 
 /** Po zatwierdzeniu: każdy aktor z obsady dostaje zestawienie swoich dat
  *  + prośby o potwierdzenie (event_confirmations) w jednym mailu. */
-async function notifyCastAfterApproval(insertedEvents: InsertedEvent[], month: string, APP_URL: string) {
+async function notifyCastAfterApproval(insertedEvents: InsertedEvent[], month: string, APP_URL: string, orgId: string) {
   const productionIds = [...new Set(insertedEvents.map(e => e.production_id).filter(Boolean))] as string[]
   if (productionIds.length === 0) return { notified: 0 }
 
   const { data: castRows } = await supabase
     .from('artist_productions')
     .select('artist_id, production_id, artists(id, name, email, phone)')
+    .eq('org_id', orgId)
     .in('production_id', productionIds)
 
   // artist -> jego wydarzenia
@@ -71,11 +73,11 @@ async function notifyCastAfterApproval(insertedEvents: InsertedEvent[], month: s
   }
 
   // Prośby o potwierdzenie dla wszystkich par (wydarzenie, aktor)
-  const confirmationPayload: { event_id: string; artist_id: string; status: string; sent_at: string }[] = []
+  const confirmationPayload: { org_id: string; event_id: string; artist_id: string; status: string; sent_at: string }[] = []
   const sentAt = new Date().toISOString()
   for (const [artistId, evs] of Object.entries(artistEvents)) {
     for (const ev of evs) {
-      confirmationPayload.push({ event_id: ev.id, artist_id: artistId, status: 'pending', sent_at: sentAt })
+      confirmationPayload.push({ org_id: orgId, event_id: ev.id, artist_id: artistId, status: 'pending', sent_at: sentAt })
     }
   }
 
@@ -104,7 +106,7 @@ async function notifyCastAfterApproval(insertedEvents: InsertedEvent[], month: s
   // Zaproszenia kalendarzowe (.ics) — SEQUENCE per (event, aktor), doklejane do maili.
   const invitePairs = notifyEntries.flatMap(([aid, evs]) =>
     evs.map(e => ({ event_id: e.id, artist_id: aid })))
-  const seqMap = await bumpInviteSeqs(supabase, invitePairs)
+  const seqMap = await bumpInviteSeqs(supabase, invitePairs, false, orgId)
 
   for (const [artistId, evsRaw] of notifyEntries) {
     const info = artistInfo[artistId]
@@ -187,12 +189,14 @@ async function notifyCastAfterApproval(insertedEvents: InsertedEvent[], month: s
     if (artistNotified) notified++
   }
 
-  await logMessages(supabase, logRows)
+  await logMessages(supabase, logRows, orgId)
   return { notified }
 }
 
 export async function POST(request: Request) {
   const APP_URL = getBaseUrl(request)
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ error: 'Brak sesji organizacji' }, { status: 401 })
   const { proposalId, action } = await request.json() as {
     proposalId: string
     action: 'approve' | 'reject'
@@ -205,6 +209,7 @@ export async function POST(request: Request) {
     const { error } = await supabase
       .from('repertoire_proposals')
       .update({ status: 'rejected' })
+      .eq('org_id', orgId)
       .eq('id', proposalId)
     if (error) return Response.json({ error: error.message }, { status: 500 })
     return Response.json({ ok: true })
@@ -214,6 +219,7 @@ export async function POST(request: Request) {
   const { data: proposal, error: fetchErr } = await supabase
     .from('repertoire_proposals')
     .select('*')
+    .eq('org_id', orgId)
     .eq('id', proposalId)
     .single()
 
@@ -223,6 +229,8 @@ export async function POST(request: Request) {
 
   // Insert events into calendar
   const events = ((proposal.proposal_data ?? []) as any[]).map(e => ({
+    org_id: orgId,
+    theatre_id: proposal.theatre_id ?? null,
     title: e.production_title,
     type: e.type ?? 'spektakl',
     start_time: `${e.date}T${e.start_time ?? '19:00:00'}`,
@@ -245,20 +253,23 @@ export async function POST(request: Request) {
   await supabase
     .from('repertoire_proposals')
     .update({ status: 'approved', approved_at: new Date().toISOString() })
+    .eq('org_id', orgId)
     .eq('id', proposalId)
 
-  // Reject other drafts for same month
+  // Reject other drafts for same month (w tej org, tego teatru)
   await supabase
     .from('repertoire_proposals')
     .update({ status: 'rejected' })
+    .eq('org_id', orgId)
     .eq('month', proposal.month)
+    .eq('theatre_id', proposal.theatre_id)
     .neq('id', proposalId)
     .eq('status', 'draft')
 
   // Notify cast — błąd powiadomień nie blokuje zatwierdzenia
   let notified = 0
   try {
-    const result = await notifyCastAfterApproval(insertedEvents, proposal.month, APP_URL)
+    const result = await notifyCastAfterApproval(insertedEvents, proposal.month, APP_URL, orgId)
     notified = result.notified
   } catch (err) {
     console.error('Cast notification error:', err)

@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { sessionOrgId } from '@/lib/session-org'
 import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import path from 'path'
@@ -25,7 +26,7 @@ const supabase = createClient(
 
 // ── Fetch theater context ────────────────────────────────────────────────────
 
-async function buildContext(): Promise<string> {
+async function buildContext(orgId: string): Promise<string> {
   const today = new Date().toISOString().slice(0, 10)
   const monthStart = today.slice(0, 7) + '-01'
   const nextMonth  = new Date(new Date(monthStart).setMonth(new Date(monthStart).getMonth() + 2))
@@ -43,16 +44,19 @@ async function buildContext(): Promise<string> {
     supabase
       .from('artists')
       .select('id, name, role, email, phone, teams!inner(name)')
+      .eq('org_id', orgId)
       .eq('teams.name', 'Cast')
       .order('name')
       .limit(50),
     supabase
       .from('productions')
       .select('id, title, status, theatres(name), artist_productions(artists(name, role))')
+      .eq('org_id', orgId)
       .order('title'),
     supabase
       .from('events')
       .select('id, title, type, start_time, end_time, productions(title), rooms(name), event_artists(artists(name))')
+      .eq('org_id', orgId)
       .gte('start_time', monthStart + 'T00:00:00')
       .lte('start_time', nextMonth + 'T00:00:00')
       .order('start_time')
@@ -60,6 +64,7 @@ async function buildContext(): Promise<string> {
     supabase
       .from('event_confirmations')
       .select('status, responded_at, artists(name), events(title, type, start_time)')
+      .eq('org_id', orgId)
       .in('status', ['confirmed', 'declined', 'maybe'])
       .gte('events.start_time', monthStart + 'T00:00:00')
       .order('responded_at', { ascending: false })
@@ -67,6 +72,7 @@ async function buildContext(): Promise<string> {
     supabase
       .from('actor_day_status')
       .select('artist_id, date, status, note')
+      .eq('org_id', orgId)
       .gte('date', today)
       .lte('date', nextMonth)
       .order('date', { ascending: true })
@@ -74,12 +80,14 @@ async function buildContext(): Promise<string> {
     supabase
       .from('availabilities')
       .select('artist_id, type, start_time, end_time, note')
+      .eq('org_id', orgId)
       .gte('end_time', today + 'T00:00:00')
       .lte('start_time', nextMonth + 'T00:00:00')
       .limit(300),
     supabase
       .from('actor_production_substitutes')
       .select('actor:artists!actor_production_substitutes_actor_id_fkey(name), substitute:artists!actor_production_substitutes_substitute_id_fkey(name), production:productions(title)')
+      .eq('org_id', orgId)
       .limit(400),
   ])
 
@@ -193,6 +201,8 @@ ${subList || 'brak'}`
 // ── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ error: 'Brak sesji organizacji' }, { status: 401 })
   const { message, history } = await request.json() as {
     message: string
     history: { role: 'user' | 'assistant'; content: string }[]
@@ -203,10 +213,10 @@ export async function POST(request: Request) {
   }
 
   // Persist user message
-  await supabase.from('chat_messages').insert({ role: 'user', content: message })
+  await supabase.from('chat_messages').insert({ org_id: orgId, role: 'user', content: message })
 
-  // Build context
-  const context = await buildContext()
+  // Build context (scope: org)
+  const context = await buildContext(orgId)
 
   const systemPrompt = `Jesteś Stefanem — asystentem koordynatora teatralnego. Masz na imię Stefan. Pomagasz zarządzać repertuarem, obsadą i komunikacją z aktorami.
 
@@ -257,7 +267,7 @@ Zasady:
 
         // Persist assistant response
         if (fullResponse) {
-          await supabase.from('chat_messages').insert({ role: 'assistant', content: fullResponse })
+          await supabase.from('chat_messages').insert({ org_id: orgId, role: 'assistant', content: fullResponse })
         }
 
         controller.close()
@@ -278,10 +288,13 @@ Zasady:
 }
 
 // Load history
-export async function GET() {
+export async function GET(request: Request) {
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ messages: [] })
   const { data } = await supabase
     .from('chat_messages')
     .select('id, role, content, created_at')
+    .eq('org_id', orgId)
     .order('created_at', { ascending: true })
     .limit(100)
 

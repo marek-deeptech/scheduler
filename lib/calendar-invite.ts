@@ -18,6 +18,7 @@ export async function bumpInviteSeqs(
   supabase: any,
   pairs: Pair[],
   cancel = false,
+  orgId?: string | null,
 ): Promise<Map<string, { uid: string; sequence: number }>> {
   const out = new Map<string, { uid: string; sequence: number }>()
   if (!pairs.length) return out
@@ -39,7 +40,7 @@ export async function bumpInviteSeqs(
     const sequence = had === undefined ? (cancel ? 1 : 0) : had + 1
     const uid = inviteUid(p.event_id, p.artist_id)
     out.set(key, { uid, sequence })
-    return { event_id: p.event_id, artist_id: p.artist_id, uid, sequence, status: cancel ? 'cancelled' : 'confirmed', updated_at: now }
+    return { ...(orgId ? { org_id: orgId } : {}), event_id: p.event_id, artist_id: p.artist_id, uid, sequence, status: cancel ? 'cancelled' : 'confirmed', updated_at: now }
   })
 
   await supabase.from('calendar_invites').upsert(rows, { onConflict: 'event_id,artist_id' })

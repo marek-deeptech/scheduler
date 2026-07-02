@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { sessionOrgId } from '@/lib/session-org'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
 
@@ -13,8 +14,8 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-async function coordinatorContact() {
-  const { data } = await supabase.from('app_settings').select('key, value').in('key', ['coordinator_email', 'coordinator_phone'])
+async function coordinatorContact(orgId: string) {
+  const { data } = await supabase.from('app_settings').select('key, value').eq('org_id', orgId).in('key', ['coordinator_email', 'coordinator_phone'])
   const m = Object.fromEntries(((data ?? []) as any[]).map(r => [r.key, r.value]))
   return {
     email: m.coordinator_email || process.env.COORDINATOR_EMAIL || null,
@@ -23,6 +24,8 @@ async function coordinatorContact() {
 }
 
 export async function POST(request: Request) {
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ ok: false, error: 'Brak sesji organizacji' }, { status: 401 })
   const { artistId, channels, text, replyTo } = await request.json() as {
     artistId: string
     channels: ('email' | 'sms')[]
@@ -34,9 +37,9 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: 'Brak treści lub kanału' }, { status: 400 })
   }
 
-  const { data: artist } = await supabase.from('artists').select('name').eq('id', artistId).single()
+  const { data: artist } = await supabase.from('artists').select('name').eq('org_id', orgId).eq('id', artistId).single()
   const name = artist?.name ?? 'Aktor'
-  const { email, phone } = await coordinatorContact()
+  const { email, phone } = await coordinatorContact(orgId)
   const subject = replyTo ? `Odpowiedź: ${replyTo}` : `Wiadomość od ${name}`
 
   // 1) Najpierw ZAPISZ wiadomość (Wysłane) — żeby nigdy nie zginęła, nawet gdyby
@@ -44,6 +47,7 @@ export async function POST(request: Request) {
   // Kolumna `type` ma CHECK (email/sms) — zapisujemy pojedynczy, prawidłowy kanał.
   const primaryType = channels.includes('email') ? 'email' : 'sms'
   const { error: insErr } = await supabase.from('actor_messages').insert({
+    org_id: orgId,
     artist_id: artistId,
     type: primaryType,
     subject,

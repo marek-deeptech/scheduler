@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { sessionOrgId } from '@/lib/session-org'
 import { getBaseUrl } from '@/lib/base-url'
 import { randomUUID } from 'node:crypto'
 import { sendEmail, emailWrapper } from '@/lib/email'
@@ -23,6 +24,8 @@ function escapeHtml(s: string): string {
 
 export async function POST(request: Request) {
   const APP_URL = getBaseUrl(request)
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ ok: false, error: 'Brak sesji organizacji' }, { status: 401 })
   const { slotId, artistId, message } = await request.json() as { slotId: string; artistId?: string; message?: string }
   if (!slotId) return Response.json({ ok: false, error: 'Missing slotId' }, { status: 400 })
 
@@ -32,6 +35,7 @@ export async function POST(request: Request) {
   const { data: slot } = await supabase
     .from('repertoire_slots')
     .select('id, window_start, window_end, target_performances, production_id, productions(title)')
+    .eq('org_id', orgId)
     .eq('id', slotId)
     .single()
   if (!slot) return Response.json({ ok: false, error: 'Slot not found' }, { status: 404 })
@@ -44,6 +48,7 @@ export async function POST(request: Request) {
   const { data: cast } = await supabase
     .from('artist_productions')
     .select('artists(id, name, email, phone)')
+    .eq('org_id', orgId)
     .eq('production_id', (slot as any).production_id)
 
   let members = ((cast ?? []) as any[])
@@ -59,6 +64,7 @@ export async function POST(request: Request) {
   const { data: existing } = await supabase
     .from('slot_invites')
     .select('artist_id, token')
+    .eq('org_id', orgId)
     .eq('slot_id', slotId)
   const tokenByArtist: Record<string, string> = {}
   for (const e of (existing ?? []) as any[]) tokenByArtist[e.artist_id] = e.token
@@ -66,7 +72,7 @@ export async function POST(request: Request) {
   // Utwórz brakujące zaproszenia
   const toCreate = members
     .filter(m => !tokenByArtist[m.id])
-    .map(m => ({ slot_id: slotId, artist_id: m.id, token: randomUUID() }))
+    .map(m => ({ org_id: orgId, slot_id: slotId, artist_id: m.id, token: randomUUID() }))
   if (toCreate.length > 0) {
     const { data: created } = await supabase.from('slot_invites').insert(toCreate).select('artist_id, token')
     for (const c of (created ?? []) as any[]) tokenByArtist[c.artist_id] = c.token
@@ -115,6 +121,6 @@ export async function POST(request: Request) {
     if (notified) sent++
   }
 
-  await logMessages(supabase, logRows)
+  await logMessages(supabase, logRows, orgId)
   return Response.json({ ok: true, sent, total: members.length })
 }

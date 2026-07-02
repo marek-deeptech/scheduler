@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { sessionOrgId } from '@/lib/session-org'
 import { getBaseUrl } from '@/lib/base-url'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
@@ -33,9 +34,13 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: 'Missing substituteId or eventIds' }, { status: 400 })
   }
 
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ ok: false, error: 'Brak sesji organizacji' }, { status: 401 })
+
   const { data: artists } = await supabase
     .from('artists')
     .select('id, name, email, phone')
+    .eq('org_id', orgId)
     .in('id', [removedArtistId, substituteId].filter(Boolean))
 
   const byId: Record<string, { name: string; email: string | null; phone: string | null }> = {}
@@ -46,6 +51,7 @@ export async function POST(request: Request) {
   const { data: events } = await supabase
     .from('events')
     .select('id, title, type, start_time, end_time, production_id')
+    .eq('org_id', orgId)
     .in('id', eventIds)
 
   const evs = ((events ?? []) as any[]).sort((a, b) => a.start_time.localeCompare(b.start_time))
@@ -62,7 +68,7 @@ export async function POST(request: Request) {
   if (sub) {
     // Utwórz potwierdzenia dla wydarzeń zastępcy
     const sentAt = new Date().toISOString()
-    const payload = eventIds.map(event_id => ({ event_id, artist_id: substituteId, status: 'pending', sent_at: sentAt }))
+    const payload = eventIds.map(event_id => ({ org_id: orgId, event_id, artist_id: substituteId, status: 'pending', sent_at: sentAt }))
     const { data: confs } = await supabase
       .from('event_confirmations')
       .upsert(payload, { onConflict: 'event_id,artist_id' })
@@ -86,7 +92,7 @@ export async function POST(request: Request) {
         </table>
         <div>${link}</div>
       `)
-      const seqMap = await bumpInviteSeqs(supabase, eventIds.map(id => ({ event_id: id, artist_id: substituteId })))
+      const seqMap = await bumpInviteSeqs(supabase, eventIds.map(id => ({ event_id: id, artist_id: substituteId })), false, orgId)
       const vevents: Vevent[] = evs.map(e => {
         const s = seqMap.get(`${e.id}:${substituteId}`)!
         return {
@@ -141,7 +147,7 @@ export async function POST(request: Request) {
         </p>
         <p style="font-size:12px;color:#9ca3af;margin:0">W razie pytań skontaktuj się z koordynatorem.</p>
       `)
-      const seqMap = await bumpInviteSeqs(supabase, eventIds.map(id => ({ event_id: id, artist_id: removedArtistId! })), true)
+      const seqMap = await bumpInviteSeqs(supabase, eventIds.map(id => ({ event_id: id, artist_id: removedArtistId! })), true, orgId)
       const vevents: Vevent[] = evs.map(e => {
         const s = seqMap.get(`${e.id}:${removedArtistId}`)!
         return {
@@ -181,6 +187,6 @@ export async function POST(request: Request) {
     }
   }
 
-  await logMessages(supabase, logRows)
+  await logMessages(supabase, logRows, orgId)
   return Response.json({ ok: true, sent })
 }

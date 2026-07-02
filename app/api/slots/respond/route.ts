@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
   const { data: invite, error: invErr } = await supabase
     .from('slot_invites')
-    .select('slot_id, artist_id')
+    .select('slot_id, artist_id, org_id')
     .eq('token', token)
     .single()
 
@@ -71,6 +71,7 @@ export async function POST(request: Request) {
     .eq('artist_id', invite.artist_id)
 
   const rows = availability.map(a => ({
+    org_id: (invite as any).org_id,
     slot_id: invite.slot_id,
     artist_id: invite.artist_id,
     date: a.date,

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { sessionOrgId } from '@/lib/session-org'
 import { getBaseUrl } from '@/lib/base-url'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
@@ -25,6 +26,8 @@ function fillTemplate(template: string, vars: Record<string, string>): string {
 
 export async function POST(request: Request) {
   const APP_URL = getBaseUrl(request)
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ ok: false, error: 'Brak sesji organizacji' }, { status: 401 })
   const { eventId, artistIds, eventDetails, channel = 'email' } = await request.json() as {
     eventId: string
     artistIds: string[]
@@ -47,6 +50,7 @@ export async function POST(request: Request) {
   const { data: settingsRows } = await supabase
     .from('app_settings')
     .select('key, value')
+    .eq('org_id', orgId)
     .in('key', ['notification_email_subject', 'notification_email_intro', 'notification_sms'])
   const settings: Record<string, string> = {}
   for (const row of settingsRows ?? []) {
@@ -55,6 +59,7 @@ export async function POST(request: Request) {
 
   // Upsert confirmations — reset status to 'pending' if already exists
   const upsertPayload = artistIds.map(artist_id => ({
+    org_id: orgId,
     event_id: eventId,
     artist_id,
     status: 'pending',
@@ -75,6 +80,7 @@ export async function POST(request: Request) {
   const { data: artists } = await supabase
     .from('artists')
     .select('id, name, email, phone')
+    .eq('org_id', orgId)
     .in('id', artistIds)
 
   const artistMap: Record<string, { name: string; email: string | null; phone: string | null }> = {}
@@ -219,7 +225,7 @@ export async function POST(request: Request) {
 
   sent = notifiedArtistIds.size
 
-  await logMessages(supabase, logRows)
+  await logMessages(supabase, logRows, orgId)
 
   return Response.json({ ok: true, sent, sentEmail, sentSms })
 }

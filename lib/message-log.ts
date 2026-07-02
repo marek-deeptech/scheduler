@@ -26,11 +26,13 @@ export interface MessageLogRow {
  * Jeśli migracja supabase-migration-messages.sql nie została jeszcze
  * uruchomiona (brak nowych kolumn), zapisuje w starym formacie.
  */
-export async function logMessages(supabase: SupabaseClient, rows: MessageLogRow[]) {
+export async function logMessages(supabase: SupabaseClient, rows: MessageLogRow[], orgId?: string | null) {
   if (rows.length === 0) return
 
+  const org = orgId ? { org_id: orgId } : {}   // brak org → DEFAULT (do usunięcia w Etapie 2)
   const sentAt = new Date().toISOString()
   const full = rows.map(r => ({
+    ...org,
     artist_id: r.artist_id,
     type: r.type,
     direction: r.direction ?? 'to_actor',
@@ -49,6 +51,7 @@ export async function logMessages(supabase: SupabaseClient, rows: MessageLogRow[
   const legacy = rows
     .filter(r => r.artist_id)
     .map(r => ({
+      ...org,
       artist_id: r.artist_id,
       type: r.type,
       subject: r.subject,

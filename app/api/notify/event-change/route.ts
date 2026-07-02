@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { sessionOrgId } from '@/lib/session-org'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { logMessages, type MessageLogRow } from '@/lib/message-log'
 
@@ -27,12 +28,16 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, sent: 0 })
   }
 
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ ok: false, error: 'Brak sesji organizacji' }, { status: 401 })
+
   // Zmiana zatwierdzonego wydarzenia → reset potwierdzeń udziału do „brak potwierdzenia".
   // Aktor musi potwierdzić ponownie po zmianie.
   if (action === 'save' && event?.id) {
     await supabase
       .from('event_confirmations')
       .update({ status: 'pending', responded_at: null })
+      .eq('org_id', orgId)
       .eq('event_id', event.id)
       .in('artist_id', artistIds)
   }
@@ -40,6 +45,7 @@ export async function POST(request: Request) {
   const { data: artists } = await supabase
     .from('artists')
     .select('id, name, email')
+    .eq('org_id', orgId)
     .in('id', artistIds)
 
   const recipients = (artists ?? []).filter((a: any) => a.email) as { id: string; name: string; email: string }[]
@@ -113,7 +119,7 @@ export async function POST(request: Request) {
     }
   }
 
-  await logMessages(supabase, logRows)
+  await logMessages(supabase, logRows, orgId)
 
   return Response.json({ ok: true, sent })
 }

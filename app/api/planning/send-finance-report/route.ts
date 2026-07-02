@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { sessionOrgId } from '@/lib/session-org'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { logMessages } from '@/lib/message-log'
 import { fmtPln } from '@/lib/finance'
@@ -14,8 +15,9 @@ function monthLabel(month: string): string {
   const [y, m] = month.split('-'); return `${MONTH_NOM[parseInt(m, 10) - 1]} ${y}`
 }
 
-async function financeDirectorEmail(): Promise<string | null> {
+async function financeDirectorEmail(orgId: string): Promise<string | null> {
   const { data } = await supabase.from('app_settings').select('key, value')
+    .eq('org_id', orgId)
     .in('key', ['finance_director_email', 'coordinator_email'])
   const m: Record<string, string> = {}
   for (const r of data ?? []) m[r.key] = r.value ?? ''
@@ -23,13 +25,17 @@ async function financeDirectorEmail(): Promise<string | null> {
 }
 
 export async function POST(request: Request) {
-  const { month, theatreId } = await request.json() as { month: string; theatreId?: string }
+  const { month, theatreId, orgId: bodyOrgId } = await request.json() as { month: string; theatreId?: string; orgId?: string }
   if (!month?.match(/^\d{4}-\d{2}$/)) return Response.json({ ok: false, error: 'Invalid month' }, { status: 400 })
+
+  // orgId z body (wywołanie wewnętrzne z confirmations/respond) lub z sesji (klient)
+  const orgId = bodyOrgId || await sessionOrgId(request)
+  if (!orgId) return Response.json({ ok: false, error: 'Brak sesji organizacji' }, { status: 401 })
 
   let aq = supabase
     .from('repertoire_proposals')
     .select('id, label, stats')
-    .eq('month', month).eq('status', 'approved')
+    .eq('org_id', orgId).eq('month', month).eq('status', 'approved')
   if (theatreId) aq = (aq as any).eq('theatre_id', theatreId)
   const { data: approved } = await aq.maybeSingle()
   if (!approved) return Response.json({ ok: false, error: 'Brak zatwierdzonego repertuaru' }, { status: 404 })
@@ -39,7 +45,7 @@ export async function POST(request: Request) {
   const byProd: Record<string, number> = stats.by_production ?? {}
   const label = monthLabel(month)
 
-  const to = await financeDirectorEmail()
+  const to = await financeDirectorEmail(orgId)
   if (!to) return Response.json({ ok: false, error: 'Brak adresu Dyrektora Finansowego' }, { status: 400 })
 
   const rows = Object.entries(byProd)
@@ -71,10 +77,10 @@ export async function POST(request: Request) {
     await logMessages(supabase, [{
       artist_id: null, type: 'email', direction: 'to_coordinator', kind: 'message',
       subject, body: `Repertuar ${label} (${approved.label}): przychód ${fmtPln(fin.revenue)}, koszt ${fmtPln(fin.cost)}, dochód ${fmtPln(fin.margin)}.`,
-    }])
+    }], orgId)
     await supabase.from('repertoire_proposals')
       .update({ stats: { ...stats, report_sent_at: new Date().toISOString() } })
-      .eq('id', approved.id)
+      .eq('org_id', orgId).eq('id', approved.id)
   }
 
   return Response.json({ ok, to })

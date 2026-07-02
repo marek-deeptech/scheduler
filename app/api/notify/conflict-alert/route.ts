@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { sessionOrgId } from '@/lib/session-org'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { logMessages } from '@/lib/message-log'
 
@@ -20,6 +21,8 @@ interface ConflictItem {
 }
 
 export async function POST(request: Request) {
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ ok: false, error: 'Brak sesji organizacji' }, { status: 401 })
   const { conflicts } = await request.json() as { conflicts: ConflictItem[] }
 
   const coordinatorEmail = process.env.COORDINATOR_EMAIL
@@ -73,7 +76,7 @@ export async function POST(request: Request) {
       kind: 'conflict_alert',
       subject,
       body: summary,
-    }])
+    }], orgId)
   }
 
   return Response.json({ ok })

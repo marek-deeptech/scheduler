@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { sessionOrgId } from '@/lib/session-org'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -6,6 +7,9 @@ const supabase = createClient(
 )
 
 export async function GET(request: Request) {
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ ok: false, error: 'Brak sesji organizacji' }, { status: 401 })
+
   const { searchParams } = new URL(request.url)
   const search = searchParams.get('search') ?? ''
 
@@ -18,8 +22,8 @@ export async function GET(request: Request) {
     { data: artists, error: e1 },
     { data: dayStatuses, error: e2 },
   ] = await Promise.all([
-    supabase.from('artists').select('id, name').order('name').limit(200),
-    supabase.from('actor_day_status').select('artist_id, date, status, note').gte('date', today).lte('date', nextMonth).order('date', { ascending: true }).limit(5000),
+    supabase.from('artists').select('id, name').eq('org_id', orgId).order('name').limit(200),
+    supabase.from('actor_day_status').select('artist_id, date, status, note').eq('org_id', orgId).gte('date', today).lte('date', nextMonth).order('date', { ascending: true }).limit(5000),
   ])
 
   // Build lookup map

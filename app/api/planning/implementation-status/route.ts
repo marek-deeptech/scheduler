@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { sessionOrgId } from '@/lib/session-org'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,6 +13,9 @@ function daysInMonth(month: string): string[] {
 }
 
 export async function GET(request: Request) {
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ ok: false, error: 'Brak sesji organizacji' }, { status: 401 })
+
   const { searchParams } = new URL(request.url)
   const month = searchParams.get('month')
   const theatre = searchParams.get('theatre')
@@ -21,7 +25,7 @@ export async function GET(request: Request) {
   let aq = supabase
     .from('repertoire_proposals')
     .select('id, label, stats, approved_at')
-    .eq('month', month).eq('status', 'approved')
+    .eq('org_id', orgId).eq('month', month).eq('status', 'approved')
   if (theatre) aq = (aq as any).eq('theatre_id', theatre)
   const { data: approved } = await aq.maybeSingle()
 
@@ -31,7 +35,7 @@ export async function GET(request: Request) {
   const monthStart = `${month}-01T00:00:00`
   const monthEnd = `${daysInMonth(month).slice(-1)[0]}T23:59:59`
   let eq = supabase.from('events').select('id')
-    .gte('start_time', monthStart).lte('start_time', monthEnd)
+    .eq('org_id', orgId).gte('start_time', monthStart).lte('start_time', monthEnd)
   if (theatre) eq = (eq as any).eq('theatre_id', theatre)
   const { data: events } = await eq
   const eventIds = (events ?? []).map((e: any) => e.id)
@@ -44,6 +48,7 @@ export async function GET(request: Request) {
     const { data: confs } = await supabase
       .from('event_confirmations')
       .select('status, artists(name)')
+      .eq('org_id', orgId)
       .in('event_id', eventIds)
     for (const c of (confs ?? []) as any[]) {
       agg.total++

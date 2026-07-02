@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { sessionOrgId } from '@/lib/session-org'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { logMessages } from '@/lib/message-log'
 
@@ -21,16 +22,19 @@ function dateOf(iso: string) {
   return iso.slice(0, 10)
 }
 
-async function coordinatorEmail(): Promise<string | null> {
+async function coordinatorEmail(orgId: string): Promise<string | null> {
   const { data } = await supabase
     .from('app_settings')
     .select('value')
+    .eq('org_id', orgId)
     .eq('key', 'coordinator_email')
     .maybeSingle()
   return data?.value || process.env.COORDINATOR_EMAIL || null
 }
 
 export async function POST(request: Request) {
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ ok: false, error: 'Brak sesji organizacji' }, { status: 401 })
   const { artistId, days } = await request.json() as {
     artistId: string
     days: { date: string; status: string; note?: string | null }[]
@@ -54,6 +58,7 @@ export async function POST(request: Request) {
   const { data: events } = await supabase
     .from('events')
     .select('id, title, type, start_time, end_time, production_id, productions(title)')
+    .eq('org_id', orgId)
     .gte('start_time', `${minDate}T00:00:00`)
     .lte('start_time', `${maxDate}T23:59:59`)
 
@@ -63,8 +68,8 @@ export async function POST(request: Request) {
   if (eventsOnDays.length > 0) {
     const eventIds = eventsOnDays.map(e => e.id)
     const [{ data: evArtists }, { data: artistProds }] = await Promise.all([
-      supabase.from('event_artists').select('event_id, artist_id').in('event_id', eventIds),
-      supabase.from('artist_productions').select('production_id').eq('artist_id', artistId),
+      supabase.from('event_artists').select('event_id, artist_id').eq('org_id', orgId).in('event_id', eventIds),
+      supabase.from('artist_productions').select('production_id').eq('org_id', orgId).eq('artist_id', artistId),
     ])
 
     const prodIds = new Set(((artistProds ?? []) as any[]).map(r => r.production_id))
@@ -88,6 +93,7 @@ export async function POST(request: Request) {
   const { data: artist } = await supabase
     .from('artists')
     .select('name')
+    .eq('org_id', orgId)
     .eq('id', artistId)
     .single()
   const artistName = artist?.name ?? 'Aktor'
@@ -125,7 +131,7 @@ export async function POST(request: Request) {
     ${eventLines.map(l => l.html).join('')}
   `)
 
-  const to = await coordinatorEmail()
+  const to = await coordinatorEmail(orgId)
   let emailOk = false
   if (to) {
     emailOk = await sendEmail(to, subject, html)
@@ -141,7 +147,7 @@ export async function POST(request: Request) {
     subject,
     body: eventLines.map(l => l.text).join('\n'),
     related_event_id: affectedEvents[0]?.id ?? null,
-  }])
+  }], orgId)
 
   return Response.json({ ok: true, affected: affectedEvents.length, emailSent: emailOk })
 }

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { sessionOrgId } from '@/lib/session-org'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
 import { logMessages, type MessageLogRow } from '@/lib/message-log'
@@ -16,9 +17,13 @@ export async function POST(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  const orgId = await sessionOrgId(request)
+  if (!orgId) return Response.json({ ok: false, error: 'Brak sesji organizacji' }, { status: 401 })
+
   const { data: artists } = await supabase
     .from('artists')
     .select('id, name, email, phone')
+    .eq('org_id', orgId)
     .in('id', artistIds)
 
   const bodyHtml = body
@@ -51,7 +56,7 @@ export async function POST(request: Request) {
     }
   }
 
-  await logMessages(supabase, logRows)
+  await logMessages(supabase, logRows, orgId)
 
   return Response.json({ ok: true, sent: sentEmail + sentSms, sentEmail, sentSms, total: (artists ?? []).length })
 }
