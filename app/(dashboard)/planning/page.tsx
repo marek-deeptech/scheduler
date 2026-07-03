@@ -516,10 +516,10 @@ export default function PlanningPage() {
         )}
       </div>
 
-      {/* ── Status repertuarów — pionowa oś 12 miesięcy ── */}
+      {/* ── Status repertuarów — pionowa oś (horyzont planowania org) ── */}
       <div className="bg-white rounded-2xl border border-[#e4ddd4] p-5">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
-          <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>Status repertuarów — najbliższe 12 miesięcy</p>
+          <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>Status repertuarów — najbliższe {Math.max(1, overviewMonths.length - 1)} {overviewMonths.length - 1 === 1 ? 'miesiąc' : (overviewMonths.length - 1) < 5 ? 'miesiące' : 'miesięcy'}</p>
           <div className="flex items-center gap-3 flex-wrap">
             {(['brak', 'planowanie', 'zatwierdzony', 'wdrozony'] as MonthStage[]).map(s => (
               <span key={s} className="inline-flex items-center gap-1 text-[11px]" style={{ color: '#7a7068' }}>
