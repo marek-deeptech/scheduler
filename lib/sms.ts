@@ -33,7 +33,7 @@ function sanitizeForSms(message: string): string {
 // ⚠️ TRYB TESTOWY — wszystkie SMS-y przekierowane na jeden numer testowy,
 // żeby nic nie trafiło do prawdziwych odbiorców. Aby wrócić do realnej
 // wysyłki, ustaw TEST_REDIRECT_PHONE = '' (pusty string).
-export const TEST_REDIRECT_PHONE = '60849442'
+export const TEST_REDIRECT_PHONE = '608499442'
 
 export async function sendSms(phone: string, message: string): Promise<boolean> {
   const token = process.env.SMSAPI_TOKEN
