@@ -40,7 +40,8 @@ function localDate(d: Date) {
 }
 function dayKey(iso: string) { return iso.slice(0, 10) }
 function addDays(d: Date, n: number) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n) }
-function fmtTime(iso: string, localeStr: string) { return new Date(iso).toLocaleTimeString(localeStr, { hour: '2-digit', minute: '2-digit' }) }
+// Czas EVENTU: ściana zegara (UTC) = czas Warszawa; bierzemy ze stringa ISO (bez przesunięcia strefy).
+function fmtTime(iso: string, _localeStr?: string) { return String(iso).slice(11, 16) }
 function eventDateParam(iso: string) {
   const d = new Date(iso)
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`

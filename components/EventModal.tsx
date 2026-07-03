@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
 import { EVENT_TYPE_CATEGORIES, EVENT_TYPES } from '@/types'
 import SendConfirmModal from '@/components/SendConfirmModal'
+import { googleCalendarUrl } from '@/lib/gcal'
 
 interface ArtistRecord {
   id: string
@@ -52,10 +53,9 @@ const TEAM_STYLE: Record<string, string> = {
 function pad(n: number) { return String(n).padStart(2, '0') }
 
 function splitDateTime(iso: string) {
-  const d = new Date(iso)
-  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`
-  return { date, time }
+  // Eventy zapisane jako „ściana zegara" w UTC (19:00+00:00 = 19:00 Warszawa) — bierzemy części
+  // ze stringa ISO, żeby formularz pokazywał/zapisywał 19:00, a nie przesunięte 21:00.
+  return { date: String(iso).slice(0, 10), time: String(iso).slice(11, 16) }
 }
 
 export default function EventModal({ event, defaultDate, defaultProductionId, artists, productions, theatres, rooms, zIndex = 80, onClose, onSaved }: Props) {
@@ -626,14 +626,34 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
           {isEdit ? (
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={deleting}
-              className="px-4 py-2 text-sm font-medium text-red-500 border border-red-200 rounded-xl hover:bg-red-50 disabled:opacity-50 transition-colors"
-            >
-              {deleting ? em.deleting : em.delete}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-red-500 border border-red-200 rounded-xl hover:bg-red-50 disabled:opacity-50 transition-colors"
+              >
+                {deleting ? em.deleting : em.delete}
+              </button>
+              {form.date && form.start_time && (
+                <a
+                  href={googleCalendarUrl({
+                    title: form.title || form.type || 'Wydarzenie',
+                    start: `${form.date}T${form.start_time}:00Z`,
+                    end:   `${form.date}T${(form.end_time || form.start_time)}:00Z`,
+                    location: form.location || undefined,
+                    details: form.type || undefined,
+                  })}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Dodaj do Google Calendar"
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/></svg>
+                  Google Calendar
+                </a>
+              )}
+            </div>
           ) : <div />}
 
           <div className="flex gap-2">

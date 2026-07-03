@@ -132,8 +132,7 @@ function fmtDate(iso: string) {
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
 }
 function fmtTime(iso: string) {
-  const d = new Date(iso)
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return String(iso).slice(11, 16)  // ściana zegara (UTC) = czas Warszawa; bez przesunięcia strefy
 }
 function fmtDayShort(iso: string, localeStr: string) {
   return new Date(iso).toLocaleDateString(localeStr, { weekday: 'short', day: 'numeric', month: 'short' })
@@ -492,7 +491,7 @@ function MessagesTab({ artist, detail, onDetailRefresh }: {
     if (!c.event) return '—'
     const d = new Date(c.event.start_time)
     const day = d.toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short' })
-    const time = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+    const time = String(c.event.start_time).slice(11, 16)  // ściana zegara (UTC) = czas Warszawa
     return `${c.event.productionTitle ?? c.event.type ?? c.event.title} · ${day}, ${time}`
   }
 

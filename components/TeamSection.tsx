@@ -645,8 +645,8 @@ export default function TeamSection({
                               <div key={ev.id} className="bg-gray-50 border border-gray-200 rounded-lg px-1.5 py-1">
                                 <p className="text-[10px] font-medium text-gray-700 leading-tight truncate">{ev.type ?? ev.title}</p>
                                 <p className="text-[9px] text-gray-500">
-                                  {pad(new Date(ev.start_time).getHours())}:{pad(new Date(ev.start_time).getMinutes())}
-                                  –{pad(new Date(ev.end_time).getHours())}:{pad(new Date(ev.end_time).getMinutes())}
+                                  {String(ev.start_time).slice(11,16)}
+                                  –{String(ev.end_time).slice(11,16)}
                                 </p>
                               </div>
                             ))}

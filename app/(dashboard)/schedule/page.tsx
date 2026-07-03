@@ -349,7 +349,7 @@ export default function SchedulePage() {
                             )}
                           </div>
                           <p className="text-sm text-gray-500 mt-0.5">
-                            {new Date(event.start_time).toLocaleString()} — {new Date(event.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(event.start_time.slice(0,10)+'T12:00:00Z').toLocaleDateString('pl-PL')} {event.start_time.slice(11,16)} — {event.end_time.slice(11,16)}
                             {event.location && <span className="ml-2">· {event.location}</span>}
                           </p>
                           {event.event_artists && event.event_artists.length > 0 && (

@@ -140,8 +140,7 @@ function fmtDate(iso: string) {
 }
 
 function fmtTime(iso: string) {
-  const d = new Date(iso)
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return String(iso).slice(11, 16)  // ściana zegara (UTC) = czas Warszawa; bez przesunięcia strefy
 }
 
 /* ── Component ─────────────────────────────────────────────────── */

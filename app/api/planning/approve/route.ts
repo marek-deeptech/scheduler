@@ -6,6 +6,7 @@ import { logMessages, type MessageLogRow } from '@/lib/message-log'
 import { bumpInviteSeqs, inviteAttachment } from '@/lib/calendar-invite'
 import { sessionOrgId } from '@/lib/session-org'
 import { localFromStored, type Vevent } from '@/lib/ics'
+import { googleCalendarUrl } from '@/lib/gcal'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -125,11 +126,18 @@ async function notifyCastAfterApproval(insertedEvents: InsertedEvent[], month: s
         const link = token
           ? `<a href="${APP_URL}/confirm/${token}" style="display:inline-block;padding:6px 14px;border-radius:8px;background:#16a34a;color:#fff;font-size:12px;font-weight:700;text-decoration:none">Potwierdź</a>`
           : ''
+        const gcal = googleCalendarUrl({
+          title: e.title,
+          start: e.start_time,
+          end: e.end_time,
+          location: (e as any).room ?? undefined,
+          details: 'Repertuar zatwierdzony — Teatr.',
+        })
         return `<tr style="border-top:1px solid #f3f4f6">
           <td style="padding:10px 0;font-size:13px;font-weight:600">${fmtDay(e.start_time)}</td>
           <td style="padding:10px 8px;font-size:13px">${fmtTime(e.start_time)}–${fmtTime(e.end_time)}</td>
           <td style="padding:10px 8px;font-size:13px">${e.title}</td>
-          <td style="padding:10px 0;text-align:right">${link}</td>
+          <td style="padding:10px 0;text-align:right">${link}<div style="margin-top:6px"><a href="${gcal}" style="font-size:11px;color:#6b7280;text-decoration:underline">+ Google Calendar</a></div></td>
         </tr>`
       }).join('')
 

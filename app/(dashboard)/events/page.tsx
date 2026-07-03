@@ -70,7 +70,7 @@ function localDate(d: Date) {
 }
 function dayKey(iso: string) { return iso.slice(0, 10) }
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
+  return String(iso).slice(11, 16)  // ściana zegara (UTC) = czas Warszawa; bez przesunięcia strefy
 }
 function formatDayLabel(iso: string) {
   const d = new Date(iso)

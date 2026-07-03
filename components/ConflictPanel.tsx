@@ -40,7 +40,7 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
+  return String(iso).slice(11, 16)  // ściana zegara (UTC) = czas Warszawa; bez przesunięcia strefy
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
