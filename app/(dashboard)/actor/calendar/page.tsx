@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useProfile } from '@/lib/profile-context'
+import { googleCalendarUrl } from '@/lib/gcal'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -66,8 +67,10 @@ function toDateStr(d: Date) {
 }
 
 function fmtTime(iso: string) {
+  // Eventy zapisane jako „ściana zegara" w UTC (19:00+00:00 = 19:00 Warszawa) — bierzemy
+  // getUTC*, inaczej przeglądarka przesuwałaby godzinę o +1/+2h.
   const d = new Date(iso)
-  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+  return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`
 }
 
 function getMonthDays(year: number, month: number): (Date | null)[] {
@@ -129,6 +132,24 @@ function ActorEventDrawer({ ev, onClose }: { ev: DayEvent; onClose: () => void }
               <span className="inline-block text-sm px-2.5 py-1 rounded-full" style={{ background: '#f2ede6', color: '#5a524a' }}>{ev.production}</span>
             </div>
           )}
+
+          {/* Dodaj do Google Calendar */}
+          <a
+            href={googleCalendarUrl({
+              title: ev.production ?? ev.title,
+              start: ev.start_time,
+              end: ev.end_time,
+              location: ev.room ?? undefined,
+              details: `${ev.type ?? 'Spektakl'} — Teatr.`,
+            })}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full mt-6 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+            style={{ border: '1px solid #e4ddd4', color: '#5a524a' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5M12 12.75h.008v.008H12v-.008z"/></svg>
+            Dodaj do Google Calendar
+          </a>
         </div>
       </div>
     </div>

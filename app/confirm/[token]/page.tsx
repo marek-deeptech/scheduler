@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
+import { googleCalendarUrl } from '@/lib/gcal'
 
 interface ConfirmationData {
   id: string
@@ -21,13 +22,15 @@ interface ConfirmationData {
   }
 }
 
+// Eventy zapisane jako „ściana zegara" w UTC (19:00:00+00:00 = 19:00 w Warszawie),
+// więc formatujemy w strefie UTC — inaczej przeglądarka przesuwałaby godzinę o +1/+2h.
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('pl-PL', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
   })
 }
 function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -183,6 +186,23 @@ export default function ConfirmPage() {
             <span className="font-medium text-gray-900">{data.artist.name}</span>
           </div>
         </div>
+
+        {/* Dodaj do Google Calendar */}
+        <a
+          href={googleCalendarUrl({
+            title: ev.productions?.title ?? ev.title,
+            start: ev.start_time,
+            end: ev.end_time,
+            location: ev.rooms?.name ?? undefined,
+            details: `${ev.type ?? 'Spektakl'} — potwierdzenie udziału w aplikacji Teatru.`,
+          })}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 w-full mb-6 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5M12 12.75h.008v.008H12v-.008z"/></svg>
+          Dodaj do Google Calendar
+        </a>
 
         {/* Already responded (not via this session) */}
         {alreadyResponded && (
