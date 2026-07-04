@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useProfile } from '@/lib/profile-context'
+import { useOrg } from '@/lib/org-context'
 import { googleCalendarUrl } from '@/lib/gcal'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -160,6 +161,11 @@ function ActorEventDrawer({ ev, onClose }: { ev: DayEvent; onClose: () => void }
 
 export default function ActorCalendarPage() {
   const { actorId, actorName } = useProfile()
+  const { org } = useOrg()
+  // TD: model „domyślnie Dostępny" — dni bez wpisu pokazujemy jako zielone (Dostępny),
+  // aktor odznacza tylko dni, gdy nie może. (Inne teatry: brak wpisu = neutralny.)
+  const defaultAvailable = org?.slug === 'teatr-dramatyczny'
+  const dispStatus = (s?: DayStatus): string | undefined => s?.status ?? (defaultAvailable ? 'Dostępny' : undefined)
   const router = useRouter()
 
   const today = new Date()
@@ -600,7 +606,7 @@ export default function ActorCalendarPage() {
                     const isSbSn     = day.getDay() === 0 || day.getDay() === 6
                     const dayEvs     = getEventsForDate(dateStr)
                     const daySt      = effectiveStatus(dateStr)
-                    const stDef      = DAY_STATUSES.find(s => s.value === daySt?.status)
+                    const stDef      = DAY_STATUSES.find(s => s.value === dispStatus(daySt))
                     const isBlocking = daySt && BLOCKING_STATUSES.has(daySt.status)
                     const hasConflict = isBlocking && dayEvs.length > 0
                     const dayLocked  = isDayLocked(dateStr)
@@ -632,7 +638,7 @@ export default function ActorCalendarPage() {
                               </span>
                             : hasConflict
                             ? <span className="text-[11px] leading-none shrink-0" title="Kolizja statusu z wydarzeniem">⚠️</span>
-                            : stDef && <span className={`w-2 h-2 rounded-full shrink-0 ${stDef.dot}`} title={daySt?.status} />}
+                            : stDef && <span className={`w-2 h-2 rounded-full shrink-0 ${stDef.dot}`} title={dispStatus(daySt)} />}
                         </div>
 
                         {/* Event titles */}
@@ -703,7 +709,7 @@ export default function ActorCalendarPage() {
                       const dayEvs     = getEventsForDate(dateStr)
                       const daySt      = effectiveStatus(dateStr)
                       const isPending  = pending[dateStr] !== undefined
-                      const stDef      = DAY_STATUSES.find(s => s.value === daySt?.status)
+                      const stDef      = DAY_STATUSES.find(s => s.value === dispStatus(daySt))
                       const isBlocking = daySt && BLOCKING_STATUSES.has(daySt.status)
                       const hasConflict = isBlocking && dayEvs.length > 0
                       const savedNote  = getStatusForDate(dateStr)?.note
@@ -716,9 +722,9 @@ export default function ActorCalendarPage() {
                               {day.toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })}
                             </p>
                             <div className="flex-1 h-px" style={{ background: '#e4ddd4' }} />
-                            {daySt && (
+                            {dispStatus(daySt) && (
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${stDef?.cls ?? 'bg-gray-100 text-gray-600'} ${isPending ? 'opacity-70' : ''}`}>
-                                {isPending && '● '}{daySt.status}
+                                {isPending && '● '}{dispStatus(daySt)}
                               </span>
                             )}
                             <button
