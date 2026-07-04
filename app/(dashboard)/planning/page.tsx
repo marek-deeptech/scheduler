@@ -884,7 +884,7 @@ function ProposalCard({
             style={{ background: STAGE_CFG[stage].bg + '55', borderColor: STAGE_CFG[stage].bg }}>
             <p className="flex-1 text-xs font-semibold" style={{ color: STAGE_CFG[stage].color }}>
               {stage === 'zatwierdzenie' && `✓ Zatwierdzono — czeka na konsultacje z obsadą`}
-              {stage === 'konsultacje'   && `Konsultacje z obsadą w toku`}
+              {stage === 'konsultacje'   && `Konsultacje w toku (obsada + Technika + Sprzedaż)`}
               {stage === 'sprzedaz'      && `Sprzedaż uruchomiona`}
             </p>
             <Link

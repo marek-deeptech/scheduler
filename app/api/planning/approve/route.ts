@@ -223,6 +223,61 @@ async function eventsForProposal(proposal: any, orgId: string): Promise<Inserted
   return (data ?? []) as InsertedEvent[]
 }
 
+/** Etap Konsultacje powiadamia też dział Techniki i dział Sprzedaży (informacyjnie).
+ *  Technika = członkowie zespołu „Technique" + skrzynka `technique_email`.
+ *  Sprzedaż = skrzynka `sales_email` (fallback: `coordinator_email`). */
+async function notifyDepartments(monthEvents: InsertedEvent[], month: string, orgId: string): Promise<{ technique: number; sales: number }> {
+  const label = monthLabel(month)
+  const count = monthEvents.length
+  const dates = monthEvents.map(e => e.start_time).filter(Boolean).sort()
+  const fmtD = (iso: string) => { const d = new Date(iso); return `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}` }
+  const range = dates.length ? `${fmtD(dates[0])}–${fmtD(dates[dates.length - 1])}` : '—'
+
+  const { data: settingsRows } = await supabase.from('app_settings')
+    .select('key, value').eq('org_id', orgId)
+    .in('key', ['technique_email', 'sales_email', 'coordinator_email'])
+  const settings: Record<string, string> = {}
+  for (const r of (settingsRows ?? []) as any[]) if (r.value) settings[r.key] = r.value
+
+  // Technika: zespół „Technique" + technique_email
+  const techRecipients = new Set<string>()
+  const { data: techTeam } = await supabase.from('teams').select('id').eq('name', 'Technique').maybeSingle()
+  if (techTeam?.id) {
+    const { data: members } = await supabase.from('artists')
+      .select('email').eq('org_id', orgId).eq('team_id', techTeam.id)
+    for (const m of (members ?? []) as any[]) if (m.email) techRecipients.add(m.email)
+  }
+  if (settings.technique_email) techRecipients.add(settings.technique_email)
+
+  // Sprzedaż: sales_email (fallback coordinator_email)
+  const salesRecipients = new Set<string>()
+  if (settings.sales_email) salesRecipients.add(settings.sales_email)
+  else if (settings.coordinator_email) salesRecipients.add(settings.coordinator_email)
+
+  async function sendDept(recipients: Set<string>, deptLabel: string, ask: string): Promise<number> {
+    if (recipients.size === 0) return 0
+    const subject = `[Repertuar ${label}] Konsultacje — ${deptLabel}`
+    const html = emailWrapper(`
+      <h2 style="font-size:18px;font-weight:700;margin:0 0 8px">Repertuar ${label} — wejście w konsultacje</h2>
+      <p style="color:#6b7280;margin:0 0 8px;font-size:14px">
+        Repertuar na ${label} został zatwierdzony i wszedł w etap konsultacji.
+        Zaplanowano <b>${count}</b> ${count === 1 ? 'spektakl' : 'spektakli'}${dates.length ? ` (${range})` : ''}.
+      </p>
+      <p style="color:#374151;margin:0;font-size:14px">${ask}</p>
+    `)
+    let sent = 0
+    for (const to of recipients) {
+      const ok = await sendEmail(to, subject, html)
+      if (ok) sent++
+    }
+    return sent
+  }
+
+  const technique = await sendDept(techRecipients, 'Technika', 'Prosimy o przygotowanie obsługi technicznej scen na zaplanowane terminy.')
+  const sales     = await sendDept(salesRecipients, 'Sprzedaż', 'Prosimy o przygotowanie puli biletów do sprzedaży na zaplanowane terminy.')
+  return { technique, sales }
+}
+
 export async function POST(request: Request) {
   const APP_URL = getBaseUrl(request)
   const orgId = await sessionOrgId(request)
@@ -274,12 +329,19 @@ export async function POST(request: Request) {
     } catch (err) {
       console.error('Cast notification error:', err)
     }
+    // Powiadom dział Techniki i dział Sprzedaży (informacyjnie)
+    let departments = { technique: 0, sales: 0 }
+    try {
+      departments = await notifyDepartments(monthEvents, proposal.month, orgId)
+    } catch (err) {
+      console.error('Department notification error:', err)
+    }
     await supabase
       .from('repertoire_proposals')
       .update({ stats: { ...stats, consultations_started_at: new Date().toISOString() } })
       .eq('org_id', orgId)
       .eq('id', proposalId)
-    return Response.json({ ok: true, actorsNotified: notified })
+    return Response.json({ ok: true, actorsNotified: notified, departments })
   }
 
   // ── Sprzedaż: puść repertuar do sprzedaży biletów ─────────────────────────

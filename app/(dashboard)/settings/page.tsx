@@ -206,7 +206,7 @@ const TEMPLATE_VARS = [
 
 // ─── Notifications Tab ────────────────────────────────────────────────────────
 
-type FieldKey = 'notification_email_subject' | 'notification_email_intro' | 'notification_sms' | 'coordinator_email'
+type FieldKey = 'notification_email_subject' | 'notification_email_intro' | 'notification_sms' | 'coordinator_email' | 'technique_email' | 'sales_email'
 
 interface SettingField {
   key: FieldKey
@@ -219,6 +219,8 @@ interface SettingField {
 
 const FIELDS: SettingField[] = [
   { key: 'coordinator_email',          label: 'Email koordynatora (alarmy o chorobie i zmianach dostępności)', type: 'input', noVars: true },
+  { key: 'technique_email',            label: 'Email działu Techniki (powiadomienie przy konsultacjach repertuaru)', type: 'input', noVars: true },
+  { key: 'sales_email',                label: 'Email działu Sprzedaży (powiadomienie przy konsultacjach repertuaru)', type: 'input', noVars: true },
   { key: 'notification_email_subject', label: 'Temat emaila',  type: 'input' },
   { key: 'notification_email_intro',   label: 'Wstęp emaila',  type: 'textarea', rows: 3 },
   { key: 'notification_sms',           label: 'Treść SMS',     type: 'textarea', rows: 4, smsLimit: true },
@@ -325,6 +327,8 @@ function TemplateField({
 function NotificationsTab() {
   const [values, setValues] = useState<Record<FieldKey, string>>({
     coordinator_email:          '',
+    technique_email:            '',
+    sales_email:                '',
     notification_email_subject: '',
     notification_email_intro:   '',
     notification_sms:           '',
@@ -336,7 +340,7 @@ function NotificationsTab() {
       const { data } = await supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['coordinator_email', 'notification_email_subject', 'notification_email_intro', 'notification_sms'])
+        .in('key', ['coordinator_email', 'technique_email', 'sales_email', 'notification_email_subject', 'notification_email_intro', 'notification_sms'])
       if (data) {
         const map: Partial<Record<FieldKey, string>> = {}
         for (const row of data) {
