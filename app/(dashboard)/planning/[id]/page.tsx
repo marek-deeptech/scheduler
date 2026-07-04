@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation'
 import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import { supabase } from '@/lib/supabase'
 import { sortByLastName } from '@/lib/names'
+import { proposalStage, STAGE_META } from '@/lib/repertoire-stage'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,7 +28,12 @@ interface Proposal {
   status: 'draft' | 'approved' | 'rejected'
   proposal_data: ProposalEvent[]
   reasoning: string
-  stats: { total: number; conflicts: number; by_production: Record<string, number> }
+  stats: {
+    total: number; conflicts: number; by_production: Record<string, number>
+    consultations_started_at?: string | null
+    sales_started_at?: string | null
+    report_sent_at?: string | null
+  }
   created_at: string
   approved_at: string | null
 }
@@ -62,6 +68,24 @@ const STATUS_CFG: Record<string, { label: string; cls: string }> = {
   draft:    { label: 'Propozycja',   cls: 'bg-yellow-100 text-yellow-800' },
   approved: { label: 'Zatwierdzony', cls: 'bg-green-100  text-green-800'  },
   rejected: { label: 'Odrzucony',    cls: 'bg-gray-100   text-gray-500'   },
+}
+
+function PrintButton() {
+  return (
+    <button
+      onClick={() => window.print()}
+      className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
+      style={{ background: '#1a1410', color: '#fff' }}
+      onMouseOver={e => (e.currentTarget.style.background = '#000')}
+      onMouseOut={e => (e.currentTarget.style.background = '#1a1410')}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+        <rect x="6" y="14" width="12" height="8"/>
+      </svg>
+      Drukuj
+    </button>
+  )
 }
 
 function getDaysInMonth(month: string): string[] {
@@ -188,7 +212,7 @@ export default function ProposalDetailPage() {
   const [availData,    setAvailData]    = useState<AvailData | null>(null)
   const [loading,      setLoading]      = useState(true)
   const [saving,       setSaving]       = useState(false)
-  const [approving,    setApproving]    = useState(false)
+  const [busy,         setBusy]         = useState<null | 'approve' | 'consult' | 'sell'>(null)
   const [error,        setError]        = useState<string | null>(null)
   const [openDropdown, setOpenDropdown] = useState<string | null>(null) // "date||prodId"
   const [panelSwapKey, setPanelSwapKey] = useState<string | null>(null) // panel konfliktów: które alternatywy rozwinięte
@@ -347,22 +371,30 @@ export default function ProposalDetailPage() {
     persist(updated)
   }
 
-  async function handleApprove() {
+  // Bramki procesu: Zatwierdzenie (approve) → Konsultacje (consult) → Sprzedaż (sell)
+  async function runAction(action: 'approve' | 'consult' | 'sell') {
     if (!proposal) return
-    setApproving(true)
+    setBusy(action)
+    setError(null)
     try {
       const r = await fetch('/api/planning/approve', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ proposalId: proposal.id, action: 'approve' }),
+        body:    JSON.stringify({ proposalId: proposal.id, action }),
       })
-      const { error: e } = await r.json()
-      if (e) throw new Error(e)
-      setProposal(p => p ? { ...p, status: 'approved', approved_at: new Date().toISOString() } : p)
+      const j = await r.json()
+      if (j.error) throw new Error(j.error)
+      const now = new Date().toISOString()
+      setProposal(p => {
+        if (!p) return p
+        if (action === 'approve') return { ...p, status: 'approved', approved_at: now }
+        if (action === 'consult') return { ...p, stats: { ...p.stats, consultations_started_at: now } }
+        return { ...p, stats: { ...p.stats, sales_started_at: now } }
+      })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Błąd')
     } finally {
-      setApproving(false)
+      setBusy(null)
     }
   }
 
@@ -382,11 +414,11 @@ export default function ProposalDetailPage() {
     const list = eventsByDate.get(e.date) ?? []; list.push(e); eventsByDate.set(e.date, list)
   }
 
-  const cfg       = STATUS_CFG[proposal.status] ?? STATUS_CFG.draft
+  const stage     = proposalStage(proposal)
+  const stageMeta = STAGE_META[stage]
   const [y, m]    = proposal.month.split('-').map(Number)
   const monthName = new Date(y, m - 1, 1).toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })
   const isDraft   = proposal.status === 'draft'
-  const isImplemented = proposal.status === 'approved' && !!(proposal.stats as any)?.report_sent_at
 
   // Stats from localShows
   const byProd: Record<string, number> = {}
@@ -432,9 +464,16 @@ export default function ProposalDetailPage() {
         <div className="space-y-2">
           <div className="flex items-center gap-3 flex-wrap">
             <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.5rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>{proposal.label} <span style={{ color: '#a89e92', fontWeight: 500 }}>/ {monthName.charAt(0).toUpperCase() + monthName.slice(1)}</span></h1>
-            <span className={`px-2.5 py-0.5 text-[10px] font-semibold rounded-full uppercase tracking-wide ${cfg.cls}`}>
-              {cfg.label}
-            </span>
+            {proposal.status === 'rejected' ? (
+              <span className={`px-2.5 py-0.5 text-[10px] font-semibold rounded-full uppercase tracking-wide ${STATUS_CFG.rejected.cls}`}>
+                {STATUS_CFG.rejected.label}
+              </span>
+            ) : (
+              <span className="px-2.5 py-0.5 text-[10px] font-semibold rounded-full uppercase tracking-wide"
+                style={{ background: stageMeta.bg, color: stageMeta.color }}>
+                {stage === 'planowanie' ? 'Propozycja' : stageMeta.label}
+              </span>
+            )}
             {saving && <span className="text-[11px] text-gray-400">Zapisuję…</span>}
           </div>
           {proposal.reasoning && (
@@ -455,71 +494,89 @@ export default function ProposalDetailPage() {
       {/* Error */}
       {error && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{error}</div>}
 
-      {/* Approve bar */}
+      {/* Pasek etapu: Planowanie → Zatwierdzenie → Konsultacje → Sprzedaż */}
       {isDraft && (
         <div className="no-print flex items-center gap-3 flex-wrap bg-white rounded-2xl px-4 md:px-5 py-3" style={{ border: '1px solid #e4ddd4' }}>
           <p className="flex-1 min-w-[200px] text-sm text-gray-500">Ta propozycja czeka na zatwierdzenie. Możesz edytować spektakle przed zatwierdzeniem.</p>
-          {/* Buttons in one row: full-width pair on mobile, inline on desktop */}
           <div className="flex gap-2 w-full md:w-auto">
+            <PrintButton />
             <button
-              onClick={() => window.print()}
-              className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
-              style={{ background: '#1a1410', color: '#fff' }}
-              onMouseOver={e => (e.currentTarget.style.background = '#000')}
-              onMouseOut={e => (e.currentTarget.style.background = '#1a1410')}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-                <rect x="6" y="14" width="12" height="8"/>
-              </svg>
-              Drukuj
-            </button>
-            <button
-              onClick={handleApprove}
-              disabled={approving}
+              onClick={() => runAction('approve')}
+              disabled={busy !== null}
               className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl disabled:opacity-50 transition-colors shrink-0"
               style={{ background: '#c8102e', color: '#fff' }}
               onMouseOver={e => !e.currentTarget.disabled && (e.currentTarget.style.background = '#9e0c24')}
               onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
             >
-              {approving ? 'Zatwierdzam…' : '✓ Zatwierdź repertuar'}
+              {busy === 'approve' ? 'Zatwierdzam…' : '✓ Zatwierdź repertuar'}
             </button>
           </div>
         </div>
       )}
-      {proposal.status === 'approved' && (
-        <div className="no-print flex items-center gap-3 flex-wrap bg-green-50 border border-green-200 rounded-2xl px-4 md:px-5 py-3">
-          <p className="flex-1 min-w-[200px] text-sm text-green-800 font-medium">
-            {isImplemented
-              ? '✓ Wdrożony — repertuar zatwierdzony i przekazany do realizacji (podgląd tylko do odczytu)'
-              : `✓ Zatwierdzono${proposal.approved_at ? ` ${new Date(proposal.approved_at).toLocaleDateString('pl-PL', { day:'numeric', month:'long', year:'numeric' })}` : ''} — spektakle dodane do kalendarza`}
+
+      {stage === 'zatwierdzenie' && (
+        <div className="no-print flex items-center gap-3 flex-wrap rounded-2xl px-4 md:px-5 py-3" style={{ background: STAGE_META.zatwierdzenie.bg, border: `1px solid ${STAGE_META.zatwierdzenie.dot}` }}>
+          <p className="flex-1 min-w-[200px] text-sm font-medium" style={{ color: STAGE_META.zatwierdzenie.color }}>
+            ✓ Zatwierdzono{proposal.approved_at ? ` ${new Date(proposal.approved_at).toLocaleDateString('pl-PL', { day:'numeric', month:'long', year:'numeric' })}` : ''} — spektakle w kalendarzu. Następny krok: konsultacje z obsadą (powiadomienia + potwierdzenia udziału).
           </p>
           <div className="flex gap-2 w-full md:w-auto">
-            {/* Zatwierdzony (jeszcze nie wdrożony) → możliwość wdrożenia. Wdrożony → tylko podgląd. */}
-            {!isImplemented && (
-              <Link
-                href={`/planning/implementation?month=${proposal.month}`}
-                className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
-                style={{ background: '#c8102e', color: '#fff' }}
-                onMouseOver={e => (e.currentTarget.style.background = '#9e0c24')}
-                onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
-              >
-                Wdróż →
-              </Link>
-            )}
+            <PrintButton />
             <button
-              onClick={() => window.print()}
-              className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
-              style={{ background: '#1a1410', color: '#fff' }}
-              onMouseOver={e => (e.currentTarget.style.background = '#000')}
-              onMouseOut={e => (e.currentTarget.style.background = '#1a1410')}
+              onClick={() => runAction('consult')}
+              disabled={busy !== null}
+              className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl disabled:opacity-50 transition-colors shrink-0"
+              style={{ background: '#6d28d9', color: '#fff' }}
+              onMouseOver={e => !e.currentTarget.disabled && (e.currentTarget.style.background = '#5b21b6')}
+              onMouseOut={e => (e.currentTarget.style.background = '#6d28d9')}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-                <rect x="6" y="14" width="12" height="8"/>
-              </svg>
-              Drukuj
+              {busy === 'consult' ? 'Uruchamiam…' : 'Rozpocznij konsultacje →'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {stage === 'konsultacje' && (
+        <div className="no-print flex items-center gap-3 flex-wrap rounded-2xl px-4 md:px-5 py-3" style={{ background: STAGE_META.konsultacje.bg, border: `1px solid ${STAGE_META.konsultacje.dot}` }}>
+          <p className="flex-1 min-w-[200px] text-sm font-medium" style={{ color: STAGE_META.konsultacje.color }}>
+            Konsultacje z obsadą w toku — trwa zbieranie potwierdzeń udziału. Po ich zakończeniu uruchom sprzedaż biletów.
+          </p>
+          <div className="flex gap-2 w-full md:w-auto flex-wrap">
+            <Link
+              href={`/planning/implementation?month=${proposal.month}`}
+              className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
+              style={{ background: '#fff', color: '#6d28d9', border: '1px solid #6d28d9' }}
+            >
+              Zobacz potwierdzenia
+            </Link>
+            <button
+              onClick={() => runAction('sell')}
+              disabled={busy !== null}
+              className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl disabled:opacity-50 transition-colors shrink-0"
+              style={{ background: '#15803d', color: '#fff' }}
+              onMouseOver={e => !e.currentTarget.disabled && (e.currentTarget.style.background = '#166534')}
+              onMouseOut={e => (e.currentTarget.style.background = '#15803d')}
+            >
+              {busy === 'sell' ? 'Uruchamiam…' : 'Uruchom sprzedaż →'}
+            </button>
+            <PrintButton />
+          </div>
+        </div>
+      )}
+
+      {stage === 'sprzedaz' && (
+        <div className="no-print flex items-center gap-3 flex-wrap rounded-2xl px-4 md:px-5 py-3" style={{ background: STAGE_META.sprzedaz.bg, border: `1px solid ${STAGE_META.sprzedaz.dot}` }}>
+          <p className="flex-1 min-w-[200px] text-sm font-medium" style={{ color: STAGE_META.sprzedaz.color }}>
+            ● Sprzedaż uruchomiona — repertuar przekazany do sprzedaży biletów (podgląd tylko do odczytu).
+          </p>
+          <div className="flex gap-2 w-full md:w-auto">
+            <Link
+              href={`/planning/implementation?month=${proposal.month}`}
+              className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
+              style={{ background: '#fff', color: '#15803d', border: '1px solid #86efac' }}
+            >
+              Zobacz potwierdzenia
+            </Link>
+            <PrintButton />
           </div>
         </div>
       )}

@@ -201,13 +201,35 @@ async function notifyCastAfterApproval(insertedEvents: InsertedEvent[], month: s
   return { notified }
 }
 
+function lastDayOfMonth(month: string): string {
+  const [y, m] = month.split('-').map(Number)
+  return `${month}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
+}
+
+/** Odtwarza wydarzenia zatwierdzonego miesiąca (do powiadomień w etapie Konsultacje).
+ *  Dopasowanie: org + teatr + zakres miesiąca + production_id z propozycji. */
+async function eventsForProposal(proposal: any, orgId: string): Promise<InsertedEvent[]> {
+  const prodIds = [...new Set(((proposal.proposal_data ?? []) as any[])
+    .map(e => e.production_id).filter(Boolean))] as string[]
+  const month = proposal.month as string
+  let q = supabase.from('events')
+    .select('id, production_id, title, type, start_time, end_time')
+    .eq('org_id', orgId)
+    .gte('start_time', `${month}-01T00:00:00`)
+    .lte('start_time', `${lastDayOfMonth(month)}T23:59:59`)
+  if (proposal.theatre_id) q = (q as any).eq('theatre_id', proposal.theatre_id)
+  if (prodIds.length > 0) q = (q as any).in('production_id', prodIds)
+  const { data } = await q
+  return (data ?? []) as InsertedEvent[]
+}
+
 export async function POST(request: Request) {
   const APP_URL = getBaseUrl(request)
   const orgId = await sessionOrgId(request)
   if (!orgId) return Response.json({ error: 'Brak sesji organizacji' }, { status: 401 })
   const { proposalId, action } = await request.json() as {
     proposalId: string
-    action: 'approve' | 'reject'
+    action: 'approve' | 'reject' | 'consult' | 'sell'
   }
 
   if (!proposalId) return Response.json({ error: 'Missing proposalId' }, { status: 400 })
@@ -223,7 +245,6 @@ export async function POST(request: Request) {
     return Response.json({ ok: true })
   }
 
-  // ── Approve ──────────────────────────────────────────────────────────────
   const { data: proposal, error: fetchErr } = await supabase
     .from('repertoire_proposals')
     .select('*')
@@ -235,7 +256,49 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Proposal not found' }, { status: 404 })
   }
 
-  // Insert events into calendar
+  const stats = (proposal.stats ?? {}) as Record<string, any>
+
+  // ── Konsultacje: powiadom obsadę + zbieraj potwierdzenia ───────────────────
+  if (action === 'consult') {
+    if (proposal.status !== 'approved') {
+      return Response.json({ error: 'Repertuar musi być najpierw zatwierdzony.' }, { status: 400 })
+    }
+    if (stats.consultations_started_at) {
+      return Response.json({ error: 'Konsultacje już rozpoczęto.' }, { status: 409 })
+    }
+    const monthEvents = await eventsForProposal(proposal, orgId)
+    let notified = 0
+    try {
+      const result = await notifyCastAfterApproval(monthEvents, proposal.month, APP_URL, orgId)
+      notified = result.notified
+    } catch (err) {
+      console.error('Cast notification error:', err)
+    }
+    await supabase
+      .from('repertoire_proposals')
+      .update({ stats: { ...stats, consultations_started_at: new Date().toISOString() } })
+      .eq('org_id', orgId)
+      .eq('id', proposalId)
+    return Response.json({ ok: true, actorsNotified: notified })
+  }
+
+  // ── Sprzedaż: puść repertuar do sprzedaży biletów ─────────────────────────
+  if (action === 'sell') {
+    if (proposal.status !== 'approved' || !stats.consultations_started_at) {
+      return Response.json({ error: 'Najpierw przeprowadź konsultacje z obsadą.' }, { status: 400 })
+    }
+    if (stats.sales_started_at) {
+      return Response.json({ error: 'Sprzedaż już uruchomiona.' }, { status: 409 })
+    }
+    await supabase
+      .from('repertoire_proposals')
+      .update({ stats: { ...stats, sales_started_at: new Date().toISOString() } })
+      .eq('org_id', orgId)
+      .eq('id', proposalId)
+    return Response.json({ ok: true })
+  }
+
+  // ── Zatwierdzenie: dodaj wydarzenia do kalendarza (BEZ powiadamiania obsady) ─
   const events = ((proposal.proposal_data ?? []) as any[]).map(e => ({
     org_id: orgId,
     theatre_id: proposal.theatre_id ?? null,
@@ -247,14 +310,12 @@ export async function POST(request: Request) {
     room_id:       e.room_id       ?? null,
   }))
 
-  let insertedEvents: InsertedEvent[] = []
   if (events.length > 0) {
-    const { data: inserted, error: insertErr } = await supabase
+    const { error: insertErr } = await supabase
       .from('events')
       .insert(events)
-      .select('id, production_id, title, type, start_time, end_time')
+      .select('id')
     if (insertErr) return Response.json({ error: insertErr.message }, { status: 500 })
-    insertedEvents = (inserted ?? []) as InsertedEvent[]
   }
 
   // Mark this proposal approved
@@ -274,14 +335,7 @@ export async function POST(request: Request) {
     .neq('id', proposalId)
     .eq('status', 'draft')
 
-  // Notify cast — błąd powiadomień nie blokuje zatwierdzenia
-  let notified = 0
-  try {
-    const result = await notifyCastAfterApproval(insertedEvents, proposal.month, APP_URL, orgId)
-    notified = result.notified
-  } catch (err) {
-    console.error('Cast notification error:', err)
-  }
-
-  return Response.json({ ok: true, eventsCreated: events.length, actorsNotified: notified })
+  // UWAGA: powiadomienia obsady NIE są już wysyłane przy zatwierdzeniu —
+  // przeniesione do etapu „Konsultacje" (action='consult').
+  return Response.json({ ok: true, eventsCreated: events.length })
 }

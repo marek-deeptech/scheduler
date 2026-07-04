@@ -101,9 +101,9 @@ export default function ImplementationPage() {
         <div>
           <Link href="/planning" className="text-xs" style={{ color: '#a89e92' }}>← Planowanie</Link>
           <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>
-            Wdrożenie repertuaru
+            Konsultacje z obsadą
           </h1>
-          <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>Etap 5–6: potwierdzenia obsady i raport do Dyrektora Finansowego</p>
+          <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>Potwierdzenia udziału obsady i raport do Dyrektora Finansowego — przed uruchomieniem sprzedaży</p>
         </div>
         {months.length > 0 && (
           <select value={month} onChange={e => setMonth(e.target.value)}
@@ -118,7 +118,7 @@ export default function ImplementationPage() {
       ) : !status?.approved ? (
         <div className="text-center py-20">
           <p className="text-sm font-medium" style={{ color: '#7a7068' }}>Brak zatwierdzonego repertuaru</p>
-          <p className="text-xs mt-1" style={{ color: '#a89e92' }}>Zatwierdź jedną z opcji w Planowaniu, aby rozpocząć wdrożenie.</p>
+          <p className="text-xs mt-1" style={{ color: '#a89e92' }}>Zatwierdź jedną z opcji w Planowaniu, aby rozpocząć konsultacje.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-5">

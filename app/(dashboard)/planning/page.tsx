@@ -14,6 +14,7 @@ import {
   conflictedTitles,
   type ProposalConflict,
 } from '@/lib/conflicts'
+import { proposalStage, STAGE_META, STAGE_ORDER, isApprovedStage, type RepStage } from '@/lib/repertoire-stage'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,10 @@ interface ProposalStats {
   by_production: Record<string, number>
   objective?: string
   finance?: { revenue: number; cost: number; margin: number; attendance: number; locked: number }
+  // Markery etapu procesu (Konsultacje / Sprzedaż) — patrz lib/repertoire-stage.ts
+  consultations_started_at?: string | null
+  sales_started_at?: string | null
+  report_sent_at?: string | null
 }
 
 function fmtPlnShort(n: number): string {
@@ -75,15 +80,11 @@ function getNextMonths(n: number) {
 const MONTHS_PL = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień']
 function monthLabelPl(key: string) { const [y, m] = key.split('-'); return `${MONTHS_PL[+m - 1]} ${y}` }
 
-// Etapy cyklu życia repertuaru miesiąca
-type MonthStage = 'brak' | 'planowanie' | 'zatwierdzony' | 'wdrozony'
+// Etapy cyklu życia repertuaru miesiąca: Planowanie → Zatwierdzenie → Konsultacje → Sprzedaż
+// (definicje i derywacja w lib/repertoire-stage.ts)
+type MonthStage = RepStage
 interface MonthProp { id: string; label: string; stage: MonthStage; proposal_data: ProposalEvent[] }
-const STAGE_CFG: Record<MonthStage, { label: string; bg: string; color: string; dot: string }> = {
-  brak:         { label: 'Do zaplanowania', bg: '#f2ede6', color: '#7a7068', dot: '#b8b0a4' },
-  planowanie:   { label: 'W planowaniu',    bg: '#e6efff', color: '#1d4ed8', dot: '#3b82f6' },
-  zatwierdzony: { label: 'Zatwierdzony',    bg: '#fef9c3', color: '#854d0e', dot: '#eab308' },
-  wdrozony:     { label: 'Wdrożony',        bg: '#dcfce7', color: '#15803d', dot: '#22c55e' },
-}
+const STAGE_CFG = STAGE_META
 
 // ── Main page ────────────────────────────────────────────────────────────────
 
@@ -114,20 +115,18 @@ export default function PlanningPage() {
         (!selectedTheatreId || p.theatre_id === selectedTheatreId || p.theatre_id == null))
       const byMonth: Record<string, MonthProp[]> = {}
       for (const p of rel as any[]) {
-        const stage: MonthStage = p.status === 'approved'
-          ? ((p.stats as any)?.report_sent_at ? 'wdrozony' : 'zatwierdzony')
-          : 'planowanie'
+        const stage: MonthStage = proposalStage(p)
         ;(byMonth[p.month] ??= []).push({ id: p.id, label: p.label, stage, proposal_data: p.proposal_data ?? [] })
       }
-      const order: Record<MonthStage, number> = { wdrozony: 0, zatwierdzony: 1, planowanie: 2, brak: 3 }
-      for (const k in byMonth) byMonth[k].sort((a, b) => order[a.stage] - order[b.stage] || a.label.localeCompare(b.label, 'pl'))
+      for (const k in byMonth) byMonth[k].sort((a, b) => STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage] || a.label.localeCompare(b.label, 'pl'))
       setProposalsByMonth(byMonth)
       const m: Record<string, MonthStage> = {}
       for (const mo of overviewMonths) {
         const ps = byMonth[mo.value] ?? []
-        m[mo.value] = ps.some(p => p.stage === 'wdrozony') ? 'wdrozony'
-          : ps.some(p => p.stage === 'zatwierdzony') ? 'zatwierdzony'
-          : ps.length ? 'planowanie' : 'brak'
+        // Najbardziej zaawansowany etap miesiąca (najniższy STAGE_ORDER wśród nie-'brak')
+        m[mo.value] = ps.length
+          ? ps.reduce<MonthStage>((best, p) => STAGE_ORDER[p.stage] < STAGE_ORDER[best] ? p.stage : best, 'planowanie')
+          : 'brak'
       }
       setMonthStatus(m)
     })
@@ -336,25 +335,16 @@ export default function PlanningPage() {
     }
   }
 
-  // Odbiorcy powiadomienia po zatwierdzeniu — cała obsada tytułów z propozycji
-  function recipientsFor(p: Proposal): { name: string }[] {
-    const titles = new Set((p.proposal_data ?? []).map(e => e.production_title))
-    const ids = new Set<string>()
-    titles.forEach(t => (productionCastMap.get(t) ?? []).forEach(id => ids.add(id)))
-    return [...ids].map(id => ({ name: artistNamesMap.get(id) ?? '—' })).sort((a, b) => a.name.localeCompare(b.name, 'pl'))
-  }
-
   return (
     <div className="space-y-6">
-      {/* Potwierdzenie zatwierdzenia repertuaru (wysyłka planu do obsady) */}
+      {/* Potwierdzenie zatwierdzenia repertuaru (bez powiadamiania obsady) */}
       {approveConfirm && (
         <SendConfirmModal
           title={`Zatwierdź repertuar — ${monthLabelPl(approveConfirm.month)}`}
-          channelLabel="Powiadomienie do obsady (e-mail / SMS)"
-          recipients={recipientsFor(approveConfirm)}
-          content={`Po zatwierdzeniu „${approveConfirm.label}" plan spektakli na ${monthLabelPl(approveConfirm.month)} zostanie rozesłany do obsady z prośbą o potwierdzenie udziału.`}
-          note="Repertuar zostanie oznaczony jako zatwierdzony, a wydarzenia trafią do kalendarza."
-          confirmLabel="Zatwierdź i powiadom obsadę"
+          recipients={[]}
+          content={`Repertuar „${approveConfirm.label}" na ${monthLabelPl(approveConfirm.month)} zostanie zatwierdzony, a spektakle trafią do kalendarza.`}
+          note={'Obsada NIE jest jeszcze powiadamiana — powiadomienia i zbieranie potwierdzeń wyślesz w kolejnym etapie „Konsultacje".'}
+          confirmLabel="Zatwierdź repertuar"
           sending={actionLoading === approveConfirm.id + 'approve'}
           allowEmpty
           onConfirm={() => handleAction(approveConfirm.id, 'approve')}
@@ -521,7 +511,7 @@ export default function PlanningPage() {
         <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
           <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>Status repertuarów — najbliższe {Math.max(1, overviewMonths.length - 1)} {overviewMonths.length - 1 === 1 ? 'miesiąc' : (overviewMonths.length - 1) < 5 ? 'miesiące' : 'miesięcy'}</p>
           <div className="flex items-center gap-3 flex-wrap">
-            {(['brak', 'planowanie', 'zatwierdzony', 'wdrozony'] as MonthStage[]).map(s => (
+            {(['planowanie', 'zatwierdzenie', 'konsultacje', 'sprzedaz'] as MonthStage[]).map(s => (
               <span key={s} className="inline-flex items-center gap-1 text-[11px]" style={{ color: '#7a7068' }}>
                 <span className="w-2 h-2 rounded-full" style={{ background: STAGE_CFG[s].dot }} />
                 {STAGE_CFG[s].label}
@@ -536,8 +526,8 @@ export default function PlanningPage() {
             const cfg = STAGE_CFG[st]
             const isCurrent = mo.value === thisMonthKey
             const props = proposalsByMonth[mo.value] ?? []
-            const isApprovedMonth = st === 'zatwierdzony' || st === 'wdrozony'
-            const approvedProp = props.find(p => p.stage === 'wdrozony') ?? props.find(p => p.stage === 'zatwierdzony')
+            const isApprovedMonth = isApprovedStage(st)
+            const approvedProp = props.find(p => isApprovedStage(p.stage))
             return (
               <div key={mo.value} className="py-3.5 flex flex-col sm:flex-row sm:items-center gap-3"
                 style={isCurrent ? { background: 'linear-gradient(90deg,#faf8f5,transparent)' } : undefined}>
@@ -566,10 +556,8 @@ export default function PlanningPage() {
                   ) : props.map(p => {
                     const pc = STAGE_CFG[p.stage]
                     const pillLabel = p.stage === 'planowanie' ? 'Robocza' : pc.label
-                    // Zatwierdzony → Podgląd + Wdróż; Wdrożony → tylko Podgląd; Robocza → Podgląd (otwiera pełne opcje)
-                    const canImplement = p.stage === 'zatwierdzony'
                     // Konflikty obsady — ta sama logika co na pulpicie (detectProposalConflicts).
-                    // Dla roboczych liczymy z danych propozycji; zatwierdzone/wdrożone pomijamy.
+                    // Dla roboczych liczymy z danych propozycji; zatwierdzone pomijamy.
                     const conflictCount = p.stage === 'planowanie' && productionCastMap.size > 0
                       ? detectProposalConflicts(p.proposal_data ?? [], productionCastMap, artistNamesMap).length
                       : 0
@@ -590,9 +578,6 @@ export default function PlanningPage() {
                         )}
                         <div className="flex items-center gap-3">
                           <Link href={`/planning/${p.id}`} className="text-[11px] font-medium hover:underline" style={{ color: '#7a7068' }}>Podgląd</Link>
-                          {canImplement && (
-                            <Link href={`/planning/implementation?month=${mo.value}`} className="text-[11px] font-medium hover:underline" style={{ color: '#7a2020' }}>Wdróż →</Link>
-                          )}
                         </div>
                       </div>
                     )
@@ -698,7 +683,7 @@ function ProposalCard({
     conflictStart?: string; conflictEnd?: string; productions: string[]
   }) => void
 }) {
-  const cfg    = STATUS_CFG[proposal.status] ?? STATUS_CFG.draft
+  const stage  = proposalStage(proposal)
   const events = [...(proposal.proposal_data ?? [])].sort((a, b) => a.date.localeCompare(b.date))
   const stats  = proposal.stats ?? {} as ProposalStats
 
@@ -724,9 +709,16 @@ function ProposalCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-base font-bold" style={{ color: '#1a1410' }}>{proposal.label} <span style={{ color: '#a89e92', fontWeight: 500 }}>/ {monthLabelPl(proposal.month)}</span></span>
-              <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full uppercase tracking-wide ${cfg.cls}`}>
-                {cfg.label}
-              </span>
+              {proposal.status === 'rejected' ? (
+                <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full uppercase tracking-wide ${STATUS_CFG.rejected.cls}`}>
+                  {STATUS_CFG.rejected.label}
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full uppercase tracking-wide"
+                  style={{ background: STAGE_CFG[stage].bg, color: STAGE_CFG[stage].color }}>
+                  {stage === 'planowanie' ? 'Propozycja' : STAGE_CFG[stage].label}
+                </span>
+              )}
             </div>
             {proposal.reasoning && (
               <p className="text-xs mt-1 leading-relaxed" style={{ color: '#7a7068' }}>{proposal.reasoning}</p>
@@ -888,20 +880,20 @@ function ProposalCard({
         )}
 
         {proposal.status === 'approved' && (
-          <div className="px-5 py-3 bg-green-50 border-t border-green-100 flex items-center gap-2">
-            <p className="flex-1 text-xs text-green-700 font-medium">
-              ✓ Zatwierdzono{proposal.approved_at
-                ? ` ${new Date(proposal.approved_at).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' })}`
-                : ''} — {events.length} spektakli
+          <div className="px-5 py-3 flex items-center gap-2 border-t"
+            style={{ background: STAGE_CFG[stage].bg + '55', borderColor: STAGE_CFG[stage].bg }}>
+            <p className="flex-1 text-xs font-semibold" style={{ color: STAGE_CFG[stage].color }}>
+              {stage === 'zatwierdzenie' && `✓ Zatwierdzono — czeka na konsultacje z obsadą`}
+              {stage === 'konsultacje'   && `Konsultacje z obsadą w toku`}
+              {stage === 'sprzedaz'      && `Sprzedaż uruchomiona`}
             </p>
             <Link
               href={`/planning/${proposal.id}`}
-              className="flex items-center gap-1 text-xs font-semibold text-green-700 hover:text-green-900 transition-colors"
+              className="flex items-center gap-1 text-xs font-semibold hover:opacity-80 transition-opacity"
+              style={{ color: STAGE_CFG[stage].color }}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-              </svg>
-              Zobacz
+              {stage === 'sprzedaz' ? 'Zobacz' : 'Zarządzaj etapem'}
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </Link>
           </div>
         )}
