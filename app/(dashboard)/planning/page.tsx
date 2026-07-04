@@ -9,6 +9,7 @@ import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import SendConfirmModal from '@/components/SendConfirmModal'
 import { CategoryMarks } from '@/components/CategoryMarks'
 import { SlotsTab, FinanceTab, CoreTab, ExtraTab } from '@/components/PlanningConditionTabs'
+import ExcelImportTab from '@/components/ExcelImportTab'
 import {
   detectProposalConflicts,
   conflictedTitles,
@@ -213,7 +214,7 @@ export default function PlanningPage() {
   const [constraints,   setConstraints]   = useState('')
   // Warunki generowania — domyślnie tylko finanse ON (zadanie 3: a,c,d wyłączone)
   const [cond, setCond] = useState({ slots: false, finance: true, core: false, extra: false })
-  const [activeTab, setActiveTab] = useState<'gen' | 'slots' | 'finance' | 'core' | 'extra'>('gen')
+  const [activeTab, setActiveTab] = useState<'gen' | 'slots' | 'finance' | 'core' | 'extra' | 'import'>('gen')
   const [expandedIds,   setExpandedIds]   = useState<Set<string>>(new Set())
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [error,         setError]         = useState<string | null>(null)
@@ -377,7 +378,7 @@ export default function PlanningPage() {
       {/* ── Zakładki: Generowanie + edycja warunków ── */}
       <div className="flex gap-1.5 overflow-x-auto -mt-2 pb-1">
         {([
-          ['gen', 'Generowanie'], ['slots', 'Sloty Favourites'], ['finance', 'Założenia finansowe'], ['core', 'Dostępność CORE'], ['extra', 'Założenia dodatkowe'],
+          ['gen', 'Generowanie'], ['slots', 'Sloty Favourites'], ['finance', 'Założenia finansowe'], ['core', 'Dostępność CORE'], ['extra', 'Założenia dodatkowe'], ['import', 'Import Excel'],
         ] as const).map(([k, lbl]) => (
           <button key={k} onClick={() => setActiveTab(k)}
             className="px-3.5 py-2 text-sm font-semibold rounded-xl whitespace-nowrap transition-colors shrink-0"
@@ -392,6 +393,7 @@ export default function PlanningPage() {
       {activeTab === 'finance' && <FinanceTab />}
       {activeTab === 'core'    && <CoreTab month={selectedMonth || thisMonthKey} />}
       {activeTab === 'extra'   && <ExtraTab theatreId={selectedTheatreId} theatreName={theatreName} />}
+      {activeTab === 'import'  && <ExcelImportTab theatreId={selectedTheatreId} theatreName={theatreName} onScheduleImported={loadProposals} />}
 
       {activeTab === 'gen' && (<>
 
