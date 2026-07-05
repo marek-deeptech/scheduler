@@ -53,6 +53,7 @@ interface AvailData {
   artistIdByName:      Record<string, string>       // artist name → artist id
   blockedByDate:       Record<string, Set<string>>
   prodsByTheatreId:    Record<string, ProdOption[]>
+  stageByProdId:       Record<string, string>       // production_id → scena (stage)
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -183,6 +184,10 @@ function getAlternatives(
   const theatreId = avail.theatreByProdId[show.production_id ?? '']
   if (!theatreId) return []
 
+  const slotStart = show.start_time
+  const slotEnd   = show.end_time
+  const slotStage = avail.stageByProdId[show.production_id ?? '']
+
   // Productions already used today in the same theatre (excluding the one we're replacing)
   const usedToday = new Set(
     allShows
@@ -191,12 +196,26 @@ function getAlternatives(
       .map(s => s.production_id)
   )
 
+  // Aktorzy zajęci o tej samej porze — obsada spektakli tego dnia nakładających się
+  // czasowo ze slotem, który zastępujemy (konflikt obsady = wspólny aktor o tym czasie)
+  const busyAtSlot = new Set<string>()
+  for (const s of allShows) {
+    if (s.date !== date || s.production_id === show.production_id) continue
+    if (!(s.start_time < slotEnd && slotStart < s.end_time)) continue // brak nakładania
+    for (const n of (avail.castByProdId[s.production_id ?? ''] ?? [])) busyAtSlot.add(n)
+  }
+
   const blocked = avail.blockedByDate[date] ?? new Set()
 
   return (avail.prodsByTheatreId[theatreId] ?? []).filter(p => {
-    if (p.id === show.production_id) return false   // same as current
-    if (usedToday.has(p.id))         return false   // already in other room today
-    const cast  = avail.castByProdId[p.id] ?? []
+    if (p.id === show.production_id) return false                       // same as current
+    if (usedToday.has(p.id))         return false                       // already in other room today
+    // Ta sama scena co zastępowany slot (gdy scena slotu znana)
+    if (slotStage && avail.stageByProdId[p.id] !== slotStage) return false
+    const cast = avail.castByProdId[p.id] ?? []
+    // Konflikt obsady: alternatywa nie może dzielić aktora ze spektaklem granym o tej porze
+    if (cast.some(n => busyAtSlot.has(n))) return false
+    // Dostępność dnia (day-status): min. połowa obsady wolna od blokad
     const avail2 = cast.filter(n => !blocked.has(n))
     return avail2.length >= Math.ceil(cast.length / 2)
   })
@@ -263,7 +282,7 @@ export default function ProposalDetailPage() {
           { data: theatres },
           { data: statuses },
         ] = await Promise.all([
-          supabase.from('productions').select('id, title, theatre_id, is_favourite').order('title'),
+          supabase.from('productions').select('id, title, theatre_id, is_favourite, stage').order('title'),
           supabase.from('artist_productions').select('artist_id, production_id'),
           supabase.from('artists').select('id, name, teams!inner(name)').eq('teams.name', 'Cast').order('name'),
           supabase.from('theatres').select('id, name'),
@@ -298,6 +317,7 @@ export default function ProposalDetailPage() {
         const theatreByProdId: Record<string, string>     = {}
         const theatreNameByProdId: Record<string, string> = {}
         const prodsByTheatreId: Record<string, ProdOption[]> = {}
+        const stageByProdId: Record<string, string>        = {}
 
         for (const pr of (prods ?? []) as any[]) {
           if (!(castByProdId[pr.id]?.length)) continue // skip productions with no cast
@@ -305,6 +325,7 @@ export default function ProposalDetailPage() {
           const tName = theatreNames[tid] ?? ''
           theatreByProdId[pr.id]     = tid
           theatreNameByProdId[pr.id] = tName
+          stageByProdId[pr.id]       = pr.stage ?? ''
           prodsByTheatreId[tid] ??= []
           prodsByTheatreId[tid].push({ id: pr.id, title: pr.title, theatreId: tid, theatreName: tName })
         }
@@ -318,7 +339,7 @@ export default function ProposalDetailPage() {
           }
         }
 
-        setAvailData({ theatreByProdId, theatreNameByProdId, castByProdId, castIdsByProdId, artistIdByName, blockedByDate, prodsByTheatreId })
+        setAvailData({ theatreByProdId, theatreNameByProdId, castByProdId, castIdsByProdId, artistIdByName, blockedByDate, prodsByTheatreId, stageByProdId })
 
         const favs = new Set<string>()
         for (const pr of (prods ?? []) as any[]) {
