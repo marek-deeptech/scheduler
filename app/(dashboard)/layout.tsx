@@ -394,6 +394,16 @@ function SidebarUserFooter() {
   )
 }
 
+function LegalLinks() {
+  return (
+    <div className="px-4 py-2.5 flex items-center gap-2 text-[10px] shrink-0" style={{ color: '#a89e92', borderTop: '1px solid #e4ddd4' }}>
+      <Link href="/prywatnosc" className="hover:underline">Polityka prywatności</Link>
+      <span>·</span>
+      <Link href="/rodo" className="hover:underline">RODO</Link>
+    </div>
+  )
+}
+
 // ── Sidebar ─────────────────────────────────────────────────────────────────
 
 function Sidebar({ mobile = false }: { mobile?: boolean }) {
@@ -549,6 +559,8 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
 
       {/* Zalogowany użytkownik + Wyloguj — na desktopie w górnym pasku, tu tylko mobilnie */}
       {mobile && <SidebarUserFooter />}
+
+      <LegalLinks />
 
       {/* PL/EN ukryte na razie */}
     </aside>

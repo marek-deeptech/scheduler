@@ -1064,7 +1064,6 @@ export default function MessagesPage() {
             <option value="Niepewny">Niepewny</option>
             <option value="Niedostępny">Niedostępny</option>
             <option value="Urlop">Urlop</option>
-            <option value="Choroba">Choroba</option>
           </select>
 
           <select

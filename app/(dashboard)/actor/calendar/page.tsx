@@ -43,7 +43,6 @@ const DAY_STATUSES = [
   { value: 'Niepewny',                   cls: 'bg-orange-500 text-white',       dot: 'bg-orange-400',  icon: '?' },
   { value: 'Niedostępny',                cls: 'bg-red-600 text-white',          dot: 'bg-red-500',     icon: '✗' },
   { value: 'Urlop',                      cls: 'bg-amber-400 text-black',        dot: 'bg-amber-400',   icon: '☀' },
-  { value: 'Choroba',                    cls: 'bg-gray-900 text-white',         dot: 'bg-gray-700',    icon: '✗' },
 ]
 
 // Single neutral style for all production badges

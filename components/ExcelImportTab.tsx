@@ -22,12 +22,14 @@ function daysInMonth(month: string): number {
 }
 
 const STATUS_CODES: Record<string, string> = {
-  d: 'Dostępny', u: 'Urlop', n: 'Niedostępny', c: 'Choroba', '?': 'Niepewny', w: 'Dostępny tylko w Warszawie',
+  d: 'Dostępny', u: 'Urlop', n: 'Niedostępny', '?': 'Niepewny', w: 'Dostępny tylko w Warszawie',
 }
-const VALID_STATUSES = new Set(['Dostępny', 'Dostępny tylko w Warszawie', 'Niepewny', 'Niedostępny', 'Urlop', 'Choroba'])
+const VALID_STATUSES = new Set(['Dostępny', 'Dostępny tylko w Warszawie', 'Niepewny', 'Niedostępny', 'Urlop'])
 function codeToStatus(raw: string): string | null {
   const t = raw.trim()
   if (!t) return null
+  // Zgodność wstecz: dawny kod „C"/„Choroba" → „Niedostępny" (bez danych o zdrowiu)
+  if (t.toLowerCase() === 'c' || t.toLowerCase() === 'choroba') return 'Niedostępny'
   if (STATUS_CODES[t.toLowerCase()]) return STATUS_CODES[t.toLowerCase()]
   const hit = [...VALID_STATUSES].find(s => s.toLowerCase() === t.toLowerCase())
   return hit ?? null
@@ -227,7 +229,7 @@ export default function ExcelImportTab({
         <div>
           <p className="text-sm font-bold" style={{ color: '#1a1410' }}>1. Zajętości aktorów</p>
           <p className="text-xs mt-1 leading-relaxed" style={{ color: '#7a7068' }}>
-            Macierz <b>aktorzy × dni</b>. W komórce kod: <b>U</b>=Urlop, <b>N</b>=Niedostępny, <b>C</b>=Choroba,
+            Macierz <b>aktorzy × dni</b>. W komórce kod: <b>U</b>=Urlop, <b>N</b>=Niedostępny,
             <b> ?</b>=Niepewny, <b>W</b>=tylko&nbsp;Warszawa, <b>D</b>=Dostępny. Puste = bez zmian.
             Po wczytaniu zajętości aktorów są od razu aktualizowane.
           </p>

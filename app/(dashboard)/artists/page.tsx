@@ -281,7 +281,7 @@ function ArtistWeekView({ artistId, localeStr, ta }: {
       supabase.from('availabilities')
         .select('id, type, start_time, end_time, note')
         .eq('artist_id', id)
-        .in('type', ['Urlop', 'Choroba'])
+        .in('type', ['Urlop', 'Niedostępny'])
         .order('start_time'),
     ])
 
@@ -369,7 +369,7 @@ function ArtistWeekView({ artistId, localeStr, ta }: {
             const isToday = dateStr === todayStr
             const dayEvents = events.filter(e => e.start_time.slice(0,10) === dateStr)
             const onVacation = avails.some(av => av.type === 'Urlop'   && isInAvail(av, dateStr))
-            const onSick     = avails.some(av => av.type === 'Choroba' && isInAvail(av, dateStr))
+            const onSick     = avails.some(av => av.type === 'Niedostępny' && isInAvail(av, dateStr))
             const dow = day.getDay()
             const isWeekend = dow === 0 || dow === 6
 
@@ -1201,7 +1201,7 @@ export default function ArtistsPage() {
       supabase.from('availabilities')
         .select('id, type, start_time, end_time, note')
         .eq('artist_id', artistId)
-        .in('type', ['Urlop', 'Choroba'])
+        .in('type', ['Urlop', 'Niedostępny'])
         .order('start_time'),
       supabase.from('event_artists')
         .select('event_id')
@@ -1281,7 +1281,7 @@ export default function ArtistsPage() {
       upcomingEvents,
       pastEvents,
       vacations:  avRaw.filter(r => r.type === 'Urlop'),
-      sicknesses: avRaw.filter(r => r.type === 'Choroba'),
+      sicknesses: avRaw.filter(r => r.type === 'Niedostępny'),
       substitutes: [],
       confirmations,
       messages,
@@ -1320,7 +1320,7 @@ export default function ArtistsPage() {
     return c
   }, [artists])
 
-  const statusOptions = ['Dostępny', 'Dostępny tylko w Warszawie', 'Niepewny', 'Niedostępny', 'Urlop', 'Choroba']
+  const statusOptions = ['Dostępny', 'Dostępny tylko w Warszawie', 'Niepewny', 'Niedostępny', 'Urlop']
 
   return (
     <>

@@ -98,11 +98,11 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
       .from('availabilities')
       .select('id, start_time, end_time, note, type')
       .eq('artist_id', artistId)
-      .in('type', ['Urlop', 'Choroba'])
+      .in('type', ['Urlop', 'Niedostępny'])
       .order('start_time')
     const records = (data ?? []) as (VacationRecord & { type: string })[]
     setVacations(records.filter(r => r.type === 'Urlop'))
-    setSicknesses(records.filter(r => r.type === 'Choroba'))
+    setSicknesses(records.filter(r => r.type === 'Niedostępny'))
     return records
   }
 
@@ -116,11 +116,11 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
       .gt('end_time',   `${start}T00:00:00`)
     if (!data || data.length === 0) return null
     const clash = data[0] as any
-    const clashType = clash.type === 'Urlop' ? 'urlop' : 'choroba'
+    const clashType = clash.type === 'Urlop' ? 'urlop' : 'niedostępność'
     return `Zakres nakłada się z istniejącym wpisem (${clashType}: ${clash.start_time.slice(0,10)} – ${clash.end_time.slice(0,10)}).`
   }
 
-  async function addEntry(type: 'Urlop' | 'Choroba', entry: { start: string; end: string; note: string }) {
+  async function addEntry(type: 'Urlop' | 'Niedostępny', entry: { start: string; end: string; note: string }) {
     if (!artist || !entry.start || !entry.end) return false
     if (entry.end < entry.start) {
       setError('Data końca nie może być wcześniejsza niż data początku.')
@@ -152,7 +152,7 @@ export default function ArtistModal({ artist, productions, allActors = [], prese
 
   async function addSickness() {
     setSickSaving(true)
-    const ok = await addEntry('Choroba', newSickness)
+    const ok = await addEntry('Niedostępny', newSickness)
     if (ok) { setNewSickness({ start: '', end: '', note: '' }); setShowSickForm(false) }
     setSickSaving(false)
   }

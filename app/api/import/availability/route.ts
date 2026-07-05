@@ -7,7 +7,7 @@ const supabase = createClient(
 )
 
 const VALID_STATUSES = new Set([
-  'Dostępny', 'Dostępny tylko w Warszawie', 'Niepewny', 'Niedostępny', 'Urlop', 'Choroba',
+  'Dostępny', 'Dostępny tylko w Warszawie', 'Niepewny', 'Niedostępny', 'Urlop',
 ])
 
 function norm(s: unknown): string {
@@ -45,7 +45,8 @@ export async function POST(request: Request) {
   let skipped = 0
 
   for (const e of entries) {
-    const status = (e.status ?? '').toString().trim()
+    let status = (e.status ?? '').toString().trim()
+    if (status === 'Choroba') status = 'Niedostępny' // bez danych o zdrowiu
     if (!VALID_STATUSES.has(status)) { if (status) invalid.add(status); skipped++; continue }
     if (!/^\d{4}-\d{2}-\d{2}$/.test((e.date ?? '').toString())) { skipped++; continue }
     const aid = matchActor(e.actor)
