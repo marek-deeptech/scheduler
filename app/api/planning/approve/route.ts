@@ -344,17 +344,48 @@ async function sendFullReport(month: string, orgId: string, theatreId: string | 
       </tr>`
     }
   }
+  // HTML — sekcja wg aktora: każdy aktor + jego pozycje (spektakle i próby)
+  const shortDate = (iso: string) =>
+    new Date(`${String(iso).slice(0, 10)}T12:00:00Z`).toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'numeric', timeZone: 'UTC' })
+  const eventsByArtist = new Map<string, any[]>()
+  for (const e of evList) for (const id of castOf(e)) (eventsByArtist.get(id) ?? eventsByArtist.set(id, []).get(id)!).push(e)
+  const artistOrder = [...eventsByArtist.keys()].sort((a, b) => (artName.get(a) ?? '').localeCompare(artName.get(b) ?? '', 'pl'))
+  let perActorHtml = ''
+  for (const aid of artistOrder) {
+    const evs = eventsByArtist.get(aid)!.slice().sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)))
+    perActorHtml += `<tr><td colspan="4" style="padding:13px 0 3px;font-size:13px;font-weight:700;color:#1a1410;border-top:2px solid #e5e7eb">${artName.get(aid) ?? ''} <span style="font-weight:400;color:#9ca3af;font-size:11px">— ${evs.length} ${evs.length === 1 ? 'pozycja' : (evs.length < 5 ? 'pozycje' : 'pozycji')}</span></td></tr>`
+    for (const e of evs) {
+      const time = `${String(e.start_time).slice(11, 16)}–${String(e.end_time).slice(11, 16)}`
+      const scene = e.room_id ? (roomName.get(e.room_id) || '') : ''
+      perActorHtml += `<tr style="border-top:1px solid #f3f4f6">
+        <td style="padding:6px 8px 6px 0;font-size:11px;white-space:nowrap;color:#374151;text-transform:capitalize">${shortDate(e.start_time)}</td>
+        <td style="padding:6px 8px;font-size:11px;white-space:nowrap;color:#374151">${time}</td>
+        <td style="padding:6px 8px;font-size:12px;color:#1a1410">${e.title ?? ''}${e.type ? `<span style="color:#9ca3af;font-size:11px"> · ${e.type}</span>` : ''}</td>
+        <td style="padding:6px 0;font-size:11px;color:#6b7280;white-space:nowrap">${scene}</td>
+      </tr>`
+    }
+  }
+
   const spektakle = evList.filter(e => /spekt|premiera/i.test(e.type ?? '')).length
   const proby = evList.filter(e => /prób|prob/i.test(e.type ?? '')).length
+  const thStyle = 'text-align:left;padding:0 8px 4px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#9ca3af'
   const html = emailWrapper(`
     <h2 style="font-size:18px;font-weight:700;margin:0 0 6px">Repertuar ${label} — pełny harmonogram</h2>
     <p style="color:#6b7280;margin:0 0 16px;font-size:14px">
       Konsultacje zakończone — repertuar przechodzi do sprzedaży. Poniżej komplet: <b>${evList.length}</b> pozycji
       (${spektakle} spektakli, ${proby} prób) z terminami, scenami i obsadą.
     </p>
-    <table style="width:100%;border-collapse:collapse">
-      <tr><th style="text-align:left;padding:0 8px 4px 0;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#9ca3af">Godz.</th><th style="text-align:left;padding:0 8px 4px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#9ca3af">Tytuł / typ</th><th style="text-align:left;padding:0 8px 4px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#9ca3af">Scena</th><th style="text-align:left;padding:0 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#9ca3af">Obsada</th></tr>
+
+    <p style="font-size:13px;font-weight:700;color:#1a1410;margin:0 0 4px">Harmonogram wg dat</p>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
+      <tr><th style="${thStyle};padding-left:0">Godz.</th><th style="${thStyle}">Tytuł / typ</th><th style="${thStyle}">Scena</th><th style="${thStyle};padding-right:0">Obsada</th></tr>
       ${bodyHtml}
+    </table>
+
+    <p style="font-size:13px;font-weight:700;color:#1a1410;margin:0 0 4px">Obsada wg aktora — spektakle i próby</p>
+    <table style="width:100%;border-collapse:collapse">
+      <tr><th style="${thStyle};padding-left:0">Data</th><th style="${thStyle}">Godz.</th><th style="${thStyle}">Tytuł / typ</th><th style="${thStyle};padding-right:0">Scena</th></tr>
+      ${perActorHtml}
     </table>
   `)
   const subject = `[Repertuar ${label}] Pełny harmonogram — spektakle, próby, sceny`
