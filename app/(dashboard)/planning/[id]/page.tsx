@@ -538,7 +538,7 @@ export default function ProposalDetailPage() {
       {stage === 'konsultacje' && (
         <div className="no-print flex items-center gap-3 flex-wrap rounded-2xl px-4 md:px-5 py-3" style={{ background: STAGE_META.konsultacje.bg, border: `1px solid ${STAGE_META.konsultacje.dot}` }}>
           <p className="flex-1 min-w-[200px] text-sm font-medium" style={{ color: STAGE_META.konsultacje.color }}>
-            Konsultacje w toku — obsada dostała prośby o potwierdzenie dostępności/udziału, a działy Techniki i Sprzedaży zostały powiadomione. Po zebraniu potwierdzeń uruchom sprzedaż biletów.
+            Konsultacje w toku — obsada dostała prośby o potwierdzenie dostępności/udziału, a działy Techniki i Sprzedaży zostały powiadomione. „Uruchom sprzedaż" kończy konsultacje i wysyła 2 raporty: pełny harmonogram (obsada, Technika, Sprzedaż) oraz finansowy (Dyr. Finansowy).
           </p>
           <div className="flex gap-2 w-full md:w-auto flex-wrap">
             <Link

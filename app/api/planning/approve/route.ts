@@ -278,6 +278,113 @@ async function notifyDepartments(monthEvents: InsertedEvent[], month: string, or
   return { technique, sales }
 }
 
+/** Pełny raport repertuaru na koniec konsultacji — wszystkie spektakle i próby
+ *  z datami, godzinami, scenami i obsadą. Wysyłany do obsady, Techniki i Sprzedaży. */
+async function sendFullReport(month: string, orgId: string, theatreId: string | null): Promise<{ actors: number; technique: number; sales: number }> {
+  const label = monthLabel(month)
+
+  // Wydarzenia miesiąca (org, teatr)
+  let evq = supabase.from('events')
+    .select('id, title, type, start_time, end_time, room_id, production_id')
+    .eq('org_id', orgId)
+    .gte('start_time', `${month}-01T00:00:00`)
+    .lte('start_time', `${lastDayOfMonth(month)}T23:59:59`)
+    .order('start_time', { ascending: true })
+  if (theatreId) evq = (evq as any).eq('theatre_id', theatreId)
+  const { data: events } = await evq
+  const evList = (events ?? []) as any[]
+  if (evList.length === 0) return { actors: 0, technique: 0, sales: 0 }
+  const eventIds = evList.map(e => e.id)
+
+  // Sale, aktorzy, obsada (jawna + z produkcji), ustawienia działów
+  const [{ data: rooms }, { data: arts }, { data: eaRows }, { data: apRows }, { data: settingsRows }, { data: techTeam }] = await Promise.all([
+    supabase.from('rooms').select('id, name').eq('org_id', orgId),
+    supabase.from('artists').select('id, name, email, team_id').eq('org_id', orgId),
+    supabase.from('event_artists').select('event_id, artist_id').in('event_id', eventIds),
+    supabase.from('artist_productions').select('artist_id, production_id').eq('org_id', orgId),
+    supabase.from('app_settings').select('key, value').eq('org_id', orgId).in('key', ['technique_email', 'sales_email', 'coordinator_email']),
+    supabase.from('teams').select('id').eq('name', 'Technique').maybeSingle(),
+  ])
+  const roomName = new Map<string, string>((rooms ?? []).map((r: any) => [r.id, r.name ?? '']))
+  const artName = new Map<string, string>((arts ?? []).map((a: any) => [a.id, a.name]))
+  const artEmail = new Map<string, string>()
+  for (const a of (arts ?? []) as any[]) if (a.email) artEmail.set(a.id, a.email)
+  const settings: Record<string, string> = {}
+  for (const r of (settingsRows ?? []) as any[]) if (r.value) settings[r.key] = r.value
+
+  const prodToArtists: Record<string, string[]> = {}
+  for (const ap of (apRows ?? []) as any[]) (prodToArtists[ap.production_id] ??= []).push(ap.artist_id)
+  const explicitByEvent: Record<string, string[]> = {}
+  for (const ea of (eaRows ?? []) as any[]) (explicitByEvent[ea.event_id] ??= []).push(ea.artist_id)
+  const castOf = (e: any): string[] => {
+    const ids = explicitByEvent[e.id]?.length ? explicitByEvent[e.id] : (prodToArtists[e.production_id] ?? [])
+    return ids
+  }
+
+  // HTML — pogrupowane po dacie
+  const dayLabel = (dateStr: string) =>
+    new Date(`${dateStr}T12:00:00Z`).toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
+  const byDate = new Map<string, any[]>()
+  for (const e of evList) {
+    const d = String(e.start_time).slice(0, 10)
+    ;(byDate.get(d) ?? byDate.set(d, []).get(d)!).push(e)
+  }
+  let bodyHtml = ''
+  for (const [date, evs] of [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    bodyHtml += `<tr><td colspan="4" style="padding:14px 0 4px;font-size:13px;font-weight:700;color:#1a1410;text-transform:capitalize;border-top:2px solid #e5e7eb">${dayLabel(date)}</td></tr>`
+    for (const e of evs) {
+      const time = `${String(e.start_time).slice(11, 16)}–${String(e.end_time).slice(11, 16)}`
+      const scene = e.room_id ? (roomName.get(e.room_id) || '') : ''
+      const cast = castOf(e).map(id => artName.get(id)).filter(Boolean).join(', ')
+      bodyHtml += `<tr style="border-top:1px solid #f3f4f6">
+        <td style="padding:7px 8px 7px 0;font-size:12px;white-space:nowrap;color:#374151">${time}</td>
+        <td style="padding:7px 8px;font-size:12px;font-weight:600;color:#1a1410">${e.title ?? ''}${e.type ? `<div style="font-weight:400;color:#9ca3af;font-size:11px">${e.type}</div>` : ''}</td>
+        <td style="padding:7px 8px;font-size:12px;color:#6b7280;white-space:nowrap">${scene}</td>
+        <td style="padding:7px 0;font-size:11px;color:#6b7280">${cast}</td>
+      </tr>`
+    }
+  }
+  const spektakle = evList.filter(e => /spekt|premiera/i.test(e.type ?? '')).length
+  const proby = evList.filter(e => /prób|prob/i.test(e.type ?? '')).length
+  const html = emailWrapper(`
+    <h2 style="font-size:18px;font-weight:700;margin:0 0 6px">Repertuar ${label} — pełny harmonogram</h2>
+    <p style="color:#6b7280;margin:0 0 16px;font-size:14px">
+      Konsultacje zakończone — repertuar przechodzi do sprzedaży. Poniżej komplet: <b>${evList.length}</b> pozycji
+      (${spektakle} spektakli, ${proby} prób) z terminami, scenami i obsadą.
+    </p>
+    <table style="width:100%;border-collapse:collapse">
+      <tr><th style="text-align:left;padding:0 8px 4px 0;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#9ca3af">Godz.</th><th style="text-align:left;padding:0 8px 4px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#9ca3af">Tytuł / typ</th><th style="text-align:left;padding:0 8px 4px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#9ca3af">Scena</th><th style="text-align:left;padding:0 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#9ca3af">Obsada</th></tr>
+      ${bodyHtml}
+    </table>
+  `)
+  const subject = `[Repertuar ${label}] Pełny harmonogram — spektakle, próby, sceny`
+
+  // Odbiorcy: obsada (z limitem testowym), Technika, Sprzedaż
+  const TEST_MAX_ACTORS = 5 // 0 = bez limitu; ustaw 0 przed realnym wdrożeniem
+  const actorIds = new Set<string>()
+  for (const e of evList) for (const id of castOf(e)) actorIds.add(id)
+  let actorEmails = [...actorIds].map(id => artEmail.get(id)).filter(Boolean) as string[]
+  actorEmails = [...new Set(actorEmails)]
+  if (TEST_MAX_ACTORS > 0) actorEmails = actorEmails.slice(0, TEST_MAX_ACTORS)
+
+  const techEmails = new Set<string>()
+  if (techTeam?.id) for (const a of (arts ?? []) as any[]) if (a.team_id === techTeam.id && a.email) techEmails.add(a.email)
+  if (settings.technique_email) techEmails.add(settings.technique_email)
+  const salesEmails = new Set<string>()
+  if (settings.sales_email) salesEmails.add(settings.sales_email)
+  else if (settings.coordinator_email) salesEmails.add(settings.coordinator_email)
+
+  async function blast(recipients: Iterable<string>): Promise<number> {
+    let n = 0
+    for (const to of recipients) { if (await sendEmail(to, subject, html)) n++ }
+    return n
+  }
+  const actors = await blast(actorEmails)
+  const technique = await blast(techEmails)
+  const sales = await blast(salesEmails)
+  return { actors, technique, sales }
+}
+
 export async function POST(request: Request) {
   const APP_URL = getBaseUrl(request)
   const orgId = await sessionOrgId(request)
@@ -344,7 +451,7 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, actorsNotified: notified, departments })
   }
 
-  // ── Sprzedaż: puść repertuar do sprzedaży biletów ─────────────────────────
+  // ── Sprzedaż: koniec konsultacji → 2 raporty, potem sprzedaż biletów ───────
   if (action === 'sell') {
     if (proposal.status !== 'approved' || !stats.consultations_started_at) {
       return Response.json({ error: 'Najpierw przeprowadź konsultacje z obsadą.' }, { status: 400 })
@@ -352,12 +459,41 @@ export async function POST(request: Request) {
     if (stats.sales_started_at) {
       return Response.json({ error: 'Sprzedaż już uruchomiona.' }, { status: 409 })
     }
+
+    // Raport 1 — pełny harmonogram do obsady, Techniki, Sprzedaży
+    const reports: { full: { actors: number; technique: number; sales: number }; finance: boolean } =
+      { full: { actors: 0, technique: 0, sales: 0 }, finance: false }
+    try {
+      reports.full = await sendFullReport(proposal.month, orgId, proposal.theatre_id ?? null)
+    } catch (err) {
+      console.error('Full report error:', err)
+    }
+    // Raport 2 — finansowy do Dyrektora Finansowego (jeśli jeszcze nie wysłany)
+    if (stats.report_sent_at) {
+      reports.finance = true
+    } else {
+      try {
+        const r = await fetch(`${APP_URL}/api/planning/send-finance-report`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ month: proposal.month, theatreId: proposal.theatre_id ?? undefined, orgId }),
+        })
+        const j = await r.json()
+        reports.finance = !!j.ok
+      } catch (err) {
+        console.error('Finance report error:', err)
+      }
+    }
+
+    // Odśwież stats (send-finance-report mógł ustawić report_sent_at) i dopisz sales_started_at
+    const { data: fresh } = await supabase.from('repertoire_proposals')
+      .select('stats').eq('org_id', orgId).eq('id', proposalId).single()
+    const freshStats = ((fresh?.stats ?? stats) as Record<string, any>)
     await supabase
       .from('repertoire_proposals')
-      .update({ stats: { ...stats, sales_started_at: new Date().toISOString() } })
+      .update({ stats: { ...freshStats, sales_started_at: new Date().toISOString() } })
       .eq('org_id', orgId)
       .eq('id', proposalId)
-    return Response.json({ ok: true })
+    return Response.json({ ok: true, reports })
   }
 
   // ── Zatwierdzenie: dodaj wydarzenia do kalendarza (BEZ powiadamiania obsady) ─
