@@ -432,7 +432,11 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
   // W zakładce Repertuar (/calendar) nie można wybrać obu teatrów naraz.
   const onRepertoire = isActive('/calendar')
   useEffect(() => {
-    if (onRepertoire && selectedTheatreId === null && theatres && theatres.length > 0) {
+    if (!theatres || selectedTheatreId !== null) return
+    // Jeden teatr (np. TD): wybierz go na stałe — „Wszystkie" nie ma sensu.
+    if (theatres.length === 1) {
+      setSelectedTheatreId(theatres[0].id)
+    } else if (onRepertoire && theatres.length > 0) {
       const def = theatres.find(t => t.name.toLowerCase().includes('polonia')) ?? theatres[0]
       setSelectedTheatreId(def.id)
     }
@@ -481,7 +485,8 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
       {/* Navigation */}
       {mode === 'coordinator' ? (
         <>
-          {/* Theatre filter */}
+          {/* Theatre filter — tylko gdy org ma >1 teatr (Polonia/Och); przy jednym teatrze (TD) ukryty */}
+          {(theatres?.length ?? 0) > 1 && (
           <div className="px-3 pt-3 pb-2" style={{ borderBottom: '1px solid #e4ddd4' }}>
             <p className="sidebar-section mb-2">{t.nav.theatreLabel}</p>
             <div className="flex flex-col gap-0.5">
@@ -510,6 +515,7 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
               })}
             </div>
           </div>
+          )}
 
           <nav className="flex-1 px-3 py-3 space-y-4 overflow-y-auto">
             <div>
