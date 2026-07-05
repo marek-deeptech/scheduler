@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { lastName } from '@/lib/names'
+import { findActorClashes, clashMessage } from '@/lib/clash-check'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -107,6 +108,18 @@ export default function ConflictResolutionModal({
         )
       }
       if (targets.length === 0) throw new Error('Brak wydarzenia tego dnia dla wybranego tytułu')
+
+      // Twarda blokada: dubler nie może już grać w innym wydarzeniu o tym czasie
+      for (const ev of targets) {
+        const clashes = await findActorClashes({
+          date: conflictDate,
+          startHM: String(ev.start_time).slice(11, 16),
+          endHM:   String(ev.end_time).slice(11, 16),
+          artistIds: [sub.id],
+          excludeEventId: ev.id,
+        })
+        if (clashes.length > 0) { setError(clashMessage(clashes)); setApplying(false); return }
+      }
 
       // Swap in the event cast: remove the conflicted actor, add the substitute
       const swappedEventIds: string[] = []
@@ -216,12 +229,13 @@ export default function ConflictResolutionModal({
           const { data: evRows } = await supabase
             .from('events')
             .select('id, production_id, start_time, end_time, productions(title)')
-            .eq('date', conflictDate)
+            .gte('start_time', `${conflictDate}T00:00:00`)
+            .lte('start_time', `${conflictDate}T23:59:59`)
             .in('production_id', allProdIds)
 
           for (const ev of (evRows ?? [])) {
-            const evStart = ((ev as any).start_time ?? '00:00').slice(0, 5)
-            const evEnd   = ((ev as any).end_time   ?? '23:59').slice(0, 5)
+            const evStart = String((ev as any).start_time ?? '').slice(11, 16) || '00:00'
+            const evEnd   = String((ev as any).end_time   ?? '').slice(11, 16) || '23:59'
             const pid     = (ev as any).production_id as string
             const title   = ((ev as any).productions as any)?.title ?? '?'
             if (conflictStart && conflictEnd && !timesOverlap(evStart, evEnd, conflictStart, conflictEnd)) continue

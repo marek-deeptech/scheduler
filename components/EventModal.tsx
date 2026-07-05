@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { findActorClashes, clashMessage } from '@/lib/clash-check'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
 import { EVENT_TYPE_CATEGORIES, EVENT_TYPES } from '@/types'
@@ -80,6 +81,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
   })
   const [saving,   setSaving]   = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [clashError, setClashError] = useState<string | null>(null)
 
   // ── Confirmations state ─────────────────────────────────────────────────────
   interface ConfirmationRow {
@@ -181,6 +183,17 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
+    setClashError(null)
+
+    // Twarda blokada podwójnego przypisania w tym samym czasie
+    if (form.artist_ids.length > 0) {
+      const clashes = await findActorClashes({
+        date: form.date, startHM: form.start_time, endHM: form.end_time,
+        artistIds: form.artist_ids, excludeEventId: isEdit && event ? event.id : null,
+      })
+      if (clashes.length > 0) { setClashError(clashMessage(clashes)); return }
+    }
+
     setSaving(true)
 
     const payload = {
@@ -289,6 +302,12 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
 
         {/* Body */}
         <form onSubmit={handleSave} className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+
+          {clashError && (
+            <div className="rounded-xl px-4 py-3 text-xs whitespace-pre-line" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c' }}>
+              {clashError}
+            </div>
+          )}
 
           {/* Produkcja — hidden when pre-filled from ProductionModal */}
           {!defaultProductionId && (

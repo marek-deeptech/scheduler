@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
 import { Production, Event, Artist } from '@/types'
 import { sortByLastName } from '@/lib/names'
+import { findActorClashes, clashMessage } from '@/lib/clash-check'
 
 export default function SchedulePage() {
   const { t } = useLanguage()
@@ -18,6 +19,7 @@ export default function SchedulePage() {
   const [showEventForm, setShowEventForm] = useState(false)
   const [productionForm, setProductionForm] = useState({ title: '', start_date: '', end_date: '' })
   const [eventForm, setEventForm] = useState({ title: '', start_time: '', end_time: '', location: '', artist_ids: [] as string[] })
+  const [clashMsg, setClashMsg] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [conflicts, setConflicts] = useState<Record<string, string[]>>({})
 
@@ -102,6 +104,17 @@ export default function SchedulePage() {
   async function handleAddEvent(e: React.FormEvent) {
     e.preventDefault()
     if (!selectedProduction) return
+
+    // Twarda blokada podwójnego przypisania w tym samym czasie
+    setClashMsg(null)
+    if (eventForm.artist_ids.length > 0 && eventForm.start_time && eventForm.end_time) {
+      const clashes = await findActorClashes({
+        date: eventForm.start_time.slice(0, 10), startHM: eventForm.start_time.slice(11, 16), endHM: eventForm.end_time.slice(11, 16),
+        artistIds: eventForm.artist_ids,
+      })
+      if (clashes.length > 0) { setClashMsg(clashMessage(clashes)); return }
+    }
+
     setSaving(true)
     const { data: newEvent } = await supabase.from('events').insert({
       production_id: selectedProduction,
@@ -313,6 +326,11 @@ export default function SchedulePage() {
                     ))}
                   </div>
                 </div>
+                {clashMsg && (
+                  <div className="rounded-lg px-3 py-2 text-xs whitespace-pre-line" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c' }}>
+                    {clashMsg}
+                  </div>
+                )}
                 <button
                   type="submit"
                   disabled={saving}

@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { sortByLastName, sortNamesByLastName } from '@/lib/names'
+import { findActorClashes, clashMessage } from '@/lib/clash-check'
 
 // ── SQL migration (run once in Supabase SQL Editor) ───────────────────────────
 // ALTER TABLE events ADD COLUMN IF NOT EXISTS description text;
@@ -339,6 +340,16 @@ function EditModal({ ev, eventTypes, rooms, artists, onClose, onSaved }: {
   async function handleSave() {
     if (!form.title.trim()) { setMsg('Tytuł jest wymagany'); return }
     if (!form.start_time || !form.end_time) { setMsg('Podaj czas rozpoczęcia i zakończenia'); return }
+
+    // Twarda blokada podwójnego przypisania w tym samym czasie
+    if (selectedArtists.length > 0) {
+      const clashes = await findActorClashes({
+        date: form.start_time.slice(0, 10), startHM: form.start_time.slice(11, 16), endHM: form.end_time.slice(11, 16),
+        artistIds: selectedArtists, excludeEventId: ev.id,
+      })
+      if (clashes.length > 0) { setMsg(clashMessage(clashes)); return }
+    }
+
     setSaving(true); setMsg('')
 
     try {
@@ -531,7 +542,7 @@ function EditModal({ ev, eventTypes, rooms, artists, onClose, onSaved }: {
         {/* Footer */}
         <div style={{ padding: '16px 24px', borderTop: '1px solid #e4ddd4', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, position: 'sticky', bottom: 0 }}>
           {msg
-            ? <span style={{ fontSize: 12, color: msg.startsWith('Błąd') ? '#c8102e' : '#166534', flex: 1 }}>{msg}</span>
+            ? <span style={{ fontSize: 12, color: (msg.startsWith('Błąd') || msg.startsWith('Konflikt')) ? '#c8102e' : '#166534', flex: 1, whiteSpace: 'pre-line' }}>{msg}</span>
             : <span />}
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={onClose} disabled={saving}
