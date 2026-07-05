@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { sortByLastName, sortNamesByLastName } from '@/lib/names'
-import { findActorClashes, clashMessage } from '@/lib/clash-check'
+import { findActorClashes, clashMessage, findRoomClash, roomClashMessage } from '@/lib/clash-check'
 
 // ── SQL migration (run once in Supabase SQL Editor) ───────────────────────────
 // ALTER TABLE events ADD COLUMN IF NOT EXISTS description text;
@@ -340,6 +340,15 @@ function EditModal({ ev, eventTypes, rooms, artists, onClose, onSaved }: {
   async function handleSave() {
     if (!form.title.trim()) { setMsg('Tytuł jest wymagany'); return }
     if (!form.start_time || !form.end_time) { setMsg('Podaj czas rozpoczęcia i zakończenia'); return }
+
+    // Twarda blokada zajętości sceny (m.in. „Wynajem sceny" blokuje salę)
+    if (form.room_id) {
+      const roomClash = await findRoomClash({
+        date: form.start_time.slice(0, 10), startHM: form.start_time.slice(11, 16), endHM: form.end_time.slice(11, 16),
+        roomId: form.room_id, excludeEventId: ev.id,
+      })
+      if (roomClash.length > 0) { setMsg(roomClashMessage(roomClash)); return }
+    }
 
     // Twarda blokada podwójnego przypisania w tym samym czasie
     if (selectedArtists.length > 0) {

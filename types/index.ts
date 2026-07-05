@@ -100,9 +100,15 @@ export const EVENT_TYPE_CATEGORIES: Record<string, string[]> = {
     'Warsztaty',
     'Wyjazd',
   ],
+  'Wynajem': [
+    'Wynajem sceny',
+  ],
 }
 
 export const EVENT_TYPES: string[] = Object.values(EVENT_TYPE_CATEGORIES).flat()
 
 export const REHEARSAL_TYPES = new Set(EVENT_TYPE_CATEGORIES['Próby'])
 export const SHOW_TYPES      = new Set(EVENT_TYPE_CATEGORIES['Spektakle'])
+// Wynajem sceny = blokada sali/sceny (bez obsady); żadne inne wydarzenie nie może
+// zajmować tej samej sali w nakładającym się czasie (egzekwowane w lib/clash-check).
+export const VENUE_BLOCK_TYPES = new Set(EVENT_TYPE_CATEGORIES['Wynajem'])

@@ -76,6 +76,38 @@ export async function findActorClashes(opts: {
   }))
 }
 
+export interface RoomClash { eventId: string; eventTitle: string; type: string | null; startHM: string; endHM: string }
+
+/** Kolizja sali/sceny: inne wydarzenie zajmuje tę samą salę w nakładającym się
+ *  czasie tego dnia. Blokuje m.in. nakładanie na „Wynajem sceny" (i odwrotnie). */
+export async function findRoomClash(opts: {
+  date: string; startHM: string; endHM: string; roomId: string | null; excludeEventId?: string | null
+}): Promise<RoomClash[]> {
+  const { date, startHM, endHM, roomId, excludeEventId } = opts
+  if (!roomId) return []
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}/.test(startHM) || !/^\d{2}:\d{2}/.test(endHM)) return []
+
+  const { data: evs } = await supabase
+    .from('events')
+    .select('id, title, type, start_time, end_time')
+    .eq('room_id', roomId)
+    .gte('start_time', `${date}T00:00:00`).lte('start_time', `${date}T23:59:59`)
+
+  return ((evs ?? []) as any[])
+    .filter(e => {
+      if (excludeEventId && e.id === excludeEventId) return false
+      const s = String(e.start_time).slice(11, 16), en = String(e.end_time).slice(11, 16)
+      return startHM < en && s < endHM
+    })
+    .map(e => ({ eventId: e.id, eventTitle: e.title ?? '?', type: e.type ?? null, startHM: String(e.start_time).slice(11, 16), endHM: String(e.end_time).slice(11, 16) }))
+}
+
+export function roomClashMessage(clashes: RoomClash[], roomName?: string): string {
+  const parts = clashes.map(c => `• „${c.eventTitle}"${c.type ? ` (${c.type})` : ''} ${c.startHM}–${c.endHM}`)
+  const scene = roomName ? ` „${roomName}"` : ''
+  return `Scena${scene} jest zajęta w tym czasie — nie można zapisać:\n${parts.join('\n')}`
+}
+
 /** Zwięzły komunikat o kolizji (blokada zapisu). */
 export function clashMessage(clashes: ActorClash[]): string {
   const byArtist = new Map<string, ActorClash[]>()

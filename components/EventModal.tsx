@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { findActorClashes, clashMessage } from '@/lib/clash-check'
+import { findActorClashes, clashMessage, findRoomClash, roomClashMessage } from '@/lib/clash-check'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
 import { EVENT_TYPE_CATEGORIES, EVENT_TYPES } from '@/types'
@@ -185,11 +185,22 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
     e.preventDefault()
     setClashError(null)
 
+    const excludeId = isEdit && event ? event.id : null
+
+    // Twarda blokada zajętości sceny (m.in. „Wynajem sceny" blokuje salę)
+    if (form.room_id) {
+      const roomClash = await findRoomClash({
+        date: form.date, startHM: form.start_time, endHM: form.end_time,
+        roomId: form.room_id, excludeEventId: excludeId,
+      })
+      if (roomClash.length > 0) { setClashError(roomClashMessage(roomClash)); return }
+    }
+
     // Twarda blokada podwójnego przypisania w tym samym czasie
     if (form.artist_ids.length > 0) {
       const clashes = await findActorClashes({
         date: form.date, startHM: form.start_time, endHM: form.end_time,
-        artistIds: form.artist_ids, excludeEventId: isEdit && event ? event.id : null,
+        artistIds: form.artist_ids, excludeEventId: excludeId,
       })
       if (clashes.length > 0) { setClashError(clashMessage(clashes)); return }
     }
