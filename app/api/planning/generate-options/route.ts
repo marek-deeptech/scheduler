@@ -167,11 +167,24 @@ export async function POST(request: Request) {
   const profile = profileFor(theatreName)
   const baseSlots = buildSlots(BASE_VARIANT, month, profile)
 
+  // Wynajem sceny TEGO teatru — blokuje scenę na dany dzień (auto-repertuar ją omija)
+  const stageByRoomId: Record<string, string> = {}
+  for (const [stg, rid] of Object.entries(stageRoomMap[theatreId] ?? {})) if (rid) stageByRoomId[rid] = stg
+  const { data: rentals } = await supabase.from('events')
+    .select('room_id, start_time').eq('org_id', orgId).eq('theatre_id', theatreId).eq('type', 'Wynajem sceny')
+    .gte('start_time', `${monthStart}T00:00:00`).lte('start_time', `${monthEnd}T23:59:59`)
+  const rentedStageByDate: Record<string, Set<string>> = {}
+  for (const r of (rentals ?? []) as any[]) {
+    const stg = r.room_id ? stageByRoomId[r.room_id] : null
+    if (!stg) continue
+    ;(rentedStageByDate[String(r.start_time).slice(0, 10)] ??= new Set()).add(stg)
+  }
+
   const inp: OptInputs = {
     slots: baseSlots,
     theatres: [theatreId],            // generujemy TYLKO dla wybranego teatru
     prods: optProds,
-    lockedByProd, unavailByDate, finance: fp, stageRoom,
+    lockedByProd, unavailByDate, finance: fp, stageRoom, rentedStageByDate,
   }
 
   // Usuń poprzednie wersje robocze tego miesiąca DLA TEGO TEATRU (w ramach org)

@@ -74,6 +74,7 @@ function buildSchedule(
   unavailMap: Record<string, Set<string>>,
   profile:    Profile,
   stageRoom:  (stage: StageKey) => Room | null,
+  rentedStageByDate: Record<string, Set<string>> = {},
 ): Show[] {
   const slots = buildSlots(variant, month, profile)
 
@@ -111,6 +112,7 @@ function buildSchedule(
     // Kandydaci: mogą grać, nie grają już dziś, brak konfliktu, scena wolna, blok < limit.
     const elig = prods.filter(p =>
       canPlay(p.id, s.date) && !todaysTitles[s.date].has(p.id) && !conflict(p.id) && stageFree(p) &&
+      !(rentedStageByDate[s.date]?.has(p.stage)) &&    // scena zablokowana wynajmem
       !(lastDate[p.id] === yd && (runLen[p.id] ?? 0) >= variant.block))
     if (!elig.length) continue
 
@@ -319,11 +321,24 @@ export async function POST(request: Request) {
     return (rid ? roomById[rid] : null) ?? firstRoom
   }
 
+  // Wynajem sceny — blokuje scenę na dany dzień (auto-repertuar ją omija)
+  const stageByRoomId: Record<string, string> = {}
+  for (const [stg, rid] of Object.entries(sceneRoomIds)) if (rid) stageByRoomId[rid] = stg
+  const { data: rentals } = await supabase.from('events')
+    .select('room_id, start_time').eq('org_id', orgId).eq('theatre_id', theatreId).eq('type', 'Wynajem sceny')
+    .gte('start_time', `${monthStart}T00:00:00`).lte('start_time', `${monthEnd}T23:59:59`)
+  const rentedStageByDate: Record<string, Set<string>> = {}
+  for (const r of (rentals ?? []) as any[]) {
+    const stg = r.room_id ? stageByRoomId[r.room_id] : null
+    if (!stg) continue
+    ;(rentedStageByDate[String(r.start_time).slice(0, 10)] ??= new Set()).add(stg)
+  }
+
   // ── Bazowy wzorzec: 4 warianty wokół realnego profilu teatru ─────────────────
   const profile = profileFor(theatreNames[theatreId] ?? '')
   const strategies = VARIANTS.map(v => ({
     label: v.label,
-    shows: buildSchedule(v, month, activeProds, castMap, unavailMap, profile, stageRoom),
+    shows: buildSchedule(v, month, activeProds, castMap, unavailMap, profile, stageRoom, rentedStageByDate),
     hint:  v.hint,
   }))
 

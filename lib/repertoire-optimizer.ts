@@ -46,6 +46,7 @@ export interface OptInputs {
   unavailByDate: Record<string, Set<string>>  // data -> artistId niedostępni (urlop/choroba/CORE)
   finance: FinanceParams
   stageRoom: (theatreId: string, stage: Stage) => string | null // -> room_id
+  rentedStageByDate?: Record<string, Set<string>>  // data -> sceny zablokowane wynajmem
 }
 
 export interface Perf {
@@ -159,6 +160,7 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
         p.castIds.length > 0 &&
         (titleCount.get(p.id) ?? 0) < cap &&
         !(lastDate.get(p.id) === yd && (runLen.get(p.id) ?? 0) >= BLOCK_CAP) && // po bloku — odpoczynek
+        !(inp.rentedStageByDate?.[date]?.has(p.stage)) && // scena zablokowana wynajmem
         stageFree(p, date) &&                        // scena wolna (montaż/demontaż)
         p.castIds.every(a => !busy.has(a)) &&        // brak konfliktu obsady tego dnia
         p.castIds.every(a => !unav.has(a))           // pełna obsada dostępna (urlop/choroba/CORE)
