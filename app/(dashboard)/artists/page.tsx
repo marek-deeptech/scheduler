@@ -24,6 +24,7 @@ interface ArtistRow {
   productionCount: number
   playedHours: number      // zagrane godziny w ost. 12 mies. (przeszłe spektakle)
   playCount: number        // liczba zagranych spektakli w ost. 12 mies.
+  dublerCount: number      // liczba zagranych dublur (zastępstw) w ost. 12 mies.
   is_core: boolean
 }
 
@@ -811,6 +812,14 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
             <p className="text-[10px] uppercase tracking-wide" style={{ color: '#a89e92' }}>Zagrane godz. (12 mies.)</p>
             <p className="text-lg font-bold leading-tight" style={{ color: '#1a1410' }}>{artist.playedHours}</p>
           </div>
+          <div className="rounded-xl px-3 py-2" style={{ background: '#faf8f5', border: '1px solid #e4ddd4' }}>
+            <p className="text-[10px] uppercase tracking-wide" style={{ color: '#a89e92' }}>Zagrane spektakle (12 mies.)</p>
+            <p className="text-lg font-bold leading-tight" style={{ color: '#1a1410' }}>{artist.playCount}</p>
+          </div>
+          <div className="rounded-xl px-3 py-2" style={{ background: '#faf8f5', border: '1px solid #e4ddd4' }}>
+            <p className="text-[10px] uppercase tracking-wide" style={{ color: '#a89e92' }}>Zagrane dublury (12 mies.)</p>
+            <p className="text-lg font-bold leading-tight" style={{ color: artist.dublerCount > 0 ? '#6d28d9' : '#1a1410' }}>{artist.dublerCount}</p>
+          </div>
         </div>
 
         {/* Contact action buttons */}
@@ -1157,15 +1166,20 @@ export default function ArtistsPage() {
       for (const ap of (a.artist_productions ?? [])) (prodToArtists[ap.production_id] ??= []).push(a.id)
     }
     // Suma zagranych godzin + liczba spektakli per aktor (ost. 12 mies.)
+    // Dublura (zastępstwo) = aktor w JAWNEJ obsadzie wydarzenia, ale NIE w regularnej
+    // obsadzie produkcji (wskoczył za kogoś).
     const hoursByArtist: Record<string, number> = {}
     const playCountByArtist: Record<string, number> = {}
+    const dublerByArtist: Record<string, number> = {}
     for (const ev of ((pastEv ?? []) as any[])) {
       const explicit = (ev.event_artists ?? []).map((e: any) => e.artist_id)
       const cast = explicit.length > 0 ? explicit : (prodToArtists[ev.production_id] ?? [])
       const dur = (new Date(ev.end_time).getTime() - new Date(ev.start_time).getTime()) / 3.6e6
+      const regular = new Set(prodToArtists[ev.production_id] ?? [])
       for (const aid of cast) {
         playCountByArtist[aid] = (playCountByArtist[aid] ?? 0) + 1
         if (dur > 0) hoursByArtist[aid] = (hoursByArtist[aid] ?? 0) + dur
+        if (explicit.length > 0 && !regular.has(aid)) dublerByArtist[aid] = (dublerByArtist[aid] ?? 0) + 1
       }
     }
 
@@ -1181,6 +1195,7 @@ export default function ArtistsPage() {
       productionCount: (a.artist_productions ?? []).length,
       playedHours:     Math.round(hoursByArtist[a.id] ?? 0),
       playCount:       playCountByArtist[a.id] ?? 0,
+      dublerCount:     dublerByArtist[a.id] ?? 0,
       is_core:         !!a.is_core,
     })))
     setProductions(((pData ?? []) as any[]).map(p => ({
