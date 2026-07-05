@@ -1,6 +1,7 @@
 'use client'
 
 import { useOrg } from '@/lib/org-context'
+import { rodoAdminFor } from '@/lib/rodo-admin'
 
 // Rejestr Czynności Przetwarzania (art. 30 RODO) — WZÓR dla administratora.
 // Wypełniony na bazie zakresu danych aplikacji; do zatwierdzenia przez administratora/IOD.
@@ -55,7 +56,8 @@ const SUBPROCESSORS = [
 
 export default function RopaPage() {
   const { org } = useOrg()
-  const admin = (org as any)?.name ?? '[nazwa teatru]'
+  const a = rodoAdminFor(org?.slug)
+  const admin = a?.name ?? org?.name ?? '[nazwa teatru]'
 
   return (
     <div className="max-w-4xl mx-auto pb-24">
@@ -66,8 +68,20 @@ export default function RopaPage() {
         <p className="text-xs mt-1" style={{ color: '#a89e92' }}>Art. 30 RODO — administrator: <b>{admin}</b></p>
       </div>
 
+      {a && (
+        <div className="rounded-2xl border border-[#e4ddd4] p-4 mb-5 text-xs" style={{ background: '#faf8f5', color: '#3e3830' }}>
+          <p><b>Administrator:</b> {a.name}</p>
+          <p><b>Siedziba:</b> {a.address}</p>
+          <p><b>NIP:</b> {a.nip} · <b>REGON:</b> {a.regon}{a.register ? <> · <b>Rejestr:</b> {a.register}</> : null}</p>
+          <p><b>Kontakt:</b> {a.email}{a.phone ? <> · tel. {a.phone}</> : null}</p>
+          <p><b>Inspektor Ochrony Danych:</b> {a.iod}</p>
+        </div>
+      )}
+
       <div className="rounded-xl px-4 py-3 mb-5 text-xs" style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' }}>
-        ⚠ Dokument roboczy (wzór), przygotowany na bazie zakresu danych aplikacji. Do zatwierdzenia i uzupełnienia przez administratora/IOD (pola w [nawiasach]).
+        {a
+          ? <>⚠ Dane administratora uzupełniono z oficjalnych źródeł ({a.updated}). Treść rejestru (czynności, retencja, subprocesorzy) do zatwierdzenia przez administratora/IOD — pola w [nawiasach] wymagają uzupełnienia.</>
+          : <>⚠ Dokument roboczy (wzór), przygotowany na bazie zakresu danych aplikacji. Do zatwierdzenia i uzupełnienia przez administratora/IOD (pola w [nawiasach]).</>}
       </div>
 
       <h2 className="text-base font-bold mb-2" style={{ color: '#1a1410' }}>Czynności przetwarzania</h2>
@@ -123,7 +137,7 @@ export default function RopaPage() {
         <li>• Minimalizacja: brak zbierania danych o zdrowiu (nieobecność bez przyczyny).</li>
       </ul>
 
-      <p className="text-[11px]" style={{ color: '#b8b0a4' }}>Wersja robocza. Aktualizacja: [data]. Zatwierdza: [administrator / IOD].</p>
+      <p className="text-[11px]" style={{ color: '#b8b0a4' }}>Aktualizacja: {a?.updated ?? '[data]'}. Zatwierdza: administrator / IOD.</p>
     </div>
   )
 }
