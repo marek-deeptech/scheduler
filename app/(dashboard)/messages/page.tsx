@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
 import { lastName } from '@/lib/names'
+import AutomatedNotificationsTab from '@/components/AutomatedNotificationsTab'
 
 interface Person {
   id: string
@@ -583,7 +584,7 @@ export default function MessagesPage() {
   const [subs, setSubs] = useState<{ id: string; actorName: string | null; subject: string; sentAt: string | null }[]>([])
   // Zakładki: odbiorcy (domyślnie) + sekcje statusów
   // Domyślnie lądujemy na brakach w komunikacji (najważniejsze); „Odbiorcy" na końcu.
-  const [activeTab, setActiveTab] = useState<'recipients' | 'pending' | 'avail' | 'subs' | 'responses' | 'history'>('pending')
+  const [activeTab, setActiveTab] = useState<'recipients' | 'pending' | 'avail' | 'subs' | 'responses' | 'history' | 'auto'>('pending')
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [teamFilter, setTeamFilter] = useState<string>('all')
@@ -817,7 +818,7 @@ export default function MessagesPage() {
       pending: pendingPart.length, avail: noAvailResp.length, subs: subs.length,
       responses: responses.length, history: sentHistory.length,
     }
-    if (activeTab !== 'recipients' && (counts[activeTab] ?? 0) === 0) setActiveTab('recipients')
+    if (activeTab !== 'recipients' && activeTab !== 'auto' && (counts[activeTab] ?? 0) === 0) setActiveTab('recipients')
   }, [loading, activeTab, pendingPart.length, noAvailResp.length, subs.length, responses.length, sentHistory.length])
 
   return (
@@ -839,7 +840,8 @@ export default function MessagesPage() {
           { key: 'responses'  as const, label: 'Odpowiedzi aktorów', count: responses.length,      alert: false },
           { key: 'history'    as const, label: 'Historia',           count: sentHistory.length,    alert: false },
           { key: 'recipients' as const, label: 'Odbiorcy',           count: null as number | null, alert: false },
-        ].filter(t => t.key === 'recipients' || (t.count ?? 0) > 0).map(t => {
+          { key: 'auto'       as const, label: 'Automatyczne',       count: null as number | null, alert: false },
+        ].filter(t => t.key === 'recipients' || t.key === 'auto' || (t.count ?? 0) > 0).map(t => {
           const on = activeTab === t.key
           return (
             <button key={t.key} onClick={() => setActiveTab(t.key)}
@@ -856,6 +858,9 @@ export default function MessagesPage() {
           )
         })}
       </div>
+
+      {/* ── Automatyczne powiadomienia (reguły cykliczne) ── */}
+      {activeTab === 'auto' && <AutomatedNotificationsTab />}
 
       {/* ── Brak potwierdzenia udziału ── */}
       {activeTab === 'pending' && (
