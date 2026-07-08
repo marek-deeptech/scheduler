@@ -102,6 +102,7 @@ export default function PlanningPage() {
   const [monthStatus,    setMonthStatus]    = useState<Record<string, MonthStage>>({})
   const [monthsReady,    setMonthsReady]    = useState(false)
   const [theatreName,    setTheatreName]    = useState<string>('')
+  const [theatreCount,   setTheatreCount]   = useState<number | null>(null)
 
   // Przegląd statusów: bieżący miesiąc + horyzont planowania organizacji
   const overviewMonths = getNextMonths(planningHorizon + 1)
@@ -142,6 +143,11 @@ export default function PlanningPage() {
       if (polonia) setSelectedTheatreId(polonia.id)
     })
   }, [selectedTheatreId])
+
+  // Liczba teatrów w org — steruje podpowiedziami o przełączniku (ukrywane przy 1 teatrze)
+  useEffect(() => {
+    supabase.from('theatres').select('id').then(({ data }) => setTheatreCount((data ?? []).length))
+  }, [])
 
   // Fetch approved months + production cast data on mount
   useEffect(() => {
@@ -492,7 +498,7 @@ export default function PlanningPage() {
           </Link>
         </div>
         <p className="text-[11px] -mt-2" style={{ color: '#a89e92' }}>
-          Planujesz: <b style={{ color: '#7a2020' }}>{theatreName || 'Teatr Polonia'}</b> (zmień teatr w menu po lewej). Włączone warunki powyżej zostaną uwzględnione przy generowaniu{cond.finance ? ' (Finanse ON → 4 warianty pod cele finansowe)' : ' (1 propozycja)'}.
+          Planujesz: <b style={{ color: '#7a2020' }}>{theatreName || 'Teatr Polonia'}</b>{(theatreCount ?? 0) > 1 ? ' (zmień teatr w menu po lewej)' : ''}. Włączone warunki powyżej zostaną uwzględnione przy generowaniu{cond.finance ? ' (Finanse ON → 4 warianty pod cele finansowe)' : ' (1 propozycja)'}.
         </p>
 
         {/* Generating banner */}

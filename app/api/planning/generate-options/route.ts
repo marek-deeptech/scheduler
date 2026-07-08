@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   const { month, theatreId, useCore = false, useSlots = false } = await request.json() as
     { month: string; theatreId?: string; constraints?: string; useCore?: boolean; useSlots?: boolean }
   if (!month?.match(/^\d{4}-\d{2}$/)) return Response.json({ error: 'Invalid month' }, { status: 400 })
-  if (!theatreId) return Response.json({ error: 'Wybierz teatr (Polonia lub Och) — repertuar planowany jest osobno dla każdego teatru.' }, { status: 400 })
+  if (!theatreId) return Response.json({ error: 'Wybierz teatr — repertuar planowany jest osobno dla każdego teatru.' }, { status: 400 })
 
   const orgId = await sessionOrgId(request)
   if (!orgId) return Response.json({ error: 'Brak sesji organizacji' }, { status: 401 })
