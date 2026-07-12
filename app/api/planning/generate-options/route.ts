@@ -180,11 +180,18 @@ export async function POST(request: Request) {
     ;(rentedStageByDate[String(r.start_time).slice(0, 10)] ??= new Set()).add(stg)
   }
 
+  // Dublerzy per produkcja — gdy tytuł jest grany danego dnia, jego dubler jest w
+  // gotowości (nie może być obsadzony w innym tytule tego dnia).
+  const { data: subRows } = await supabase.from('actor_production_substitutes')
+    .select('production_id, substitute_id').eq('org_id', orgId)
+  const dublersByProd: Record<string, string[]> = {}
+  for (const r of (subRows ?? []) as any[]) (dublersByProd[r.production_id] ??= []).push(r.substitute_id)
+
   const inp: OptInputs = {
     slots: baseSlots,
     theatres: [theatreId],            // generujemy TYLKO dla wybranego teatru
     prods: optProds,
-    lockedByProd, unavailByDate, finance: fp, stageRoom, rentedStageByDate,
+    lockedByProd, unavailByDate, finance: fp, stageRoom, rentedStageByDate, dublersByProd,
   }
 
   // Usuń poprzednie wersje robocze tego miesiąca DLA TEGO TEATRU (w ramach org)

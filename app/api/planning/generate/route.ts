@@ -75,6 +75,7 @@ function buildSchedule(
   profile:    Profile,
   stageRoom:  (stage: StageKey) => Room | null,
   rentedStageByDate: Record<string, Set<string>> = {},
+  dublerMap:  Record<string, string[]> = {},   // production_id -> nazwiska dublerów
 ): Show[] {
   const slots = buildSlots(variant, month, profile)
 
@@ -87,6 +88,7 @@ function buildSchedule(
   const runLen:   Record<string, number> = {}
   const count:    Record<string, number> = {}
   const todaysActors: Record<string, Set<string>> = {}
+  const todaysStandby: Record<string, Set<string>> = {}   // dublerzy w gotowości danego dnia
   const todaysTitles: Record<string, Set<string>> = {}
   // Stan sceny (montaż/demontaż): ostatni tytuł na scenie i jego demontaż.
   // Klucz = dowolny `stage` — mapa dynamiczna (2 sceny Fundacji lub 3 sceny TD).
@@ -95,9 +97,17 @@ function buildSchedule(
 
   for (const s of slots) {
     todaysActors[s.date] ??= new Set()
+    todaysStandby[s.date] ??= new Set()
     todaysTitles[s.date] ??= new Set()
     const yd = prevDate(s.date)
-    const conflict = (pid: string) => (castMap[pid] ?? []).some(a => todaysActors[s.date].has(a))
+    // Konflikt: wspólny aktor z granym już dziś tytułem, LUB obsada na standby jako
+    // dubler, LUB dubler tego tytułu już gra dziś (musiałby być w gotowości i grać).
+    const conflict = (pid: string) => {
+      const cast = castMap[pid] ?? []
+      if (cast.some(a => todaysActors[s.date].has(a) || todaysStandby[s.date].has(a))) return true
+      if ((dublerMap[pid] ?? []).some(a => todaysActors[s.date].has(a))) return true
+      return false
+    }
     // Scena wolna: ten sam tytuł kontynuuje (bez zmiany scenografii) albo minął
     // demontaż poprzedniego + montaż nowego (dni robocze).
     const stageFree = (p: Production) => {
@@ -142,6 +152,7 @@ function buildSchedule(
     stageState[chosen.stage] = { date: s.date, title: chosen.id, teardown: chosen.teardown }
     todaysTitles[s.date].add(chosen.id)
     for (const a of (castMap[chosen.id] ?? [])) todaysActors[s.date].add(a)
+    for (const a of (dublerMap[chosen.id] ?? [])) todaysStandby[s.date].add(a)
   }
 
   return result.sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time))
@@ -283,6 +294,14 @@ export async function POST(request: Request) {
     if (artist) { castMap[ap.production_id] ??= []; castMap[ap.production_id].push(artist.name) }
   }
 
+  // Dublerzy per produkcja (nazwiska) — gotowość gdy tytuł grany danego dnia
+  const nameById: Record<string, string> = {}
+  for (const a of (artists ?? []) as any[]) nameById[a.id] = a.name
+  const { data: subRows } = await supabase.from('actor_production_substitutes')
+    .select('production_id, substitute_id').eq('org_id', orgId)
+  const dublerMap: Record<string, string[]> = {}
+  for (const r of (subRows ?? []) as any[]) { const n = nameById[r.substitute_id]; if (n) (dublerMap[r.production_id] ??= []).push(n) }
+
   // Unavailability map
   const BLOCKING = new Set(['Urlop', 'Niedostępny', 'Choroba'])
   const unavailMap: Record<string, Set<string>> = {}
@@ -338,7 +357,7 @@ export async function POST(request: Request) {
   const profile = profileFor(theatreNames[theatreId] ?? '')
   const strategies = VARIANTS.map(v => ({
     label: v.label,
-    shows: buildSchedule(v, month, activeProds, castMap, unavailMap, profile, stageRoom, rentedStageByDate),
+    shows: buildSchedule(v, month, activeProds, castMap, unavailMap, profile, stageRoom, rentedStageByDate, dublerMap),
     hint:  v.hint,
   }))
 

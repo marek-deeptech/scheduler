@@ -47,6 +47,7 @@ export interface OptInputs {
   finance: FinanceParams
   stageRoom: (theatreId: string, stage: Stage) => string | null // -> room_id
   rentedStageByDate?: Record<string, Set<string>>  // data -> sceny zablokowane wynajmem
+  dublersByProd?: Record<string, string[]>          // production_id -> id dublerów (gotowość gdy tytuł grany)
 }
 
 export interface Perf {
@@ -88,7 +89,8 @@ function perfFinance(p: OptProduction, date: string, fp: FinanceParams) {
 export function generateOption(objective: Objective, inp: OptInputs): OptionResult {
   const theatre = inp.theatres[0]
   const usedSlot = new Set<string>()                 // `${date}|${start}`
-  const castBusy = new Map<string, Set<string>>()    // date -> artistId zajęci
+  const castBusy = new Map<string, Set<string>>()    // date -> artistId zajęci (grają)
+  const standby  = new Map<string, Set<string>>()    // date -> artistId w gotowości jako dubler
   const titleCount = new Map<string, number>()
   const lastDate = new Map<string, string>()         // prodId -> ostatni dzień grania
   const runLen   = new Map<string, number>()         // prodId -> długość bieżącego bloku
@@ -106,6 +108,11 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
     if (!s) { s = new Set<string>(); castBusy.set(date, s) }
     return s
   }
+  function standbyOf(date: string): Set<string> {
+    let s = standby.get(date)
+    if (!s) { s = new Set<string>(); standby.set(date, s) }
+    return s
+  }
   function place(p: OptProduction, date: string, start: string, end: string) {
     perfs.push({
       date, production_id: p.id, production_title: p.title,
@@ -114,6 +121,7 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
     })
     usedSlot.add(`${date}|${start}`)
     const bs = busyOf(date); for (const a of p.castIds) bs.add(a)
+    const sb = standbyOf(date); for (const a of (inp.dublersByProd?.[p.id] ?? [])) sb.add(a)
     titleCount.set(p.id, (titleCount.get(p.id) ?? 0) + 1)
     runLen.set(p.id, (lastDate.get(p.id) === prevDate(date) ? (runLen.get(p.id) ?? 0) : 0) + 1)
     lastDate.set(p.id, date)
@@ -151,6 +159,7 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
     for (const slot of slotsByDate.get(date) ?? []) {
       if (usedSlot.has(`${date}|${slot.start}`)) continue   // np. zajęty przez Favourite
       const busy = busyOf(date)
+      const sb   = standbyOf(date)
       const unav = inp.unavailByDate[date] ?? new Set<string>()
       const yd = prevDate(date)
 
@@ -163,6 +172,8 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
         !(inp.rentedStageByDate?.[date]?.has(p.stage)) && // scena zablokowana wynajmem
         stageFree(p, date) &&                        // scena wolna (montaż/demontaż)
         p.castIds.every(a => !busy.has(a)) &&        // brak konfliktu obsady tego dnia
+        p.castIds.every(a => !sb.has(a)) &&          // obsada nie jest na standby jako dubler innego tytułu
+        (inp.dublersByProd?.[p.id] ?? []).every(a => !busy.has(a)) && // dubler tego tytułu nie gra gdzie indziej
         p.castIds.every(a => !unav.has(a))           // pełna obsada dostępna (urlop/choroba/CORE)
       )
       if (cands.length === 0) continue
