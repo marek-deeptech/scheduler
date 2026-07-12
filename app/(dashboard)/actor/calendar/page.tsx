@@ -26,7 +26,8 @@ interface DayEvent {
   production_id: string | null
   production: string | null
   room: string | null
-  isMine: boolean   // true = actor in event_artists; false = production event only
+  isMine: boolean    // true = actor in event_artists (gra w tym spektaklu)
+  isDubler: boolean  // true = actor jest dublerem tego tytułu (gotowość na zastępstwo)
 }
 
 interface DayStatus {
@@ -102,8 +103,8 @@ function ActorEventDrawer({ ev, onClose }: { ev: DayEvent; onClose: () => void }
         <div className="p-5">
           <div className="flex items-start justify-between gap-3 mb-4">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full"
-              style={ev.isMine ? { background: '#1a1410', color: '#fff' } : { background: '#f2ede6', color: '#7a7068' }}>
-              {ev.isMine ? 'Jesteś w obsadzie' : (ev.type ?? 'Wydarzenie')}
+              style={ev.isMine ? { background: '#1a1410', color: '#fff' } : ev.isDubler ? { background: '#ede9fe', color: '#6d28d9' } : { background: '#f2ede6', color: '#7a7068' }}>
+              {ev.isMine ? 'Jesteś w obsadzie' : ev.isDubler ? 'Dubler — gotowość' : (ev.type ?? 'Wydarzenie')}
             </span>
             <button onClick={close} className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#f2ede6', color: '#7a7068' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -230,6 +231,14 @@ export default function ActorCalendarPage() {
 
     const productionIds = ((apData ?? []) as any[]).map(r => r.production_id).filter(Boolean)
 
+    // Produkcje, w których aktor jest DUBLEREM — musi trzymać te terminy wolne (gotowość)
+    const { data: subData } = await supabase
+      .from('actor_production_substitutes')
+      .select('production_id')
+      .eq('substitute_id', actorId)
+    const dublerProdSet = new Set(((subData ?? []) as any[]).map(r => r.production_id).filter(Boolean))
+    const allProductionIds = [...new Set([...productionIds, ...dublerProdSet])]
+
     const { data: prodData } = productionIds.length > 0
       ? await supabase
           .from('productions')
@@ -246,13 +255,13 @@ export default function ActorCalendarPage() {
 
     const myEventIds = new Set(((eaData ?? []) as any[]).map(r => r.event_id))
 
-    // All events this month belonging to the actor's productions
+    // Wydarzenia miesiąca: produkcje aktora + produkcje, w których jest dublerem
     let evList: DayEvent[] = []
-    if (productionIds.length > 0) {
+    if (allProductionIds.length > 0) {
       const { data: evData } = await supabase
         .from('events')
         .select('id, title, type, start_time, end_time, rooms(name), productions(id, title)')
-        .in('production_id', productionIds)
+        .in('production_id', allProductionIds)
         .gte('start_time', `${rangeStart}T00:00:00`)
         .lt('start_time',  `${rangeEnd}T00:00:00`)
         .order('start_time')
@@ -260,13 +269,16 @@ export default function ActorCalendarPage() {
       evList = ((evData ?? []) as any[]).map(e => {
         const rm   = Array.isArray(e.rooms)      ? e.rooms[0]      : e.rooms
         const prod = Array.isArray(e.productions) ? e.productions[0]: e.productions
+        const mine = myEventIds.has(e.id)
         return {
           id: e.id, title: e.title, type: e.type,
           start_time: e.start_time, end_time: e.end_time,
           production_id: prod?.id ?? null,
           production: prod?.title ?? null,
           room: rm?.name ?? null,
-          isMine: myEventIds.has(e.id),
+          isMine: mine,
+          // dubler tego tytułu i NIE gra w tym wydarzeniu → gotowość na zastępstwo
+          isDubler: !mine && !!prod?.id && dublerProdSet.has(prod.id),
         }
       })
     }
@@ -382,11 +394,21 @@ export default function ActorCalendarPage() {
     return events.filter(e => e.start_time.slice(0, 10) === dateStr)
   }
 
-  // Blokada dotyczy TYLKO dni, w których aktor gra spektakl z zatwierdzonego
-  // repertuaru — pozostałe dni miesiąca pozostają edytowalne.
+  // Blokada dotyczy dni, w których aktor GRA spektakl z zatwierdzonego repertuaru
+  // ORAZ dni, w których jest DUBLEREM granego tytułu (musi być w gotowości).
+  // Pozostałe dni miesiąca pozostają edytowalne.
   function isDayLocked(dateStr: string): boolean {
     if (!lockedMonths.has(dateStr.slice(0, 7))) return false
-    return getEventsForDate(dateStr).some(e => e.isMine)
+    return getEventsForDate(dateStr).some(e => e.isMine || e.isDubler)
+  }
+
+  // Powód blokady: 'play' (gra), 'dubler' (gotowość) lub null.
+  function dayLockReason(dateStr: string): 'play' | 'dubler' | null {
+    if (!lockedMonths.has(dateStr.slice(0, 7))) return null
+    const evs = getEventsForDate(dateStr)
+    if (evs.some(e => e.isMine)) return 'play'
+    if (evs.some(e => e.isDubler)) return 'dubler'
+    return null
   }
 
   // Mark a day's status locally (not saved yet)
@@ -531,7 +553,7 @@ export default function ActorCalendarPage() {
               <rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
             </svg>
             <span className="text-xs font-medium" style={{ color: '#5a524a' }}>
-              Repertuar na <b>{MONTHS_PL[viewMonth]} {viewYear}</b> jest zatwierdzony — zablokowane są tylko dni, w których grasz spektakle (🔒). Pozostałe dni możesz nadal edytować.
+              Repertuar na <b>{MONTHS_PL[viewMonth]} {viewYear}</b> jest zatwierdzony — zablokowane są dni, w których grasz spektakle oraz dni, w których jesteś dublerem granego tytułu (gotowość na zastępstwo) 🔒. Pozostałe dni możesz nadal edytować.
             </span>
           </div>
         )}
@@ -632,8 +654,8 @@ export default function ActorCalendarPage() {
                             {day.getDate()}
                           </span>
                           {dayLocked
-                            ? <span className="shrink-0" title="Grasz spektakl — dostępność zablokowana">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={isDark ? '#fff' : '#a89e92'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                            ? <span className="shrink-0" title={dayLockReason(dateStr) === 'dubler' ? 'Jesteś dublerem granego tytułu — dostępność w gotowości (zablokowana)' : 'Grasz spektakl — dostępność zablokowana'}>
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={isDark ? '#fff' : (dayLockReason(dateStr) === 'dubler' ? '#8b5cf6' : '#a89e92')} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
                               </span>
                             : hasConflict
                             ? <span className="text-[11px] leading-none shrink-0" title="Kolizja statusu z wydarzeniem">⚠️</span>
@@ -770,11 +792,15 @@ export default function ActorCalendarPage() {
                                         {ev.room ? ` · ${ev.room}` : ''}
                                       </p>
                                     </div>
-                                    {ev.isMine && (
+                                    {ev.isMine ? (
                                       <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-gray-900">
                                         Obsada
                                       </span>
-                                    )}
+                                    ) : ev.isDubler ? (
+                                      <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#ede9fe', color: '#6d28d9' }}>
+                                        Dubler
+                                      </span>
+                                    ) : null}
                                   </div>
                                   {ev.production && ev.production !== (ev.type ?? ev.title) && (
                                     <span className={`inline-block mt-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
@@ -867,7 +893,9 @@ export default function ActorCalendarPage() {
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
                         <rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
                       </svg>
-                      <span>Grasz spektakl z zatwierdzonego repertuaru — dostępności tego dnia nie można zmieniać.{daySt ? ` Obecnie: ${daySt.status}.` : ''}</span>
+                      <span>{dayLockReason(selected) === 'dubler'
+                        ? 'Jesteś dublerem tytułu granego tego dnia z zatwierdzonego repertuaru — musisz być w gotowości, więc dostępności tego dnia nie można zmieniać.'
+                        : 'Grasz spektakl z zatwierdzonego repertuaru — dostępności tego dnia nie można zmieniać.'}{daySt ? ` Obecnie: ${daySt.status}.` : ''}</span>
                     </div>
                   ) : (
                   <div className="flex flex-col gap-1">
