@@ -457,7 +457,7 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
   return (
     <aside
       className={`${mobile ? 'w-full' : 'w-[210px]'} flex flex-col shrink-0 h-full overflow-y-auto`}
-      style={{ background: '#ece2d2', borderRight: mobile ? 'none' : '1px solid #dccfba', boxShadow: mobile ? 'none' : '3px 0 12px -2px rgba(74,58,42,0.08)' }}
+      style={{ background: '#faf6f0', borderRight: mobile ? 'none' : '1px solid #e4ddd4' }}
     >
 
       {/* Logo / nazwa organizacji */}
