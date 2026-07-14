@@ -96,12 +96,13 @@ a:hover { text-decoration: none; }
 }
 .sidebar-link:hover {
   color: #1a1410;
-  background: #ede7df;
+  background: #e4d9c6;
 }
 .sidebar-link.active {
   color: #1a1410;
-  background: #e8e0d6;
+  background: #fff;
   font-weight: 700;
+  box-shadow: 0 1px 3px rgba(74,58,42,0.10);
 }
 .sidebar-link.active::before {
   content: '';
@@ -116,7 +117,7 @@ a:hover { text-decoration: none; }
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #b8b0a4;
+  color: #948a76;
   padding: 0 10px;
 }
 
