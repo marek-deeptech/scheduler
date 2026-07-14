@@ -88,8 +88,8 @@ a:hover { text-decoration: none; }
   padding: 6px 10px;
   border-radius: 8px;
   font-size: 13px;
-  font-weight: 500;
-  color: #7a7068;
+  font-weight: 600;
+  color: #4a4034;
   transition: color 0.15s ease, background 0.15s ease;
   text-decoration: none !important;
   position: relative;
@@ -116,7 +116,7 @@ a:hover { text-decoration: none; }
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #b8b0a4;
+  color: #8a8070;
   padding: 0 10px;
 }
 
