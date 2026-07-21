@@ -48,7 +48,11 @@ export interface OptInputs {
   stageRoom: (theatreId: string, stage: Stage) => string | null // -> room_id
   rentedStageByDate?: Record<string, Set<string>>  // data -> sceny zablokowane wynajmem
   dublersByProd?: Record<string, string[]>          // production_id -> id dublerów (gotowość gdy tytuł grany)
+  seasonalByTitle?: Record<string, number>          // tytuł -> dopasowanie do miesiąca [-1,1] (z historii)
 }
+
+// Waga sezonowości w doborze tytułu — nudge ±35%, bez zmiany znaku scoringu.
+export const SEASON_W = 0.35
 
 export interface Perf {
   date: string
@@ -187,6 +191,9 @@ export function generateOption(objective: Objective, inp: OptInputs): OptionResu
                                            fin.margin
         // bonus blokowy: kontynuacja tytułu z wczoraj, dopóki blok < BLOCK_CAP
         if (lastDate.get(p.id) === yd && (runLen.get(p.id) ?? 0) < BLOCK_CAP) base *= 1.25
+        // sezonowość: tytuł historycznie (nie)typowy dla tego miesiąca — nudge ±35%
+        const aff = inp.seasonalByTitle?.[p.title] ?? 0
+        if (aff) base *= 1 + SEASON_W * aff
         return { p, fin, score: base }
       })
 

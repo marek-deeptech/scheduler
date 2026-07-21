@@ -7,6 +7,7 @@ import {
   type Variant, type Profile,
 } from '@/lib/repertoire-base'
 import { scenesForTheatre, mapRoomsToScenes } from '@/lib/finance'
+import { learnProfile } from '@/lib/repertoire-learn'
 import { sessionOrgId } from '@/lib/session-org'
 
 type StageKey = string  // klucz sceny (2 sceny Fundacji lub 3 sceny TD)
@@ -76,8 +77,10 @@ function buildSchedule(
   stageRoom:  (stage: StageKey) => Room | null,
   rentedStageByDate: Record<string, Set<string>> = {},
   dublerMap:  Record<string, string[]> = {},   // production_id -> nazwiska dublerów
+  seasonalByTitle: Record<string, number> = {}, // tytuł -> dopasowanie do miesiąca [-1,1]
 ): Show[] {
   const slots = buildSlots(variant, month, profile)
+  const SEASON_W = 0.35                          // waga sezonowości (nudge ±35%)
 
   const canPlay = (pid: string, date: string) => {
     const c = castMap[pid] ?? []; const b = unavailMap[date] ?? new Set<string>()
@@ -133,10 +136,12 @@ function buildSchedule(
       cont.sort((a, b) => (runLen[a.id] ?? 0) - (runLen[b.id] ?? 0) || (count[a.id] ?? 0) - (count[b.id] ?? 0))
       chosen = cont[0]
     } else {
-      // Priorytet 2: najdłużej nieobecny tytuł (rozkłada granie), potem najmniej grany.
+      // Priorytet 2: najdłużej nieobecny tytuł (rozkłada granie), z sezonowością
+      // (tytuł historycznie typowy dla tego miesiąca ma przewagę), potem najmniej grany.
       const gap = (p: Production) => lastDate[p.id]
         ? (new Date(s.date).getTime() - new Date(lastDate[p.id]).getTime()) / 864e5 : 9999
-      elig.sort((a, b) => gap(b) - gap(a) || (count[a.id] ?? 0) - (count[b.id] ?? 0))
+      const gapSeason = (p: Production) => gap(p) * (1 + SEASON_W * (seasonalByTitle[p.title] ?? 0))
+      elig.sort((a, b) => gapSeason(b) - gapSeason(a) || (count[a.id] ?? 0) - (count[b.id] ?? 0))
       chosen = elig[0]
     }
 
@@ -353,11 +358,24 @@ export async function POST(request: Request) {
     ;(rentedStageByDate[String(r.start_time).slice(0, 10)] ??= new Set()).add(stg)
   }
 
-  // ── Bazowy wzorzec: 4 warianty wokół realnego profilu teatru ─────────────────
-  const profile = profileFor(theatreNames[theatreId] ?? '')
+  // ── Bazowy wzorzec: profil WYUCZONY z przeszłych repertuarów tego teatru
+  // wprowadzonych do sprzedaży (gęstość, rytm tygodnia, godziny, poranki, sezonowość).
+  // Fallback: statyczny profileFor gdy < 2 miesiące-wzorce.
+  const { data: pastProps } = await supabase.from('repertoire_proposals')
+    .select('month, proposal_data, stats').eq('org_id', orgId).eq('theatre_id', theatreId)
+    .eq('status', 'approved').lt('month', month)
+  const pastMonths = ((pastProps ?? []) as any[])
+    .filter(p => p.stats?.sales_started_at)
+    .map(p => ({ month: p.month, items: Array.isArray(p.proposal_data) ? p.proposal_data : [] }))
+  const learn = learnProfile(pastMonths, profileFor(theatreNames[theatreId] ?? ''))
+  const profile = learn.profile
+  const monthIdx = Number(month.slice(5, 7))
+  const seasonalByTitle: Record<string, number> = {}
+  for (const p of activeProds) seasonalByTitle[p.title] = learn.seasonality.affinity(p.title, monthIdx)
+
   const strategies = VARIANTS.map(v => ({
     label: v.label,
-    shows: buildSchedule(v, month, activeProds, castMap, unavailMap, profile, stageRoom, rentedStageByDate, dublerMap),
+    shows: buildSchedule(v, month, activeProds, castMap, unavailMap, profile, stageRoom, rentedStageByDate, dublerMap, seasonalByTitle),
     hint:  v.hint,
   }))
 

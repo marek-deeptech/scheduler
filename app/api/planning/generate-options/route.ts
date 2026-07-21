@@ -9,6 +9,7 @@ import {
   type Objective, type OptProduction, type OptInputs,
 } from '@/lib/repertoire-optimizer'
 import { profileFor, buildSlots, BASE_VARIANT } from '@/lib/repertoire-base'
+import { learnProfile } from '@/lib/repertoire-learn'
 import { sessionOrgId } from '@/lib/session-org'
 
 const supabase = createClient(
@@ -162,10 +163,24 @@ export async function POST(request: Request) {
     }
   }
 
-  // Bazowy kształt (empiryczny rytm per teatr) — finanse/Favourites/CORE go modyfikują.
+  // Bazowy kształt: profil WYUCZONY z przeszłych repertuarów tego teatru wprowadzonych
+  // do sprzedaży (gęstość, rytm tygodnia, godziny, poranki, sezonowość tytuł↔miesiąc).
+  // Fallback: statyczny profileFor gdy za mało historii (< 2 miesiące-wzorce).
   const theatreName = ((theatres ?? []) as any[]).find(t => t.id === theatreId)?.name ?? ''
-  const profile = profileFor(theatreName)
+  const { data: pastProps } = await supabase.from('repertoire_proposals')
+    .select('month, proposal_data, stats').eq('org_id', orgId).eq('theatre_id', theatreId)
+    .eq('status', 'approved').lt('month', month)
+  const pastMonths = ((pastProps ?? []) as any[])
+    .filter(p => p.stats?.sales_started_at)            // tylko repertuary wprowadzone do sprzedaży
+    .map(p => ({ month: p.month, items: Array.isArray(p.proposal_data) ? p.proposal_data : [] }))
+  const learn = learnProfile(pastMonths, profileFor(theatreName))
+  const profile = learn.profile
   const baseSlots = buildSlots(BASE_VARIANT, month, profile)
+
+  // Sezonowość: dopasowanie każdego tytułu do miesiąca docelowego (z historii) → nudge doboru.
+  const monthIdx = Number(month.slice(5, 7))
+  const seasonalByTitle: Record<string, number> = {}
+  for (const p of optProds) seasonalByTitle[p.title] = learn.seasonality.affinity(p.title, monthIdx)
 
   // Wynajem sceny TEGO teatru — blokuje scenę na dany dzień (auto-repertuar ją omija)
   const stageByRoomId: Record<string, string> = {}
@@ -192,6 +207,7 @@ export async function POST(request: Request) {
     theatres: [theatreId],            // generujemy TYLKO dla wybranego teatru
     prods: optProds,
     lockedByProd, unavailByDate, finance: fp, stageRoom, rentedStageByDate, dublersByProd,
+    seasonalByTitle,
   }
 
   // Usuń poprzednie wersje robocze tego miesiąca DLA TEGO TEATRU (w ramach org)
@@ -199,6 +215,10 @@ export async function POST(request: Request) {
     .eq('org_id', orgId).eq('month', month).eq('status', 'draft').eq('theatre_id', theatreId)
 
   const lockedCount = Object.values(lockedByProd).reduce((a, d) => a + d.length, 0)
+  const learnNote = learn.learned
+    ? `Profil wyuczony z ${learn.basis.months} sprzedanych repertuarów (${learn.basis.shows} spektakli): ` +
+      `${profile.eveningTarget} dni grania/mies, ${profile.eveSlots.length} scen wieczorem. `
+    : `Profil bazowy (za mało historii sprzedaży, by uczyć). `
   const summaries: any[] = []
 
   for (const objective of OBJECTIVES) {
@@ -206,6 +226,7 @@ export async function POST(request: Request) {
     const t = res.totals
     const avgAtt = t.capacity > 0 ? t.sold / t.capacity : 0
     const reasoning =
+      learnNote +
       `Cel: ${OBJECTIVE_LABEL[objective]}. ${t.count} spektakli (w tym ${lockedCount} z zatwierdzonych Favourites). ` +
       `Prognoza: przychód ${fmtPln(t.revenue)}, koszt ${fmtPln(t.cost)}, dochód ${fmtPln(t.margin)}, śr. frekwencja ${fmtPct(avgAtt)}.`
 
@@ -221,6 +242,7 @@ export async function POST(request: Request) {
       stats: {
         total: t.count, conflicts: 0, by_production: res.byProduction,
         objective,
+        learned: { on: learn.learned, months: learn.basis.months, shows: learn.basis.shows, source: learn.basis.sourceMonths },
         finance: { revenue: t.revenue, cost: t.cost, margin: t.margin, attendance: avgAtt, locked: lockedCount },
       },
     }).select('id').single()

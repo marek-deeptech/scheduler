@@ -19,6 +19,8 @@ export interface Profile {
   // scenach — kolejne sloty mają przesunięte godziny (19:00/19:30/18:00), by były
   // odrębne i by generator obsadził je różnymi tytułami na różnych scenach.
   eveSlots:       Array<[string, string]>
+  // Waga dni tygodnia (0=Ndz … 6=Sob) wyuczona z historii teatru; gdy brak — globalna DOW_W.
+  dowW?:          Record<number, number>
 }
 
 export function profileFor(name: string): Profile {
@@ -108,10 +110,11 @@ export function buildSlots(variant: Variant, month: string, profile: Profile): S
   // Jitter wg kolejności wystąpienia dnia tygodnia rozkłada ciemne dni (nie zeruje
   // całego dnia tygodnia) — poniedziałki wypadają najczęściej, ale nie wszystkie.
   const darkCount = Math.max(0, days.length - eveningTarget)
+  const dw = profile.dowW ?? DOW_W   // wagi dni: wyuczone z historii teatru lub globalne
   const occ: Record<number, number> = {}
   const scored = days.map(d => {
     occ[d.dow] = (occ[d.dow] || 0) + 1
-    return { date: d.date, s: (DOW_W[d.dow] ?? 0.9) + (occ[d.dow] - 1) * 0.5 }
+    return { date: d.date, s: (dw[d.dow] ?? 0.9) + (occ[d.dow] - 1) * 0.5 }
   })
   scored.sort((a, b) => a.s - b.s || a.date.localeCompare(b.date))
   const dark = new Set(scored.slice(0, darkCount).map(d => d.date))
