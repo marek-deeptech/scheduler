@@ -553,7 +553,18 @@ export default function PlanningPage() {
                 {/* Propozycje obok siebie (prawa część) */}
                 <div className="flex-1 min-w-0 flex flex-wrap gap-2">
                   {props.length === 0 ? (
-                    <span className="text-xs italic self-center" style={{ color: '#bdb4a8' }}>Brak propozycji — wybierz miesiąc powyżej i wygeneruj repertuar.</span>
+                    mo.value > thisMonthKey ? (
+                      <button type="button"
+                        onClick={() => { setSelectedMonth(mo.value); setActiveTab('gen'); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-2 rounded-xl transition-colors self-center hover:opacity-90"
+                        style={{ background: '#1a1410', color: '#fff' }}
+                        title={`Zaplanuj repertuar — ${mo.label}`}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 2a7 7 0 0 1 7 7c0 4-3 6-5 8l-2 2-2-2c-2-2-5-4-5-8a7 7 0 0 1 7-7z" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="9" r="2" fill="currentColor" stroke="none"/></svg>
+                        Zaplanuj
+                      </button>
+                    ) : (
+                      <span className="text-xs italic self-center" style={{ color: '#bdb4a8' }}>Brak propozycji</span>
+                    )
                   ) : isApprovedMonth && approvedProp ? (
                     <Link href={`/planning/${approvedProp.id}`}
                       className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-2 rounded-xl transition-colors self-center hover:opacity-90"
