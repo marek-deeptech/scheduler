@@ -94,7 +94,8 @@ const DEFAULT_SCENES: Scene[] = [
 // Rejestr scen per teatr (klucz = theatre_id). Pojemności wg stron WWW:
 // Polonia Duża 266 / Mała 90; Och Duża 450 / Och-Cafe 100.
 // TD (im. G. Holoubka) — 4 realne sceny wg teatrdramatyczny.pl (repertuar IX–XII 2026 + strony spektakli):
-// Duża Scena (Holoubka) 650, Mała Scena ~120, Scena Przodownik ~100, Scena im. Haliny Mikołajskiej ~90.
+// 3 sceny operacyjne: Duża Scena (Holoubka) 650, Mała Scena ~120, Scena im. Haliny Mikołajskiej ~90.
+// (Scena Przodownik nieoperacyjna → scalona do Mikołajskiej; legacy roomMatch 'przodownik'.)
 export const THEATRE_SCENES: Record<string, Scene[]> = {
   [THEATRE_ID.polonia]: [
     { key: 'duza', label: 'Duża', capacity: 266, fixedCost: 12000, priceCategory: 'standard' },

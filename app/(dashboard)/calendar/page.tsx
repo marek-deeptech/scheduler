@@ -15,6 +15,7 @@ import {
   type ProposalConflict,
 } from '@/lib/conflicts'
 import { sortByLastName } from '@/lib/names'
+import { scenesForTheatre, type Scene } from '@/lib/finance'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -125,18 +126,24 @@ function tagEvents(events: ProposalEvent[], allTheatreNames: string[]): TaggedEv
 // is known up-front — we must NOT guess it from a cycle (that mislabels a
 // single-theatre proposal across both theatres). Assign the known theatre to
 // every event and normalise the scene from room_name.
-// Map a precise venue/scene label to one of the two display columns.
-function sceneColumn(roomName: string | null): string {
-  const r = (roomName ?? '').toLowerCase()
-  if (r.includes('mała') || r.includes('mala') || r.includes('cafe') || r.includes('café')) return 'Mała scena'
-  return 'Duża scena'
+// Mapuje precyzyjną nazwę sali na KOLUMNĘ = realna scena teatru (scenesForTheatre).
+// TD ma 3 sceny (Duża/Mała/Mikołajskiej) → 3 kolumny; Fundacja 2 sceny domowe, a
+// dziesiątki miejsc objazdowych (Wrocław, Bydgoszcz…) spadają do 1. sceny (Duża).
+function sceneColumnFor(roomName: string | null, scenes: Scene[]): string {
+  const r = (roomName ?? '').trim().toLowerCase()
+  if (r) {
+    for (const s of scenes) if (r === s.label.toLowerCase()) return s.label
+    for (const s of scenes) if (s.roomMatch?.some(m => r.includes(m))) return s.label
+    for (const s of scenes) if (r.includes(s.label.toLowerCase())) return s.label
+  }
+  return scenes[0]?.label ?? 'Scena'
 }
 
-function tagSingleTheatre(events: ProposalEvent[], theatreName: string): TaggedEvent[] {
+function tagSingleTheatre(events: ProposalEvent[], theatreName: string, scenes: Scene[]): TaggedEvent[] {
   return [...events]
     .sort((a, b) => `${a.date}${a.start_time ?? ''}`.localeCompare(`${b.date}${b.start_time ?? ''}`))
-    // Keep the precise venue in room_name (shown per-event); group by the column.
-    .map(e => ({ ...e, _theatre: theatreName, _col: sceneColumn(e.room_name) }))
+    // Keep the precise venue in room_name (shown per-event); group by the scene column.
+    .map(e => ({ ...e, _theatre: theatreName, _col: sceneColumnFor(e.room_name, scenes) }))
 }
 
 // ── Cast popup ────────────────────────────────────────────────────────────────
@@ -767,8 +774,9 @@ export default function RepertuarPage() {
 
   void tagEvents // retained for the (legacy) untagged-data path
 
+  const activeScenes = scenesForTheatre(activeProposal?.theatre_id ?? selectedTheatreId)
   const allTagged: TaggedEvent[] = activeProposal
-    ? tagSingleTheatre(activeProposal.proposal_data ?? [], activeTheatreName)
+    ? tagSingleTheatre(activeProposal.proposal_data ?? [], activeTheatreName, activeScenes)
     : []
 
   // A single theatre is always selected on Repertuar, so events are already the
