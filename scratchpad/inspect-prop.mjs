@@ -1,0 +1,10 @@
+import fs from 'fs';
+const env = Object.fromEntries(fs.readFileSync('.env.local','utf8').split('\n').filter(l=>l.includes('=')).map(l=>{const i=l.indexOf('=');return [l.slice(0,i).trim(), l.slice(i+1).trim()];}));
+const URL = env.NEXT_PUBLIC_SUPABASE_URL, KEY = env.SUPABASE_SERVICE_ROLE_KEY;
+const TD = '22222222-2222-2222-2222-222222222222';
+const h = {apikey:KEY, Authorization:`Bearer ${KEY}`};
+const props = await (await fetch(`${URL}/rest/v1/repertoire_proposals?org_id=eq.${TD}&month=eq.2026-10&select=proposal_data&limit=1`, {headers:h})).json();
+const pd = props[0].proposal_data;
+console.log('TOP KEYS:', Array.isArray(pd)?`array len ${pd.length}`:Object.keys(pd));
+const sample = Array.isArray(pd)?pd[0]:pd[Object.keys(pd)[0]];
+console.log('SAMPLE ITEM:', JSON.stringify(sample).slice(0,600));

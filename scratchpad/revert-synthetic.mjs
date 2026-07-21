@@ -1,0 +1,31 @@
+import fs from 'fs';
+const env = Object.fromEntries(fs.readFileSync('.env.local','utf8').split('\n').filter(l=>l.includes('=')).map(l=>{const i=l.indexOf('=');return [l.slice(0,i).trim(), l.slice(i+1).trim()];}));
+const URL = env.NEXT_PUBLIC_SUPABASE_URL, KEY = env.SUPABASE_SERVICE_ROLE_KEY;
+const TD='22222222-2222-2222-2222-222222222222';
+const hg={apikey:KEY,Authorization:`Bearer ${KEY}`};
+const hp={apikey:KEY,Authorization:`Bearer ${KEY}`,'Content-Type':'application/json',Prefer:'return=representation'};
+const mine=await (await fetch(`${URL}/rest/v1/events?org_id=eq.${TD}&created_at=gte.2026-07-20T00:00:00&select=id,title,start_time,created_at&limit=1000`,{headers:hg})).json();
+console.log('events created today:',mine.length,'| range:',mine.map(e=>e.start_time.slice(0,10)).sort()[0],'..',mine.map(e=>e.start_time.slice(0,10)).sort().at(-1));
+const ids=mine.map(e=>e.id);
+const chunk=(a,n)=>{const o=[];for(let i=0;i<a.length;i+=n)o.push(a.slice(i,i+n));return o;};
+let ea=0,ev=0;
+for(const c of chunk(ids,40)){
+  const q=`event_id=in.(${c.map(x=>`"${x}"`).join(',')})&org_id=eq.${TD}`;
+  const r1=await fetch(`${URL}/rest/v1/event_artists?${q}`,{method:'DELETE',headers:hp}); ea+=(await r1.json()).length;
+  const r2=await fetch(`${URL}/rest/v1/events?id=in.(${c.map(x=>`"${x}"`).join(',')})&org_id=eq.${TD}`,{method:'DELETE',headers:hp}); ev+=(await r2.json()).length;
+}
+console.log('deleted event_artists:',ea,'| deleted events:',ev);
+const bk=JSON.parse(fs.readFileSync('scratchpad/backup-td/events.json')).filter(e=>e.start_time>='2026-07-01'&&e.start_time<'2026-08-01');
+const now=await (await fetch(`${URL}/rest/v1/events?org_id=eq.${TD}&start_time=gte.2026-07-01&start_time=lt.2026-08-01&select=id,title,start_time,type&order=start_time&limit=1000`,{headers:hg})).json();
+console.log('July now:',now.length,'| July in backup(original):',bk.length);
+const key=e=>`${e.start_time}|${e.title}`;
+const bkSet=new Set(bk.map(key));
+const extra=now.filter(e=>!bkSet.has(key(e)));
+const missing=bk.filter(e=>!now.some(n=>key(n)===key(e)));
+console.log('extra vs backup:',extra.length,'| missing vs backup:',missing.length);
+const evAll=await (await fetch(`${URL}/rest/v1/events?org_id=eq.${TD}&select=start_time,type&limit=100000`,{headers:hg})).json();
+const bm={}; evAll.forEach(e=>{const m=e.start_time.slice(0,7);bm[m]=(bm[m]||0)+1;});
+console.log('events by month:',Object.keys(bm).sort().map(m=>`${m}:${bm[m]}`).join(' '));
+const julShows=now.filter(e=>['Spektakl','Spektakl gościnny','Premiera'].includes(e.type));
+const prop=await (await fetch(`${URL}/rest/v1/repertoire_proposals?org_id=eq.${TD}&month=eq.2026-07&select=status,proposal_data`,{headers:hg})).json();
+console.log('July Spektakl-type events:',julShows.length,'| July proposal:',prop[0].status,prop[0].proposal_data.length,'items');

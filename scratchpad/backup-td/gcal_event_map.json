@@ -1,0 +1,1 @@
+{"__err":404,"__msg":"{\"code\":\"PGRST205\",\"details\":null,\"hint\":\"Perhaps you meant the table 'public.events'\",\"message\":\"Could not find the table 'public.gcal_event_map' in the schema cache\"}"}

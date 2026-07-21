@@ -1,0 +1,11 @@
+import fs from 'fs';
+const env = Object.fromEntries(fs.readFileSync('.env.local','utf8').split('\n').filter(l=>l.includes('=')).map(l=>{const i=l.indexOf('=');return [l.slice(0,i).trim(), l.slice(i+1).trim()];}));
+const URL = env.NEXT_PUBLIC_SUPABASE_URL, KEY = env.SUPABASE_SERVICE_ROLE_KEY;
+const TD = '22222222-2222-2222-2222-222222222222';
+const h = {apikey:KEY, Authorization:`Bearer ${KEY}`};
+const prods = await (await fetch(`${URL}/rest/v1/productions?org_id=eq.${TD}&select=id,title&order=title`, {headers:h})).json();
+console.log('TOTAL TD productions:', prods.length);
+const evs = await (await fetch(`${URL}/rest/v1/events?org_id=eq.${TD}&select=production_id`, {headers:h})).json();
+const evCount = {};
+for (const e of evs) if(e.production_id) evCount[e.production_id]=(evCount[e.production_id]||0)+1;
+for (const p of prods) console.log(`${(evCount[p.id]||0).toString().padStart(3)} ev | ${p.title}`);
