@@ -107,8 +107,7 @@ export const THEATRE_SCENES: Record<string, Scene[]> = {
   [THEATRE_ID.td]: [
     { key: 'duza',       label: 'Duża Scena',       capacity: 650, fixedCost: 18000, priceCategory: 'standard', roomMatch: ['duża', 'duza', 'holoubk'] },
     { key: 'mala',       label: 'Mała Scena',       capacity: 120, fixedCost: 6000,  priceCategory: 'mala',     roomMatch: ['mała', 'mala'] },
-    { key: 'przodownik', label: 'Scena Przodownik', capacity: 100, fixedCost: 4000,  priceCategory: 'mala',     roomMatch: ['przodownik'] },
-    { key: 'mikolajska', label: 'Scena im. Haliny Mikołajskiej', capacity: 90, fixedCost: 4000, priceCategory: 'mala', roomMatch: ['mikołaj', 'mikolaj', 'haliny'] },
+    { key: 'mikolajska', label: 'Scena im. Haliny Mikołajskiej', capacity: 90, fixedCost: 4000, priceCategory: 'mala', roomMatch: ['mikołaj', 'mikolaj', 'haliny', 'przodownik'] },
   ],
 }
 
