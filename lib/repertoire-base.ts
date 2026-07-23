@@ -106,18 +106,30 @@ export function buildSlots(variant: Variant, month: string, profile: Profile): S
   const days = getDaysInMonth(month).map(d => ({ date: d, dow: new Date(d + 'T12:00:00').getDay() }))
   const eveningTarget = Math.max(1, profile.eveningTarget + variant.dEve)
 
-  // Dni ciemne: tyle dni o najniższej wadze, by zostało ~eveningTarget dni grania.
-  // Jitter wg kolejności wystąpienia dnia tygodnia rozkłada ciemne dni (nie zeruje
-  // całego dnia tygodnia) — poniedziałki wypadają najczęściej, ale nie wszystkie.
-  const darkCount = Math.max(0, days.length - eveningTarget)
+  // Dni grania: zostaw ~eveningTarget dni ROZŁOŻONYCH RÓWNOMIERNIE w całym miesiącu.
+  // Dla każdego dnia tygodnia alokujemy liczbę grań proporcjonalnie do jego wagi
+  // (pn najmniej, weekend najwięcej), a KTÓRE konkretnie grają — wybieramy równomiernie
+  // (pickEvenly). Poprzedni „jitter" (occ-1)*0.5 dawał pierwszym wystąpieniom najniższy
+  // wynik → zaciemniał 1. tydzień miesiąca (repertuar zaczynał się ~9-go). Teraz nie.
   const dw = profile.dowW ?? DOW_W   // wagi dni: wyuczone z historii teatru lub globalne
-  const occ: Record<number, number> = {}
-  const scored = days.map(d => {
-    occ[d.dow] = (occ[d.dow] || 0) + 1
-    return { date: d.date, s: (dw[d.dow] ?? 0.9) + (occ[d.dow] - 1) * 0.5 }
-  })
-  scored.sort((a, b) => a.s - b.s || a.date.localeCompare(b.date))
-  const dark = new Set(scored.slice(0, darkCount).map(d => d.date))
+  const byDow = new Map<number, string[]>()
+  for (const d of days) { const a = byDow.get(d.dow) ?? []; a.push(d.date); byDow.set(d.dow, a) }
+  const weightedTotal = [...byDow].reduce((s, [dow, arr]) => s + (dw[dow] ?? 0.9) * arr.length, 0) || 1
+  const alloc = [...byDow].map(([dow, arr]) => ({
+    dow, arr,
+    keep: Math.min(arr.length, Math.round(eveningTarget * (dw[dow] ?? 0.9) * arr.length / weightedTotal)),
+  }))
+  // Korekta sumy dni grania dokładnie do eveningTarget (dosypuj wg najwyższej wagi, odejmuj wg najniższej).
+  const sumKeep = () => alloc.reduce((s, a) => s + a.keep, 0)
+  const hi = [...alloc].sort((a, b) => (dw[b.dow] ?? 0.9) - (dw[a.dow] ?? 0.9))
+  const lo = [...alloc].sort((a, b) => (dw[a.dow] ?? 0.9) - (dw[b.dow] ?? 0.9))
+  let guard = 0
+  while (sumKeep() < eveningTarget && guard++ < 100) { const a = hi.find(a => a.keep < a.arr.length); if (!a) break; a.keep++ }
+  guard = 0
+  while (sumKeep() > eveningTarget && guard++ < 100) { const a = lo.find(a => a.keep > 0); if (!a) break; a.keep-- }
+  const playing = new Set<string>()
+  for (const a of alloc) for (const d of pickEvenly(a.arr, a.keep)) playing.add(d)
+  const dark = new Set(days.filter(d => !playing.has(d.date)).map(d => d.date))
 
   // Poranki/popołudnia (dni z 2 spektaklami): weekend (ndz > sob) + Och w tygodniu.
   const sundays   = days.filter(d => d.dow === 0 && !dark.has(d.date)).map(d => d.date)
