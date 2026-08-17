@@ -869,7 +869,8 @@ export default function ActorCalendarPage() {
         {/* ── Single-day panel ── */}
         {!multiMode && selected && (() => {
           const d = new Date(selected + 'T12:00:00')
-          const dayLabel = `${DAYS_PL[(d.getDay() + 6) % 7]}, ${d.getDate()} ${MONTHS_PL[d.getMonth()]}`
+          // odmieniony miesiąc: „17 sierpnia", nie „17 Sierpień"
+          const dayLabel = `${DAYS_PL[(d.getDay() + 6) % 7]}, ${d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' })}`
           const daySt    = effectiveStatus(selected)
           const hasPendingChanges = Object.keys(pending).length > 0
 

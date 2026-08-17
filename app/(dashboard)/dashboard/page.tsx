@@ -527,11 +527,14 @@ export default function DashboardPage() {
   const slidingDayKey   = localDate(slidingDay)
   const displayDayEvents = slidingEvents.filter(e => dayKey(e.start_time) === slidingDayKey)
   const isToday          = dayOffset === 0
+  // Data z odmianą miesiąca („17 sierpnia", nie „17 Sierpień") — formatowanie
+  // systemowe samo dobiera właściwy przypadek, także dla innych języków.
+  const dayMonth = (d: Date) => d.toLocaleDateString(localeStr, { day: 'numeric', month: 'long' })
   const slidingDayLabel  = isToday
-    ? `Dziś, ${now.getDate()} ${td.months[now.getMonth()]}`
+    ? `Dziś, ${dayMonth(now)}`
     : dayOffset === 1
-    ? `Jutro, ${slidingDay.getDate()} ${td.months[slidingDay.getMonth()]}`
-    : `${td.daysShort[slidingDay.getDay()]}. ${slidingDay.getDate()} ${td.months[slidingDay.getMonth()]}`
+    ? `Jutro, ${dayMonth(slidingDay)}`
+    : `${td.daysShort[slidingDay.getDay()]}. ${dayMonth(slidingDay)}`
 
   // Upcoming shows only
   const upcomingShows = upcoming.filter(e => SHOW_TYPES.has(e.type ?? ''))
@@ -544,7 +547,7 @@ export default function DashboardPage() {
   }
   const DAYS_SHORT = td.daysShort
   const MONTHS_PL  = td.months
-  const dayLabel = `${DAYS_SHORT[now.getDay()]}. ${now.getDate()} ${MONTHS_PL[now.getMonth()]}`
+  const dayLabel = `${DAYS_SHORT[now.getDay()]}. ${dayMonth(now)}`
   const total    = Math.max(availCounts.dostepni + availCounts.urlop + availCounts.niedostepni, 1)
   const pctD = (availCounts.dostepni    / total) * 100
   const pctU = (availCounts.urlop       / total) * 100
@@ -1111,7 +1114,7 @@ export default function DashboardPage() {
                     {newDay && (
                       <div className="flex items-center gap-3 px-5 pt-3 pb-1">
                         <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#b8b0a4' }}>
-                          {DAYS_SHORT[d.getDay()]} {d.getDate()} {MONTHS_PL[d.getMonth()].substring(0,3)}
+                          {DAYS_SHORT[d.getDay()]} {d.toLocaleDateString(localeStr, { day: 'numeric', month: 'short' })}
                         </span>
                         <div className="flex-1 h-px bg-gray-100" />
                       </div>
