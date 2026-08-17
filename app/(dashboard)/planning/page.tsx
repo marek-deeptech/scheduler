@@ -584,6 +584,57 @@ export default function PlanningPage() {
         )}
       </div>
 
+      {/* ── Error ── */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700 flex items-center gap-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+            <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01" strokeLinecap="round"/>
+          </svg>
+          {error}
+        </div>
+      )}
+
+      {/* ── Content ── */}
+      {loading ? (
+        <div className="flex items-center justify-center h-32 text-sm" style={{ color: '#cec5b8' }}>Ładowanie propozycji…</div>
+      ) : proposals.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <>
+          {/* Porównanie harmonogramów — rozwiń/zwiń wszystkie naraz */}
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+            <p className="text-xs" style={{ color: '#a89e92' }}>
+              {proposals.length} {proposals.length === 1 ? 'propozycja' : 'propozycje'} — rozwiń harmonogramy, by porównać obok siebie
+            </p>
+            <button
+              onClick={() => setExpandedIds(prev => prev.size === proposals.length ? new Set() : new Set(proposals.map(p => p.id)))}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+              style={{ border: '1px solid #e4ddd4', color: '#7a7068' }}>
+              {expandedIds.size === proposals.length ? 'Zwiń wszystkie' : 'Rozwiń wszystkie (porównaj)'}
+            </button>
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-4 items-start">
+            {proposals.map(p => (
+              <ProposalCard
+                key={p.id}
+                proposal={p}
+                expanded={expandedIds.has(p.id)}
+                onToggle={() => setExpandedIds(prev => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n })}
+                onApprove={() => setApproveConfirm(p)}
+                onReject={() => handleAction(p.id, 'reject')}
+                actionLoading={actionLoading}
+                productionCastMap={productionCastMap}
+                artistNamesMap={artistNamesMap}
+                favouriteSet={favouriteSet}
+                stageMap={stageMap}
+                catMap={catMap}
+                onConflictClick={setConflictModal}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
       {/* ── Status repertuarów — pionowa oś (horyzont planowania org) ── */}
       <div className="bg-white rounded-2xl border border-[#e4ddd4] p-5">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
@@ -682,57 +733,6 @@ export default function PlanningPage() {
           })}
         </div>
       </div>
-
-      {/* ── Error ── */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700 flex items-center gap-2">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
-            <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01" strokeLinecap="round"/>
-          </svg>
-          {error}
-        </div>
-      )}
-
-      {/* ── Content ── */}
-      {loading ? (
-        <div className="flex items-center justify-center h-32 text-sm" style={{ color: '#cec5b8' }}>Ładowanie propozycji…</div>
-      ) : proposals.length === 0 ? (
-        <EmptyState />
-      ) : (
-        <>
-          {/* Porównanie harmonogramów — rozwiń/zwiń wszystkie naraz */}
-          <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
-            <p className="text-xs" style={{ color: '#a89e92' }}>
-              {proposals.length} {proposals.length === 1 ? 'propozycja' : 'propozycje'} — rozwiń harmonogramy, by porównać obok siebie
-            </p>
-            <button
-              onClick={() => setExpandedIds(prev => prev.size === proposals.length ? new Set() : new Set(proposals.map(p => p.id)))}
-              className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
-              style={{ border: '1px solid #e4ddd4', color: '#7a7068' }}>
-              {expandedIds.size === proposals.length ? 'Zwiń wszystkie' : 'Rozwiń wszystkie (porównaj)'}
-            </button>
-          </div>
-          <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-4 items-start">
-            {proposals.map(p => (
-              <ProposalCard
-                key={p.id}
-                proposal={p}
-                expanded={expandedIds.has(p.id)}
-                onToggle={() => setExpandedIds(prev => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n })}
-                onApprove={() => setApproveConfirm(p)}
-                onReject={() => handleAction(p.id, 'reject')}
-                actionLoading={actionLoading}
-                productionCastMap={productionCastMap}
-                artistNamesMap={artistNamesMap}
-                favouriteSet={favouriteSet}
-                stageMap={stageMap}
-                catMap={catMap}
-                onConflictClick={setConflictModal}
-              />
-            ))}
-          </div>
-        </>
-      )}
 
       </>)}
     </div>
