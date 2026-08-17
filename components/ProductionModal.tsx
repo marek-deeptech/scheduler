@@ -6,6 +6,7 @@ import EventModal from '@/components/EventModal'
 import { EVENT_TYPE_CATEGORIES } from '@/types'
 import {
   CATEGORY_DEFAULTS, DEFAULT_PARAMS, stageCapacity, costForStage, stageLabel, scenesForTheatre, asp, fmtPln, fmtPct,
+  ZONE_LABELS, zoneAverages, flatZones, zonesFromPricing, type PriceZone,
   type PriceCategory, type Stage,
 } from '@/lib/finance'
 
@@ -183,12 +184,18 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
     setupDays:       '0' as string,    // montaż scenografii (dni robocze)
     teardownDays:    '0' as string,    // demontaż scenografii (dni robocze)
   })
+  // Strefy cenowe widowni (Strefa I–III). Średnie ważone z nich trafiają do
+  // price_normal / price_reduced, więc prognoza finansowa liczy się jak dotąd.
+  const [zones, setZones] = useState<PriceZone[]>(() => flatZones(0, 0))
+  const [pricingRaw, setPricingRaw] = useState<Record<string, unknown>>({})
+  const zoneAvg = zoneAverages(zones)
+  const zoneShareSum = Math.round(zones.reduce((s, z) => s + (z.share || 0), 0) * 100)
 
   // Pojemność sceny tytułu — do podglądu progu rentowności
   const previewCapacity = stageCapacity(fin.stage, form.theatre_id || null)
 
   const previewAsp = asp(
-    { priceNormal: parseFloat(fin.priceNormal) || 0, priceReduced: parseFloat(fin.priceReduced) || 0, priceLastMinute: parseFloat(fin.priceLastMinute) || 0 },
+    { priceNormal: zoneAvg.normal, priceReduced: zoneAvg.reduced, priceLastMinute: parseFloat(fin.priceLastMinute) || 0 },
     DEFAULT_PARAMS.ticketMix,
   )
   const previewRevenueFull = Math.round(previewCapacity * (parseFloat(fin.attendancePct) / 100 || 0)) * previewAsp
@@ -215,7 +222,7 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
     if (!production) return
     // Tolerancyjnie na brak migracji 'stage' — ponów bez tej kolumny.
     ;(async () => {
-      const sel = (withStage: boolean): string => `${withStage ? 'stage, ' : ''}price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost`
+      const sel = (withStage: boolean): string => `${withStage ? 'stage, ' : ''}price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost, pricing`
       const first = await supabase.from('productions').select(sel(true)).eq('id', production.id).single()
       const { data } = first.error
         ? await supabase.from('productions').select(sel(false)).eq('id', production.id).single()
@@ -237,6 +244,12 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
         attendancePct:   String(Math.round(((data as any).assumed_attendance ?? 0.75) * 100)),
         fixedCost:       String((data as any).fixed_cost ?? 8000),
       }))
+      setPricingRaw(((data as any).pricing ?? {}) as Record<string, unknown>)
+      setZones(zonesFromPricing(
+        (data as any).pricing,
+        Number((data as any).price_normal)  || def.normal,
+        Number((data as any).price_reduced) || def.reduced,
+      ))
     })()
   }, [production?.id])
 
@@ -336,14 +349,19 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
       const financePayload = {
         stage:              fin.stage,
         price_category:     fin.priceCategory,
-        price_normal:       parseFloat(fin.priceNormal)     || null,
-        price_reduced:      parseFloat(fin.priceReduced)    || null,
+        price_normal:       zoneAvg.normal || null,
+        price_reduced:      zoneAvg.reduced || null,
         price_last_minute:  parseFloat(fin.priceLastMinute) || null,
         assumed_attendance: (parseFloat(fin.attendancePct) || 0) / 100,
         fixed_cost:         parseFloat(fin.fixedCost) || 0,
       }
       const { error: finErr } = await supabase.from('productions').update(financePayload).eq('id', productionId)
       if (finErr) console.warn('Zapis parametrów finansowych pominięty (czy migracja finansowa uruchomiona?):', finErr.message)
+
+      // Strefy cenowe — w kolumnie `pricing` (jsonb); metadane cennika zachowane.
+      const { error: zoneErr } = await supabase.from('productions')
+        .update({ pricing: { ...pricingRaw, zones } }).eq('id', productionId)
+      if (zoneErr) console.warn('Zapis stref cenowych pominięty (brak kolumny pricing?):', zoneErr.message)
 
       // Poziomy kategorii — osobno i tolerancyjnie (gdy brak migracji categories)
       const { error: catErr } = await supabase.from('productions')
@@ -711,23 +729,53 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
               Scena: {stageLabel(fin.stage, form.theatre_id || null)} ({previewCapacity} miejsc) — zmień w „Szczegóły".
             </p>
 
-            {/* Ceny biletów */}
-            <div className="grid grid-cols-3 gap-3">
-              {([
-                ['priceNormal', 'Normalny (zł)'],
-                ['priceReduced', 'Ulgowy (zł)'],
-                ['priceLastMinute', 'Wejściówka (zł)'],
-              ] as const).map(([key, label]) => (
-                <div key={key}>
-                  <label className={labelCls}>{label}</label>
-                  <input
-                    type="number" min={0} step={1}
-                    value={fin[key]}
-                    onChange={e => setFin(f => ({ ...f, [key]: e.target.value }))}
-                    className={inputCls}
-                  />
+            {/* Ceny biletów wg stref widowni */}
+            <div>
+              <label className={labelCls}>Ceny biletów wg stref</label>
+              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e4ddd4' }}>
+                <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-1.5 text-[10px] uppercase tracking-wide"
+                  style={{ background: '#faf8f5', color: '#a89e92' }}>
+                  <span>Strefa</span>
+                  <span className="w-20 text-right">Normalny</span>
+                  <span className="w-20 text-right">Ulgowy</span>
+                  <span className="w-20 text-right">% miejsc</span>
                 </div>
-              ))}
+                {ZONE_LABELS.map((label, i) => (
+                  <div key={label} className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center px-3 py-1.5"
+                    style={{ borderTop: '1px solid #f2ede6' }}>
+                    <span className="text-xs font-medium" style={{ color: '#1a1410' }}>{label}</span>
+                    {([['normal', 1], ['reduced', 1], ['share', 100]] as const).map(([field, mul]) => (
+                      <input key={field} type="number" min={0} step={field === 'share' ? 5 : 1}
+                        value={field === 'share'
+                          ? String(Math.round((zones[i]?.share ?? 0) * 100))
+                          : String(zones[i]?.[field] ?? 0)}
+                        onChange={e => {
+                          const v = parseFloat(e.target.value) || 0
+                          setZones(zs => zs.map((z, j) => j === i ? { ...z, [field]: field === 'share' ? v / mul : v } : z))
+                        }}
+                        className="w-20 border border-gray-200 rounded-lg px-2 py-1 text-xs text-right bg-white" />
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px]" style={{ color: zoneShareSum === 100 ? '#a89e92' : '#c8102e' }}>
+                {zoneShareSum === 100
+                  ? `Średnia ważona: ${zoneAvg.normal} zł normalny · ${zoneAvg.reduced} zł ulgowy`
+                  : `Udziały miejsc sumują się do ${zoneShareSum}% — popraw do 100%.`}
+              </p>
+            </div>
+
+            {/* Wejściówka — poza strefami (miejsca niegwarantowane) */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Wejściówka (zł)</label>
+                <input
+                  type="number" min={0} step={1}
+                  value={fin.priceLastMinute}
+                  onChange={e => setFin(f => ({ ...f, priceLastMinute: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
             </div>
 
             {/* Frekwencja + koszt */}

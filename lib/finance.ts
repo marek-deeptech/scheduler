@@ -219,3 +219,70 @@ export function fmtPln(n: number): string {
 export function fmtPct(n: number): string {
   return `${Math.round((n || 0) * 100)}%`
 }
+
+/* ── Strefy cenowe biletów ────────────────────────────────────────────────────
+   Bilet kosztuje inaczej w zależności od miejsca na widowni. Strefy trzymamy w
+   `productions.pricing.zones`, a wyliczone z nich ŚREDNIE WAŻONE lądują w
+   istniejących kolumnach price_normal / price_reduced — dzięki temu cała
+   prognoza finansowa (asp, forecastEvent) działa bez zmian.                    */
+
+export const ZONE_LABELS = ['Strefa I', 'Strefa II', 'Strefa III'] as const
+
+export interface PriceZone {
+  normal: number      // cena normalna w strefie
+  reduced: number     // cena ulgowa w strefie
+  share: number       // udział miejsc w widowni (0–1)
+}
+
+/** Średnie ważone udziałem miejsc — zasilają price_normal / price_reduced. */
+export function zoneAverages(zones: PriceZone[]): { normal: number; reduced: number } {
+  const total = zones.reduce((s, z) => s + (z.share || 0), 0)
+  if (total <= 0) return { normal: zones[0]?.normal ?? 0, reduced: zones[0]?.reduced ?? 0 }
+  const w = (pick: (z: PriceZone) => number) =>
+    Math.round(zones.reduce((s, z) => s + pick(z) * (z.share || 0), 0) / total)
+  return { normal: w(z => z.normal), reduced: w(z => z.reduced) }
+}
+
+/** Trzy równe strefy o jednej cenie — punkt wyjścia, gdy brak cennika stref. */
+export function flatZones(normal: number, reduced: number): PriceZone[] {
+  return ZONE_LABELS.map(() => ({ normal, reduced, share: 1 / 3 }))
+}
+
+/**
+ * Strefy z zapisanego cennika. Obsługuje trzy przypadki:
+ *  • `pricing.zones` — już w nowym formacie,
+ *  • `pricing.normalne`/`ulgowe` (tablice stref z cennika teatru) — zwijane do 3 grup,
+ *  • brak danych — trzy równe strefy z ceny podstawowej.
+ */
+export function zonesFromPricing(pricing: unknown, normal: number, reduced: number): PriceZone[] {
+  const p = (pricing ?? {}) as Record<string, unknown>
+
+  const saved = p.zones
+  if (Array.isArray(saved) && saved.length) {
+    const z = saved.slice(0, 3).map(x => {
+      const o = (x ?? {}) as Record<string, unknown>
+      return { normal: Number(o.normal) || 0, reduced: Number(o.reduced) || 0, share: Number(o.share) || 0 }
+    })
+    while (z.length < 3) z.push({ normal: 0, reduced: 0, share: 0 })
+    return z
+  }
+
+  const nom = Array.isArray(p.normalne) ? (p.normalne as unknown[]).map(Number).filter(n => n > 0) : []
+  const ulg = Array.isArray(p.ulgowe)   ? (p.ulgowe   as unknown[]).map(Number).filter(n => n > 0) : []
+  if (nom.length >= 2) {
+    // Podziel tablicę cennika na 3 kolejne grupy; cena strefy = średnia grupy,
+    // udział miejsc = udział grupy w liczbie stref cennika.
+    const groups: number[][] = [[], [], []]
+    nom.forEach((_, i) => groups[Math.min(2, Math.floor((i * 3) / nom.length))].push(i))
+    const avg = (arr: number[], idx: number[]) =>
+      idx.length ? Math.round(idx.reduce((s, i) => s + (arr[i] ?? 0), 0) / idx.length) : 0
+    const zones = groups.map(idx => ({
+      normal:  avg(nom, idx),
+      reduced: avg(ulg.length ? ulg : nom, idx),
+      share:   idx.length / nom.length,
+    }))
+    return zones.every(z => z.normal > 0) ? zones : flatZones(normal, reduced)
+  }
+
+  return flatZones(normal, reduced)
+}
