@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto'
 import { sendEmail, emailWrapper } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
 import { logMessages, type MessageLogRow } from '@/lib/message-log'
+import { buildWindowImage } from '@/lib/slot-window-image'
+import { windowDates } from '@/lib/slots'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -78,6 +80,33 @@ export async function POST(request: Request) {
     for (const c of (created ?? []) as any[]) tokenByArtist[c.artist_id] = c.token
   }
 
+  // Załącznik „print screen" z konkretnymi datami okna grania (raz dla całej wysyłki).
+  const attachment = await buildWindowImage({
+    title,
+    windowStart: (slot as any).window_start,
+    windowEnd: (slot as any).window_end,
+    target: (slot as any).target_performances,
+  })
+  const attachments = attachment
+    ? [{ filename: attachment.filename, content: attachment.content, contentType: attachment.contentType }]
+    : undefined
+
+  // Te same daty wypisane w treści maila — widoczne nawet gdy klient poczty
+  // nie pokaże podglądu załącznika.
+  const allDays = windowDates((slot as any).window_start, (slot as any).window_end)
+  const chipCell = (d: string) => {
+    const dt = new Date(d + 'T12:00:00')
+    const dow = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb'][dt.getDay()]
+    const weekend = dt.getDay() === 0 || dt.getDay() === 6
+    return `<td style="padding:0 6px 6px 0"><div style="border:1px solid ${weekend ? '#f0c8d0' : '#e4ddd4'};background:${weekend ? '#fdf2f4' : '#fff'};border-radius:8px;padding:6px 10px;text-align:center">
+      <div style="font-size:11px;color:${weekend ? '#c8102e' : '#9ca3af'}">${dow}</div>
+      <div style="font-size:16px;font-weight:700;color:#111827">${dt.getDate()}</div>
+    </div></td>`
+  }
+  const dayChips = Array.from({ length: Math.ceil(allDays.length / 7) }, (_, r) =>
+    `<tr>${allDays.slice(r * 7, r * 7 + 7).map(chipCell).join('')}</tr>`,
+  ).join('')
+
   const logRows: MessageLogRow[] = []
   let sent = 0
 
@@ -88,24 +117,24 @@ export async function POST(request: Request) {
     let notified = false
 
     if (m.email) {
-      const intro = customMessage
-        ? `<p style="color:#374151;margin:0 0 16px;font-size:14px;white-space:pre-wrap">${escapeHtml(customMessage)}</p>`
-        : `<p style="color:#6b7280;margin:0 0 16px;font-size:14px">
-            Cześć ${m.name}, planujemy <b>${title}</b> w oknie <b>${rangeLabel}</b>.
-            Zaznacz dni, w które możesz zagrać (max ${(slot as any).target_performances} grań).
-          </p>`
+      const fallback = `Szanowni, prośba do Was o zaznaczenie dni, w które możemy zagrać spektakl ${title}.\n`
+        + `Okno grania: ${rangeLabel}.\n`
+        + `Docelowo szukamy ${(slot as any).target_performances} dni.`
+      const body = customMessage ?? fallback
       const html = emailWrapper(`
-        <h2 style="font-size:18px;font-weight:700;margin:0 0 8px">Dostępność na spektakl — ${title}</h2>
-        ${intro}
+        <h2 style="font-size:18px;font-weight:700;margin:0 0 12px">Dostępność na spektakl — ${title}</h2>
+        <p style="color:#374151;margin:0 0 16px;font-size:14px;white-space:pre-wrap">${escapeHtml(body)}</p>
+        <p style="font-size:12px;color:#9ca3af;margin:0 0 6px">Proponowane dni (szczegóły także w załączniku):</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 20px">${dayChips}</table>
         <div style="margin:8px 0 20px">
-          <a href="${link}" style="display:inline-block;padding:12px 24px;border-radius:10px;background:#c8102e;color:#fff;font-size:15px;font-weight:700;text-decoration:none">Podaj dostępność</a>
+          <a href="${link}" style="display:inline-block;padding:12px 24px;border-radius:10px;background:#c8102e;color:#fff;font-size:15px;font-weight:700;text-decoration:none">Zaznacz dni</a>
         </div>
         <p style="font-size:12px;color:#9ca3af;margin:0">Lub otwórz: <a href="${link}" style="color:#4b5563">${link}</a></p>
       `)
-      const ok = await sendEmail(m.email, `[Dostępność] ${title} — ${rangeLabel}`, html)
+      const ok = await sendEmail(m.email, `[Dostępność] ${title} — ${rangeLabel}`, html, attachments ? { attachments } : undefined)
       if (ok) {
         notified = true
-        logRows.push({ artist_id: m.id, type: 'email', kind: 'message', subject: `Ankieta dostępności: ${title}`, body: customMessage ?? `Podaj dni, w które możesz zagrać w „${title}" (${rangeLabel}).`, related_production_id: (slot as any).production_id })
+        logRows.push({ artist_id: m.id, type: 'email', kind: 'message', subject: `Ankieta dostępności: ${title}`, body, related_production_id: (slot as any).production_id })
       }
     }
     if (m.phone) {

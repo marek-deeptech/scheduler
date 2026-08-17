@@ -35,6 +35,13 @@ export default function SlotsPage() {
   const [submitted, setSubmitted] = useState<Record<string, Set<string>>>({}) // slotId -> set(artistId)
   // Miesiące z zatwierdzonym/wdrożonym repertuarem — slotów się tam nie planuje
   const [lockedMonths, setLockedMonths] = useState<Set<string>>(new Set())
+  // Podpis pod ankietą — imię koordynatora z Ustawień (app_settings.coordinator_name)
+  const [signature, setSignature] = useState('')
+
+  useEffect(() => {
+    supabase.from('app_settings').select('value').eq('key', 'coordinator_name').maybeSingle()
+      .then(({ data }) => setSignature((data as any)?.value ?? ''))
+  }, [])
   const monthLocked = lockedMonths.has(month)
 
   // Na wejściu: ustaw pierwszy miesiąc, którego repertuar jest dopiero planowany
@@ -176,6 +183,7 @@ export default function SlotsPage() {
                   prod={prodById[s.production_id]}
                   availability={avail[s.id] ?? {}}
                   submittedSet={submitted[s.id] ?? new Set()}
+                  signature={signature}
                   onChanged={load}
                 />
               ))}
@@ -266,16 +274,18 @@ const FEAS_STYLE: Record<DayFeasibility, { bg: string; label: string }> = {
   blocked: { bg: '#dc2626', label: 'niewykonalny' },
 }
 
-function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
+function SlotCard({ slot, prod, availability, submittedSet, signature, onChanged }: {
   slot: SlotRow
   prod: FavProd | undefined
   availability: Record<string, Record<string, boolean>>
   submittedSet: Set<string>
+  signature: string          // podpis pod ankietą (imię koordynatora z Ustawień)
   onChanged: () => void
 }) {
   const [sending, setSending] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [surveyText, setSurveyText] = useState('')
+  const [replyBy, setReplyBy] = useState('')   // termin odpowiedzi w ankiecie
   const [chosen, setChosen] = useState<Set<string>>(new Set(slot.locked_dates ?? []))
   const [saving, setSaving] = useState(false)
   // Edycja / usuwanie slotu
@@ -300,7 +310,18 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
   const castCount = castSorted.length
 
   // Domyślna treść ankiety — edytowalna w modalu przed wysłaniem.
-  const defaultSurvey = `Prośba do obsady o zaznaczenie dni, w które mogą zagrać „${prod?.title ?? 'tytuł'}".\nOkno grania: ${fmtDayShort(slot.window_start)} – ${fmtDayShort(slot.window_end)} · docelowo ${slot.target_performances} grań.`
+  // Wzorzec ankiety wg treści ustalonej z koordynacją. Termin odpowiedzi i podpis
+  // podstawiane z pól niżej; puste → kropki do ręcznego uzupełnienia w modalu.
+  const deadlineLabel = replyBy
+    ? new Date(replyBy + 'T12:00:00').toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' })
+    : '.....'
+  const defaultSurvey =
+    `Szanowni, prośba do Was o zaznaczenie dni, w które możemy zagrać spektakl ${prod?.title ?? 'tytuł'}.\n` +
+    `Okno grania: ${fmtDayShort(slot.window_start)} – ${fmtDayShort(slot.window_end)}.\n` +
+    `Docelowo szukamy ${slot.target_performances} dni.\n` +
+    `Proszę o odpowiedź do dnia ${deadlineLabel}\n` +
+    `Serdecznie,\n` +
+    `${signature || '.....'}`
 
   // Zatwierdzone dni slotu (zapisane w bazie) — podstawa powiadomienia obsady.
   const lockedDates = (slot.locked_dates ?? []).slice().sort()
@@ -395,6 +416,11 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
           <span className="text-[11px] px-2 py-1 rounded-full" style={{ background: '#f2ede6', color: '#7a7068' }}>
             Odpowiedzi: {respondedCount}/{castCount}
           </span>
+          <label className="flex items-center gap-1 text-[11px]" style={{ color: '#7a7068' }}>
+            Odpowiedź do
+            <input type="date" value={replyBy} onChange={e => setReplyBy(e.target.value)} max={slot.window_start}
+              className="border border-gray-200 rounded-lg px-2 py-1 text-[11px] bg-white" />
+          </label>
           <button onClick={() => { setSurveyText(defaultSurvey); setConfirmOpen(true) }} disabled={sending || castCount === 0}
             className="text-xs font-medium px-3 py-1.5 rounded-lg text-white disabled:opacity-40" style={{ background: '#1a1410' }}>
             {sending ? 'Wysyłam…' : respondedCount > 0 ? 'Wyślij ponownie' : 'Wyślij ankiety'}
