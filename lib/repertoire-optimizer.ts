@@ -28,6 +28,7 @@ export interface OptProduction {
   stage: Stage
   category: PriceCategory
   isFavourite: boolean
+  aspOverride?: number      // ASP z rodzajów biletów (pricing.asp)
   castIds: string[]
   priceNormal: number
   priceReduced: number

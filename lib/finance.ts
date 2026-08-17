@@ -60,6 +60,7 @@ export interface ProductionFinance {
   priceLastMinute: number
   assumedAttendance: number
   fixedCost: number
+  aspOverride?: number   // ASP policone z rodzajów biletów (pricing.asp) — ma pierwszeństwo
   isFavourite: boolean
   favLevel?: number
   hitLevel?: number
@@ -156,7 +157,13 @@ export function mapRoomsToScenes(
 }
 
 /** Średnia cena biletu (ASP) wg mixu typów — wartość brutto. */
-export function asp(p: Pick<ProductionFinance, 'priceNormal' | 'priceReduced' | 'priceLastMinute'>, mix: TicketMix): number {
+export function asp(
+  p: Pick<ProductionFinance, 'priceNormal' | 'priceReduced' | 'priceLastMinute'> & { aspOverride?: number },
+  mix: TicketMix,
+): number {
+  // Gdy tytuł ma zdefiniowane rodzaje biletów, ich ważona średnia jest dokładniejsza
+  // niż uproszczony mix 70/20/10 na trzech cenach.
+  if (p.aspOverride && p.aspOverride > 0) return p.aspOverride
   return p.priceNormal * mix.normal + p.priceReduced * mix.reduced + p.priceLastMinute * mix.last_minute
 }
 
@@ -220,69 +227,136 @@ export function fmtPct(n: number): string {
   return `${Math.round((n || 0) * 100)}%`
 }
 
-/* ── Strefy cenowe biletów ────────────────────────────────────────────────────
-   Bilet kosztuje inaczej w zależności od miejsca na widowni. Strefy trzymamy w
-   `productions.pricing.zones`, a wyliczone z nich ŚREDNIE WAŻONE lądują w
-   istniejących kolumnach price_normal / price_reduced — dzięki temu cała
-   prognoza finansowa (asp, forecastEvent) działa bez zmian.                    */
-
-export const ZONE_LABELS = ['Strefa I', 'Strefa II', 'Strefa III'] as const
+/* ── Strefy widowni i rodzaje biletów ────────────────────────────────────────
+   Model odwzorowuje realne cenniki teatrów:
+   • STREFY — podział widowni (Strefa I–III); każda ma udział miejsc.
+     Teatr bez stref ma po prostu jedną strefę 100%.
+   • RODZAJE BILETÓW — wyceniane na trzy sposoby:
+       'zones'    cena osobna dla każdej strefy   (Normalne, Ulgowe)
+       'flat'     jedna cena niezależna od strefy (Otwarte 2026/2027, Ostatni dzwonek, Wejściówka)
+       'discount' procent zniżki od ceny normalnej (Grupowe, Karta Warszawiaka)
+     Każdy rodzaj ma udział w sprzedaży — z nich liczy się ASP.
+   Wszystko trzymamy w `productions.pricing`; wyliczone ASP i ceny reprezentatywne
+   trafiają do istniejących kolumn, więc reszta prognozy działa bez zmian.        */
 
 export interface PriceZone {
-  normal: number      // cena normalna w strefie
-  reduced: number     // cena ulgowa w strefie
-  share: number       // udział miejsc w widowni (0–1)
+  label: string
+  share: number      // udział miejsc na widowni (0–1)
 }
 
-/** Średnie ważone udziałem miejsc — zasilają price_normal / price_reduced. */
-export function zoneAverages(zones: PriceZone[]): { normal: number; reduced: number } {
-  const total = zones.reduce((s, z) => s + (z.share || 0), 0)
-  if (total <= 0) return { normal: zones[0]?.normal ?? 0, reduced: zones[0]?.reduced ?? 0 }
-  const w = (pick: (z: PriceZone) => number) =>
-    Math.round(zones.reduce((s, z) => s + pick(z) * (z.share || 0), 0) / total)
-  return { normal: w(z => z.normal), reduced: w(z => z.reduced) }
+export type TicketMode = 'zones' | 'flat' | 'discount'
+
+export interface TicketType {
+  id: string
+  label: string
+  mode: TicketMode
+  prices?: number[]     // mode 'zones' — cena per strefa
+  price?: number        // mode 'flat'
+  discountPct?: number  // mode 'discount' — % zniżki od ceny normalnej
+  share: number         // udział w sprzedaży (0–1)
 }
 
-/** Trzy równe strefy o jednej cenie — punkt wyjścia, gdy brak cennika stref. */
-export function flatZones(normal: number, reduced: number): PriceZone[] {
-  return ZONE_LABELS.map(() => ({ normal, reduced, share: 1 / 3 }))
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII']
+/** Domyślna nazwa strefy: „Strefa I", „Strefa II"… */
+export const zoneLabel = (i: number) => `Strefa ${ROMAN[i] ?? i + 1}`
+
+export const DEFAULT_ZONES: PriceZone[] = [
+  { label: 'Strefa I',   share: 0.4 },
+  { label: 'Strefa II',  share: 0.4 },
+  { label: 'Strefa III', share: 0.2 },
+]
+
+/** Katalog wzorowany na cenniku Teatru Dramatycznego. */
+export function defaultTicketTypes(normal: number, reduced: number, lastMinute: number): TicketType[] {
+  const z = (base: number) => [base, Math.round(base * 0.8), Math.round(base * 0.62)]
+  return [
+    { id: 'normalne',  label: 'Normalne',          mode: 'zones',    prices: z(normal),  share: 0.55 },
+    { id: 'ulgowe',    label: 'Ulgowe',            mode: 'zones',    prices: z(reduced), share: 0.20 },
+    { id: 'otwarte',   label: 'Otwarte 2026/2027', mode: 'flat',     price: 130,         share: 0.05 },
+    { id: 'dzwonek',   label: 'Ostatni dzwonek',   mode: 'flat',     price: 35,          share: 0.08 },
+    { id: 'grupowe',   label: 'Grupowe',           mode: 'discount', discountPct: 15,    share: 0.07 },
+    { id: 'wejsciowka', label: 'Wejściówka',       mode: 'flat',     price: lastMinute,  share: 0.05 },
+  ]
 }
 
-/**
- * Strefy z zapisanego cennika. Obsługuje trzy przypadki:
- *  • `pricing.zones` — już w nowym formacie,
- *  • `pricing.normalne`/`ulgowe` (tablice stref z cennika teatru) — zwijane do 3 grup,
- *  • brak danych — trzy równe strefy z ceny podstawowej.
- */
-export function zonesFromPricing(pricing: unknown, normal: number, reduced: number): PriceZone[] {
+const norm = (arr: { share: number }[]) => {
+  const t = arr.reduce((s, x) => s + (x.share || 0), 0)
+  return t > 0 ? t : 1
+}
+
+/** Cena rodzaju biletu uśredniona po strefach (dla 'zones') lub wprost. */
+export function effectivePrice(t: TicketType, zones: PriceZone[], baseNormal: number): number {
+  if (t.mode === 'flat')     return t.price ?? 0
+  if (t.mode === 'discount') return Math.round(baseNormal * (1 - (t.discountPct ?? 0) / 100))
+  const total = norm(zones)
+  return Math.round(zones.reduce((s, z, i) => s + (t.prices?.[i] ?? 0) * (z.share || 0), 0) / total)
+}
+
+/** Cena normalna ważona strefami — podstawa dla rodzajów zniżkowych i kolumny price_normal. */
+export function baseNormalPrice(types: TicketType[], zones: PriceZone[]): number {
+  const base = types.find(t => t.mode === 'zones')
+  if (!base) return types[0]?.price ?? 0
+  return effectivePrice(base, zones, 0)
+}
+
+/** Średnia cena biletu (ASP) — po rodzajach biletów ważonych udziałem w sprzedaży. */
+export function aspFromTypes(types: TicketType[], zones: PriceZone[]): number {
+  if (!types.length) return 0
+  const base = baseNormalPrice(types, zones)
+  const total = norm(types)
+  return Math.round(types.reduce((s, t) => s + effectivePrice(t, zones, base) * (t.share || 0), 0) / total)
+}
+
+/** Strefy z zapisanego cennika; brak → domyślne (albo jedna strefa 100%). */
+export function zonesFromPricing(pricing: unknown): PriceZone[] {
   const p = (pricing ?? {}) as Record<string, unknown>
-
   const saved = p.zones
   if (Array.isArray(saved) && saved.length) {
-    const z = saved.slice(0, 3).map(x => {
+    return saved.map((x, i) => {
       const o = (x ?? {}) as Record<string, unknown>
-      return { normal: Number(o.normal) || 0, reduced: Number(o.reduced) || 0, share: Number(o.share) || 0 }
+      return { label: String(o.label ?? zoneLabel(i)), share: Number(o.share) || 0 }
     })
-    while (z.length < 3) z.push({ normal: 0, reduced: 0, share: 0 })
-    return z
   }
+  const nom = Array.isArray(p.normalne) ? (p.normalne as unknown[]).length : 0
+  return nom >= 2 ? DEFAULT_ZONES.map(z => ({ ...z })) : [{ label: 'Cała widownia', share: 1 }]
+}
 
-  const nom = Array.isArray(p.normalne) ? (p.normalne as unknown[]).map(Number).filter(n => n > 0) : []
-  const ulg = Array.isArray(p.ulgowe)   ? (p.ulgowe   as unknown[]).map(Number).filter(n => n > 0) : []
-  if (nom.length >= 2) {
-    // Podziel tablicę cennika na 3 kolejne grupy; cena strefy = średnia grupy,
-    // udział miejsc = udział grupy w liczbie stref cennika.
-    const groups: number[][] = [[], [], []]
-    nom.forEach((_, i) => groups[Math.min(2, Math.floor((i * 3) / nom.length))].push(i))
-    const avg = (arr: number[], idx: number[]) =>
-      idx.length ? Math.round(idx.reduce((s, i) => s + (arr[i] ?? 0), 0) / idx.length) : 0
-    const zones = groups.map(idx => ({
-      normal:  avg(nom, idx),
-      reduced: avg(ulg.length ? ulg : nom, idx),
-      share:   idx.length / nom.length,
-    }))
-    return zones.every(z => z.normal > 0) ? zones : flatZones(normal, reduced)
+/** Rodzaje biletów z cennika; brak → katalog domyślny zasilony cenami tytułu. */
+export function ticketTypesFromPricing(
+  pricing: unknown, zones: PriceZone[], normal: number, reduced: number, lastMinute: number,
+): TicketType[] {
+  const p = (pricing ?? {}) as Record<string, unknown>
+  const saved = p.ticketTypes
+  if (Array.isArray(saved) && saved.length) {
+    return saved.map((x, i) => {
+      const o = (x ?? {}) as Record<string, unknown>
+      return {
+        id: String(o.id ?? `t${i}`),
+        label: String(o.label ?? 'Bilet'),
+        mode: (['zones', 'flat', 'discount'].includes(String(o.mode)) ? o.mode : 'flat') as TicketMode,
+        prices: Array.isArray(o.prices) ? (o.prices as unknown[]).map(Number) : undefined,
+        price: o.price != null ? Number(o.price) : undefined,
+        discountPct: o.discountPct != null ? Number(o.discountPct) : undefined,
+        share: Number(o.share) || 0,
+      }
+    })
   }
-
-  return flatZones(normal, reduced)
+  // Migracja z cennika teatru: tablice normalne/ulgowe zwijamy do liczby stref.
+  const toZones = (arr: unknown): number[] | null => {
+    const v = Array.isArray(arr) ? (arr as unknown[]).map(Number).filter(n => n > 0) : []
+    if (v.length < 2) return null
+    return zones.map((_, i) => {
+      const from = Math.floor((i * v.length) / zones.length)
+      const to = Math.max(from + 1, Math.floor(((i + 1) * v.length) / zones.length))
+      const slice = v.slice(from, to)
+      return Math.round(slice.reduce((s, n) => s + n, 0) / slice.length)
+    })
+  }
+  const types = defaultTicketTypes(normal, reduced, lastMinute)
+  const nz = toZones(p.normalne), uz = toZones(p.ulgowe)
+  if (nz) types[0].prices = nz
+  if (uz) types[1].prices = uz
+  if (!nz) types[0].prices = zones.map(() => normal)
+  if (!uz) types[1].prices = zones.map(() => reduced)
+  return types
 }

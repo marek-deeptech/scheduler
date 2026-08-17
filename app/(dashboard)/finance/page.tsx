@@ -71,7 +71,7 @@ export default function FinancePage() {
     const prodMap: Record<string, ProductionFinance> = {}
     if (prodIds.length > 0) {
       // Tolerancyjnie na brak migracji — 'stage' i poziomy kategorii niezależnie.
-      const finSel = (s: boolean, l: boolean): string => `id, title, theatre_id, ${s ? 'stage, ' : ''}${l ? 'favourite_level, hit_level, ' : ''}price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost, is_favourite`
+      const finSel = (s: boolean, l: boolean): string => `id, title, theatre_id, ${s ? 'stage, ' : ''}${l ? 'favourite_level, hit_level, ' : ''}price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost, is_favourite, pricing`
       let { data: pData, error } = await supabase.from('productions').select(finSel(true, true)).in('id', prodIds)
       if (error) { const r = await supabase.from('productions').select(finSel(false, true)).in('id', prodIds); pData = r.data as any; error = r.error }
       if (error) {
@@ -86,6 +86,7 @@ export default function FinancePage() {
           id: p.id, title: p.title, theatreId: p.theatre_id ?? null,
           stage: p.stage ?? (p.price_category === 'mala' ? 'mala' : 'duza'),
           priceCategory: cat,
+          aspOverride: Number((p as any).pricing?.asp) || undefined,
           priceNormal:     p.price_normal      ?? def.normal,
           priceReduced:    p.price_reduced     ?? def.reduced,
           priceLastMinute: p.price_last_minute ?? def.lastMinute,

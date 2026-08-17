@@ -59,7 +59,7 @@ export async function POST(request: Request) {
   ] = await Promise.all([
     (async () => {
       // Tolerancyjnie na brak migracji 'stage' / 'setup-teardown' — ponawiamy z mniejszym zestawem kolumn.
-      const base = 'id, title, theatre_id, is_favourite, price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost'
+      const base = 'id, title, theatre_id, is_favourite, price_category, price_normal, price_reduced, price_last_minute, assumed_attendance, fixed_cost, pricing'
       const q = (cols: string) => supabase.from('productions').select(cols).eq('org_id', orgId)
       let r = await q(`${base}, stage, setup_days, teardown_days`)
       if (r.error) r = await q(`${base}, setup_days, teardown_days`)
@@ -109,6 +109,7 @@ export async function POST(request: Request) {
         priceNormal: p.price_normal ?? def.normal,
         priceReduced: p.price_reduced ?? def.reduced,
         priceLastMinute: p.price_last_minute ?? def.lastMinute,
+        aspOverride: Number(p.pricing?.asp) || undefined,
         assumedAttendance: p.assumed_attendance ?? fp.defaultAttendance,
         fixedCost: p.fixed_cost ?? fp.defaultFixedCost,
         setup: p.setup_days ?? 0,
