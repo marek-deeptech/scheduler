@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
@@ -109,6 +109,23 @@ export default function PlanningPage() {
   // Miesiące bez grania (przerwa wakacyjna/remontowa) — Ustawienia → „Miesiące przerwy".
   // Lista numerów miesięcy, np. „7,8". Dotyczy tylko miesięcy bez propozycji.
   const [breakMonths,    setBreakMonths]    = useState<Set<number>>(new Set())
+  // Karta generatora — cel przewijania po kliknięciu „Zaplanuj" (strona przewija
+  // się w kontenerze <main>, więc window.scrollTo nic by nie dało).
+  const genCardRef = useRef<HTMLDivElement>(null)
+  const [genFlash, setGenFlash] = useState(false)
+  const [pendingScrollToGen, setPendingScrollToGen] = useState(false)
+
+  function planMonth(month: string) {
+    setSelectedMonth(month)
+    setActiveTab('gen')
+    setGenFlash(true)
+    setPendingScrollToGen(true)
+    // Pierwsze przewinięcie od razu (natychmiastowe — 'smooth' bywa ignorowane,
+    // m.in. w webview, i klik wygląda wtedy jakby nic nie zrobił).
+    setTimeout(() => genCardRef.current?.scrollIntoView({ block: 'start' }), 40)
+    setTimeout(() => setGenFlash(false), 1600)
+  }
+
 
   useEffect(() => {
     supabase.from('app_settings').select('value').eq('key', 'break_months').maybeSingle()
@@ -271,6 +288,18 @@ export default function PlanningPage() {
   useEffect(() => {
     if (selectedMonth) loadProposals()
   }, [selectedMonth, selectedTheatreId])   // eslint-disable-line
+
+  // Powtórz przewinięcie, gdy propozycje wybranego miesiąca się doładują — wtedy
+  // wysokość strony się zmienia i pierwsze przewinięcie by uciekło.
+  useEffect(() => {
+    if (!pendingScrollToGen || loading) return
+    const id = requestAnimationFrame(() => {
+      genCardRef.current?.scrollIntoView({ block: 'start' })
+      setPendingScrollToGen(false)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [pendingScrollToGen, loading, proposals])
+
 
   async function loadProposals() {
     setLoading(true)
@@ -438,7 +467,14 @@ export default function PlanningPage() {
       {activeTab === 'gen' && (<>
 
       {/* ── Controls ── */}
-      <div className="bg-white rounded-2xl border border-[#e4ddd4] p-5 space-y-4">
+      <div ref={genCardRef}
+        className="bg-white rounded-2xl p-5 space-y-4 transition-shadow"
+        style={{
+          scrollMarginTop: 72,   // pod przyklejony nagłówek
+          ...(genFlash
+            ? { border: '1px solid #c8102e', boxShadow: '0 0 0 4px rgba(200,16,46,0.12)' }
+            : { border: '1px solid #e4ddd4' }),
+        }}>
         {/* Warunki do uwzględnienia (zadanie 1) */}
         <div>
           <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#b8b0a4' }}>Uwzględnij warunki</label>
@@ -594,7 +630,7 @@ export default function PlanningPage() {
                       </span>
                     ) : mo.value > thisMonthKey ? (
                       <button type="button"
-                        onClick={() => { setSelectedMonth(mo.value); setActiveTab('gen'); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                        onClick={() => planMonth(mo.value)}
                         className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-2 rounded-xl transition-colors self-center hover:opacity-90"
                         style={{ background: '#1a1410', color: '#fff' }}
                         title={`Zaplanuj repertuar — ${mo.label}`}>
