@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import { supabase } from '@/lib/supabase'
+import { stageShort } from '@/lib/finance'
 import { sortByLastName } from '@/lib/names'
 import { proposalStage, STAGE_META } from '@/lib/repertoire-stage'
 
@@ -674,7 +675,7 @@ export default function ProposalDetailPage() {
                                       onClick={() => { replaceShow(c.date, show.production_id, alt); setPanelSwapKey(null) }}
                                       className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white transition-colors"
                                     >
-                                      <TheatreBadge name={alt.theatreName} />
+                                      <SceneBadge name={stageShort(availData?.stageByProdId[alt.id] ?? 'duza', alt.theatreId)} />
                                       <span className="text-xs font-medium flex-1" style={{ color: '#1a1410' }}>{alt.title}</span>
                                       <span className="text-[10px] font-semibold shrink-0" style={{ color: '#c8102e' }}>Wybierz →</span>
                                     </button>
@@ -739,7 +740,12 @@ export default function ProposalDetailPage() {
                     {dayShows.map((show, i) => {
                       const dropKey     = `${date}||${show.production_id}`
                       const isOpen      = openDropdown === dropKey
-                      const theatreName = availData?.theatreNameByProdId[show.production_id ?? '']
+                      // W podglądzie liczy się scena (Duża / Mała / Mikołajska), nie nazwa teatru —
+                      // repertuar planujemy per teatr, więc nazwa i tak jest w nagłówku.
+                      const prodId    = show.production_id ?? ''
+                      const sceneName = availData
+                        ? stageShort(availData.stageByProdId[prodId] ?? 'duza', availData.theatreByProdId[prodId] ?? null)
+                        : ''
                       const alts        = (availData && isOpen)
                         ? getAlternatives(date, show, localShows, availData)
                         : []
@@ -754,8 +760,8 @@ export default function ProposalDetailPage() {
 
                             {/* Info section (grows) */}
                             <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-wrap">
-                              {theatreName && (
-                                <TheatreBadge name={theatreName} />
+                              {sceneName && (
+                                <SceneBadge name={sceneName} />
                               )}
                               <span className={`text-sm font-semibold truncate flex items-center gap-1 ${hasConflict ? 'text-red-700' : 'text-gray-900'}`}>
                                 {favouriteSet.has(show.production_title) && (
@@ -862,7 +868,7 @@ export default function ProposalDetailPage() {
                                       onClick={() => replaceShow(date, show.production_id, alt)}
                                       className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white transition-colors"
                                     >
-                                      <TheatreBadge name={alt.theatreName} />
+                                      <SceneBadge name={stageShort(availData?.stageByProdId[alt.id] ?? 'duza', alt.theatreId)} />
                                       <span className="text-xs font-medium text-gray-800 flex-1">{alt.title}</span>
                                       <span className="text-[10px] font-semibold shrink-0" style={{ color: '#c8102e' }}>Wybierz →</span>
                                     </button>
@@ -886,9 +892,12 @@ export default function ProposalDetailPage() {
   )
 }
 
-function TheatreBadge({ name }: { name: string }) {
+function SceneBadge({ name }: { name: string }) {
+  // Mała i kameralna scena wyróżnione kolorem — inna skala produkcji niż Duża.
+  const isBig = /duż/i.test(name)
   return (
-    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 tracking-wide bg-gray-100 text-gray-500">
+    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 tracking-wide"
+      style={isBig ? { background: '#f2ede6', color: '#7a7068' } : { background: '#eef2ff', color: '#4338ca' }}>
       {name}
     </span>
   )

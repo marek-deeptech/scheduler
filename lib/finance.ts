@@ -17,6 +17,7 @@ export interface Scene {
   capacity: number               // pojemność widowni
   fixedCost: number              // domyślny koszt ryczałtowy per spektakl (zł)
   priceCategory?: PriceCategory  // sugerowana kategoria cenowa
+  short?: string                 // krótka etykieta do plakietek (np. „Mikołajska")
   roomMatch?: string[]           // fragmenty nazwy sali → mapowanie stage→room_id
 }
 
@@ -107,9 +108,9 @@ export const THEATRE_SCENES: Record<string, Scene[]> = {
     { key: 'mala', label: 'Och-Cafe', capacity: 100, fixedCost: 3000,  priceCategory: 'mala', roomMatch: ['mała', 'mala', 'cafe'] },
   ],
   [THEATRE_ID.td]: [
-    { key: 'duza',       label: 'Duża Scena',       capacity: 650, fixedCost: 18000, priceCategory: 'standard', roomMatch: ['duża', 'duza', 'holoubk'] },
-    { key: 'mala',       label: 'Mała Scena',       capacity: 120, fixedCost: 6000,  priceCategory: 'mala',     roomMatch: ['mała', 'mala'] },
-    { key: 'mikolajska', label: 'Scena im. Haliny Mikołajskiej', capacity: 90, fixedCost: 4000, priceCategory: 'mala', roomMatch: ['mikołaj', 'mikolaj', 'haliny', 'przodownik'] },
+    { key: 'duza',       label: 'Duża Scena',       short: 'Duża', capacity: 650, fixedCost: 18000, priceCategory: 'standard', roomMatch: ['duża', 'duza', 'holoubk'] },
+    { key: 'mala',       label: 'Mała Scena',       short: 'Mała', capacity: 120, fixedCost: 6000,  priceCategory: 'mala',     roomMatch: ['mała', 'mala'] },
+    { key: 'mikolajska', label: 'Scena im. Haliny Mikołajskiej', short: 'Mikołajska', capacity: 90, fixedCost: 4000, priceCategory: 'mala', roomMatch: ['mikołaj', 'mikolaj', 'haliny', 'przodownik'] },
   ],
 }
 
@@ -137,6 +138,14 @@ export function costForStage(stage: Stage, theatreId: string | null = null): num
 /** Etykieta sceny (np. „Duża", „Kameralna") w kontekście teatru. */
 export function stageLabel(stage: Stage, theatreId: string | null): string {
   return sceneOf(stage, theatreId).label
+}
+
+/** Krótka etykieta sceny do plakietek — „Duża", „Mała", „Mikołajska". */
+export function stageShort(stage: Stage, theatreId: string | null): string {
+  const sc = sceneOf(stage, theatreId)
+  if (sc.short) return sc.short
+  // Fallback: z pełnej nazwy zdejmij słowo „scena" i „im.", zostaw wyróżnik.
+  return sc.label.replace(/\bscen[ay]\b/gi, '').replace(/\bim\.\s*/gi, '').trim() || sc.label
 }
 
 /** Mapa scena→room_id: dopasowanie sal teatru do scen po fragmencie nazwy. */
