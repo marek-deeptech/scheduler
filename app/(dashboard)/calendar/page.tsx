@@ -939,8 +939,8 @@ export default function RepertuarPage() {
           className="-mx-4 px-4 md:-mx-8 md:px-8 py-3 flex items-center gap-4 md:gap-6 flex-wrap"
           style={{ background: '#faf8f5', borderBottom: '1px solid #e4ddd4' }}
         >
-          <StatBit icon={<IconMasks size={17} />} value={Object.keys(byProdVisible).length} label="tytułów" />
-          <StatBit icon={<IconClap size={17} />} value={visibleEvents.length} label="spektakli" />
+          <StatBit icon={<IconMasks size={22} />} value={Object.keys(byProdVisible).length} label="tytułów" />
+          <StatBit icon={<IconClap size={22} />} value={visibleEvents.length} label="spektakli" />
           {propConflicts.length > 0 && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
                  style={{ background: '#fff0f0', border: '1px solid #fecaca' }}>
