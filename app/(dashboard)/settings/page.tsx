@@ -206,7 +206,7 @@ const TEMPLATE_VARS = [
 
 // ─── Notifications Tab ────────────────────────────────────────────────────────
 
-type FieldKey = 'notification_email_subject' | 'notification_email_intro' | 'notification_sms' | 'coordinator_email' | 'coordinator_name' | 'technique_email' | 'sales_email'
+type FieldKey = 'notification_email_subject' | 'notification_email_intro' | 'notification_sms' | 'coordinator_email' | 'coordinator_name' | 'technique_email' | 'sales_email' | 'break_months'
 
 interface SettingField {
   key: FieldKey
@@ -220,6 +220,7 @@ interface SettingField {
 const FIELDS: SettingField[] = [
   { key: 'coordinator_email',          label: 'Email koordynatora (alarmy o chorobie i zmianach dostępności)', type: 'input', noVars: true },
   { key: 'coordinator_name',           label: 'Imię koordynatora (podpis w ankietach do obsady)', type: 'input', noVars: true },
+  { key: 'break_months',               label: 'Miesiące przerwy — numery po przecinku, np. 7,8 (teatr nie gra; status „Przerwa" w Planowaniu)', type: 'input', noVars: true },
   { key: 'technique_email',            label: 'Email działu Techniki (powiadomienie przy konsultacjach repertuaru)', type: 'input', noVars: true },
   { key: 'sales_email',                label: 'Email działu Sprzedaży (powiadomienie przy konsultacjach repertuaru)', type: 'input', noVars: true },
   { key: 'notification_email_subject', label: 'Temat emaila',  type: 'input' },
@@ -329,6 +330,7 @@ function NotificationsTab() {
   const [values, setValues] = useState<Record<FieldKey, string>>({
     coordinator_email:          '',
     coordinator_name:           '',
+    break_months:               '',
     technique_email:            '',
     sales_email:                '',
     notification_email_subject: '',
@@ -342,7 +344,7 @@ function NotificationsTab() {
       const { data } = await supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['coordinator_email', 'coordinator_name', 'technique_email', 'sales_email', 'notification_email_subject', 'notification_email_intro', 'notification_sms'])
+        .in('key', ['coordinator_email', 'coordinator_name', 'break_months', 'technique_email', 'sales_email', 'notification_email_subject', 'notification_email_intro', 'notification_sms'])
       if (data) {
         const map: Partial<Record<FieldKey, string>> = {}
         for (const row of data) {

@@ -106,6 +106,17 @@ export default function PlanningPage() {
   const [monthsReady,    setMonthsReady]    = useState(false)
   const [theatreName,    setTheatreName]    = useState<string>('')
   const [theatreCount,   setTheatreCount]   = useState<number | null>(null)
+  // Miesiące bez grania (przerwa wakacyjna/remontowa) — Ustawienia → „Miesiące przerwy".
+  // Lista numerów miesięcy, np. „7,8". Dotyczy tylko miesięcy bez propozycji.
+  const [breakMonths,    setBreakMonths]    = useState<Set<number>>(new Set())
+
+  useEffect(() => {
+    supabase.from('app_settings').select('value').eq('key', 'break_months').maybeSingle()
+      .then(({ data }) => {
+        const raw = String((data as any)?.value ?? '')
+        setBreakMonths(new Set(raw.split(',').map(x => parseInt(x.trim(), 10)).filter(n => n >= 1 && n <= 12)))
+      })
+  }, [])
 
   // Przegląd statusów: bieżący miesiąc + horyzont planowania organizacji
   const overviewMonths = getNextMonths(planningHorizon + 1)
@@ -129,13 +140,14 @@ export default function PlanningPage() {
       for (const mo of overviewMonths) {
         const ps = byMonth[mo.value] ?? []
         // Najbardziej zaawansowany etap miesiąca (najniższy STAGE_ORDER wśród nie-'brak')
+        const isBreak = breakMonths.has(parseInt(mo.value.slice(5), 10))
         m[mo.value] = ps.length
           ? ps.reduce<MonthStage>((best, p) => STAGE_ORDER[p.stage] < STAGE_ORDER[best] ? p.stage : best, 'planowanie')
-          : 'brak'
+          : (isBreak ? 'przerwa' : 'brak')
       }
       setMonthStatus(m)
     })
-  }, [selectedTheatreId])
+  }, [selectedTheatreId, breakMonths])
 
   // Domyślnie planujemy dla Teatru Polonia — gdy wybrano „Wszystkie", przełącz na Polonię.
   // KPA może zmienić na Och-Teatr w menu po lewej.
@@ -388,7 +400,10 @@ export default function PlanningPage() {
         style={{ background: '#fff', borderBottom: '1px solid #e4ddd4' }}>
         <div>
           <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>Planowanie repertuaru</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>Stefan analizuje obsadę i dostępność, generuje propozycje układu spektakli</p>
+          <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>
+            Tutaj zaplanujesz repertuar. Stefan przygotuje dla Ciebie parę propozycji.<br />
+            Wpisz poniżej Twoje potrzeby. Możesz zacząć od zaplanowania ulubionych spektakli (<Link href="/planning/slots" className="underline underline-offset-2" style={{ color: '#7a2020' }}>Fav Slots</Link>).
+          </p>
         </div>
       </div>
 
@@ -538,7 +553,7 @@ export default function PlanningPage() {
         <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
           <p className="text-sm font-semibold" style={{ color: '#1a1410' }}>Status repertuarów — najbliższe {Math.max(1, overviewMonths.length - 1)} {overviewMonths.length - 1 === 1 ? 'miesiąc' : (overviewMonths.length - 1) < 5 ? 'miesiące' : 'miesięcy'}</p>
           <div className="flex items-center gap-3 flex-wrap">
-            {(['planowanie', 'zatwierdzenie', 'konsultacje', 'sprzedaz'] as MonthStage[]).map(s => (
+            {(['planowanie', 'zatwierdzenie', 'konsultacje', 'sprzedaz', 'przerwa'] as MonthStage[]).map(s => (
               <span key={s} className="inline-flex items-center gap-1 text-[11px]" style={{ color: '#7a7068' }}>
                 <span className="w-2 h-2 rounded-full" style={{ background: STAGE_CFG[s].dot }} />
                 {STAGE_CFG[s].label}
@@ -572,7 +587,12 @@ export default function PlanningPage() {
                 {/* Propozycje obok siebie (prawa część) */}
                 <div className="flex-1 min-w-0 flex flex-wrap gap-2">
                   {props.length === 0 ? (
-                    mo.value > thisMonthKey ? (
+                    st === 'przerwa' ? (
+                      // Przerwa: nie proponujemy planowania, tylko wyjaśniamy stan.
+                      <span className="text-xs italic self-center" style={{ color: '#8b98a8' }}>
+                        Przerwa — w tym miesiącu teatr nie gra.
+                      </span>
+                    ) : mo.value > thisMonthKey ? (
                       <button type="button"
                         onClick={() => { setSelectedMonth(mo.value); setActiveTab('gen'); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
                         className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-2 rounded-xl transition-colors self-center hover:opacity-90"
