@@ -97,9 +97,11 @@ function Tooltip({ children, tip, align = 'left' }: {
       onMouseEnter={() => setShow(true)}
       onMouseLeave={() => setShow(false)}>
       {children}
+      {/* pointer-events włączone + limit wysokości → długie listy da się przewinąć
+          (kursor nad dymkiem wciąż jest „w" rodzicu, więc dymek nie znika). */}
       {show && (
-        <span className={`absolute top-full mt-1.5 ${alignCls} z-[200] pointer-events-none`}>
-          <span className="block bg-white border border-gray-200 shadow-2xl rounded-2xl overflow-hidden min-w-[210px] max-w-[300px]">
+        <span className={`absolute top-full mt-1.5 ${alignCls} z-[200]`}>
+          <span className="block bg-white border border-gray-200 shadow-2xl rounded-2xl overflow-y-auto overscroll-contain min-w-[210px] max-w-[300px] max-h-[min(60vh,420px)]">
             {tip}
           </span>
         </span>
@@ -694,7 +696,7 @@ export default function DashboardPage() {
     const empty = udzial.length === 0 && dostepnosc.length === 0 && wiadomosci.length === 0
     return (
       <>
-        <TipHeader>Brak potwierdzeń</TipHeader>
+        <TipHeader>Pilne powiadomienia</TipHeader>
         {empty ? <TipEmpty text="Wszystko potwierdzone" /> : (
           <>
             {udzial.length > 0 && (
@@ -811,7 +813,7 @@ export default function DashboardPage() {
 
   const statCards = [
     {
-      label: 'Brak potwierdzeń', value: notConfirmedCount,
+      label: 'Pilne powiadomienia', value: notConfirmedCount,
       sub: notConfirmedCount > 0 ? '' : 'wszystko potwierdzone',
       // Rozbicie na kategorie — jedna pod drugą, z jasnym opisem czego brakuje.
       subLines: notConfirmedCount > 0

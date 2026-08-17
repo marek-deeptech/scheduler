@@ -42,8 +42,14 @@ function LoginForm() {
         localStorage.setItem('orgName', orgs.find(o => o.id === orgId)?.name ?? '')
       } catch { /* noop */ }
 
+      // Koordynator dostaje ekran powitalny raz dziennie; potem wprost na Pulpit.
+      let coordHome = '/dashboard'
+      try {
+        if (localStorage.getItem('welcomeSeenOn') !== new Date().toDateString()) coordHome = '/welcome'
+      } catch { /* noop */ }
+
       const next = params.get('next')
-      const dest = next && next.startsWith('/') ? next : (json.role === 'actor' ? '/actor/calendar' : '/dashboard')
+      const dest = next && next.startsWith('/') ? next : (json.role === 'actor' ? '/actor/calendar' : coordHome)
       router.replace(dest)
     } catch {
       setError('Błąd połączenia')
