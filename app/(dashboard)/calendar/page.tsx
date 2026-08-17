@@ -834,19 +834,9 @@ export default function RepertuarPage() {
             }}
           >
             Repertuar
-            {selectedTheatre && (
-              <span
-                className="ml-3 text-base font-normal"
-                style={{ color: accent }}
-              >
-                — {selectedTheatre.name}
-              </span>
-            )}
           </h1>
           <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>
-            {selectedTheatre
-              ? `Zatwierdzone miesiące · ${selectedTheatre.name}`
-              : 'Zatwierdzone miesiące · wszystkie teatry'}
+            Tutaj przejrzysz zaplanowany już repertuar.
           </p>
         </div>
         <Link
