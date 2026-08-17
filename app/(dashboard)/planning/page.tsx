@@ -221,8 +221,9 @@ export default function PlanningPage() {
   const [loading,       setLoading]       = useState(false)
   const [generating,    setGenerating]    = useState(false)
   const [constraints,   setConstraints]   = useState('')
-  // Warunki generowania — domyślnie tylko finanse ON (zadanie 3: a,c,d wyłączone)
-  const [cond, setCond] = useState({ slots: false, finance: true, core: false, extra: false })
+  // Warunki generowania — domyślnie WSZYSTKIE OFF; KPA włącza świadomie te,
+  // które mają wpłynąć na propozycje (Finanse ON → 4 warianty pod cele finansowe).
+  const [cond, setCond] = useState({ slots: false, finance: false, core: false, extra: false })
   const [activeTab, setActiveTab] = useState<'gen' | 'finance' | 'core' | 'extra' | 'import'>('gen')
   const [expandedIds,   setExpandedIds]   = useState<Set<string>>(new Set())
   const [actionLoading, setActionLoading] = useState<string | null>(null)
