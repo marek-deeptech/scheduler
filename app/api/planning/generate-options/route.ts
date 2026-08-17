@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     supabase.from('artist_productions').select('artist_id, production_id').eq('org_id', orgId),
     supabase.from('theatres').select('id, name').eq('org_id', orgId),
     supabase.from('rooms').select('id, name, theatre_id').eq('org_id', orgId),
-    supabase.from('repertoire_slots').select('production_id, locked_dates, productions(theatre_id)').eq('org_id', orgId).eq('month', month).eq('status', 'planned'),
+    supabase.from('repertoire_slots').select('production_id, locked_dates, productions(theatre_id)').eq('org_id', orgId).eq('month', month).in('status', ['planned', 'notified']),
     supabase.from('actor_day_status').select('artist_id, date, status').eq('org_id', orgId).gte('date', monthStart).lte('date', monthEnd),
     // Wydarzenia INNYCH teatrów TEJ SAMEJ org w tym miesiącu — zajętość wspólnych aktorów
     supabase.from('events').select('start_time, production_id, theatre_id').eq('org_id', orgId)

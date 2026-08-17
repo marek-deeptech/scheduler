@@ -8,7 +8,7 @@ import { useOrg } from '@/lib/org-context'
 import ConflictResolutionModal from '@/components/ConflictResolutionModal'
 import SendConfirmModal from '@/components/SendConfirmModal'
 import { CategoryMarks } from '@/components/CategoryMarks'
-import { SlotsTab, FinanceTab, CoreTab, ExtraTab } from '@/components/PlanningConditionTabs'
+import { FinanceTab, CoreTab, ExtraTab } from '@/components/PlanningConditionTabs'
 import ExcelImportTab from '@/components/ExcelImportTab'
 import {
   detectProposalConflicts,
@@ -16,6 +16,9 @@ import {
   type ProposalConflict,
 } from '@/lib/conflicts'
 import { proposalStage, STAGE_META, STAGE_ORDER, isApprovedStage, type RepStage } from '@/lib/repertoire-stage'
+
+// Ostatnio wybrany miesiąc w Planowaniu — przeżywa wyjście i powrót do zakładki.
+const MONTH_STORE_KEY = 'planning:selectedMonth'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -220,7 +223,7 @@ export default function PlanningPage() {
   const [constraints,   setConstraints]   = useState('')
   // Warunki generowania — domyślnie tylko finanse ON (zadanie 3: a,c,d wyłączone)
   const [cond, setCond] = useState({ slots: false, finance: true, core: false, extra: false })
-  const [activeTab, setActiveTab] = useState<'gen' | 'slots' | 'finance' | 'core' | 'extra' | 'import'>('gen')
+  const [activeTab, setActiveTab] = useState<'gen' | 'finance' | 'core' | 'extra' | 'import'>('gen')
   const [expandedIds,   setExpandedIds]   = useState<Set<string>>(new Set())
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [error,         setError]         = useState<string | null>(null)
@@ -238,12 +241,19 @@ export default function PlanningPage() {
     conflictStart?: string; conflictEnd?: string; productions: string[]
   } | null>(null)
 
-  // Set default selected month once approved list is known
+  // Wybrany miesiąc pamiętany między wejściami w zakładkę (localStorage).
+  // Po powrocie wraca ostatnio wybrany miesiąc, a nie pierwszy z listy.
   useEffect(() => {
-    if (!monthsReady) return
-    const first = months[0]?.value
-    if (first && !selectedMonth) setSelectedMonth(first)
+    if (!monthsReady || selectedMonth) return
+    const saved = typeof window !== 'undefined' ? localStorage.getItem(MONTH_STORE_KEY) : null
+    const restored = saved && months.some(m => m.value === saved) ? saved : null
+    const next = restored ?? months[0]?.value
+    if (next) setSelectedMonth(next)
   }, [monthsReady])   // eslint-disable-line
+
+  useEffect(() => {
+    if (selectedMonth && typeof window !== 'undefined') localStorage.setItem(MONTH_STORE_KEY, selectedMonth)
+  }, [selectedMonth])
 
   useEffect(() => {
     if (selectedMonth) loadProposals()
@@ -386,16 +396,24 @@ export default function PlanningPage() {
         {([
           ['gen', 'Generowanie'], ['slots', 'Sloty Favourites'], ['finance', 'Założenia finansowe'], ['core', 'Dostępność CORE'], ['extra', 'Założenia dodatkowe'], ['import', 'Import Excel'],
         ] as const).map(([k, lbl]) => (
-          <button key={k} onClick={() => setActiveTab(k)}
-            className="px-3.5 py-2 text-sm font-semibold rounded-xl whitespace-nowrap transition-colors shrink-0"
-            style={activeTab === k ? { background: '#1a1410', color: '#fff' } : { background: '#f2ede6', color: '#7a7068' }}>
-            {lbl}
-          </button>
+          // „Sloty Favourites" prowadzi wprost do edytora slotów (bez ekranu pośredniego).
+          k === 'slots' ? (
+            <Link key={k} href="/planning/slots"
+              className="px-3.5 py-2 text-sm font-semibold rounded-xl whitespace-nowrap transition-colors shrink-0"
+              style={{ background: '#f2ede6', color: '#7a7068' }}>
+              {lbl}
+            </Link>
+          ) : (
+            <button key={k} onClick={() => setActiveTab(k)}
+              className="px-3.5 py-2 text-sm font-semibold rounded-xl whitespace-nowrap transition-colors shrink-0"
+              style={activeTab === k ? { background: '#1a1410', color: '#fff' } : { background: '#f2ede6', color: '#7a7068' }}>
+              {lbl}
+            </button>
+          )
         ))}
       </div>
 
       {/* ── Zakładki edycji warunków ── */}
-      {activeTab === 'slots'   && <SlotsTab />}
       {activeTab === 'finance' && <FinanceTab />}
       {activeTab === 'core'    && <CoreTab month={selectedMonth || thisMonthKey} />}
       {activeTab === 'extra'   && <ExtraTab theatreId={selectedTheatreId} theatreName={theatreName} />}

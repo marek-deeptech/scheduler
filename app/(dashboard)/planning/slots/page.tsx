@@ -14,6 +14,7 @@ import {
 /* ── Helpers ───────────────────────────────────────────────────── */
 function monthKey(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
 const MONTHS_PL = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień']
+const DAY_SHORT = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb']
 function monthLabel(k: string) { const [y, m] = k.split('-'); return `${MONTHS_PL[+m - 1]} ${y}` }
 function shiftMonth(k: string, d: number) { const [y, m] = k.split('-').map(Number); return monthKey(new Date(y, m - 1 + d, 1)) }
 function firstOfMonth(k: string) { return `${k}-01` }
@@ -277,6 +278,16 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
   const [surveyText, setSurveyText] = useState('')
   const [chosen, setChosen] = useState<Set<string>>(new Set(slot.locked_dates ?? []))
   const [saving, setSaving] = useState(false)
+  // Edycja / usuwanie slotu
+  const [editOpen, setEditOpen] = useState(false)
+  const [eStart, setEStart] = useState(slot.window_start)
+  const [eEnd, setEEnd] = useState(slot.window_end)
+  const [eTarget, setETarget] = useState(String(slot.target_performances))
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  // Powiadomienie obsady o zatwierdzonych slotach (osobny krok, nie automat)
+  const [notifyOpen, setNotifyOpen] = useState(false)
+  const [notifyText, setNotifyText] = useState('')
+  const [notifying, setNotifying] = useState(false)
 
   const castSorted = useMemo(() => sortByLastName(prod?.cast ?? []), [prod])
   const dates = windowDates(slot.window_start, slot.window_end)
@@ -290,6 +301,11 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
 
   // Domyślna treść ankiety — edytowalna w modalu przed wysłaniem.
   const defaultSurvey = `Prośba do obsady o zaznaczenie dni, w które mogą zagrać „${prod?.title ?? 'tytuł'}".\nOkno grania: ${fmtDayShort(slot.window_start)} – ${fmtDayShort(slot.window_end)} · docelowo ${slot.target_performances} grań.`
+
+  // Zatwierdzone dni slotu (zapisane w bazie) — podstawa powiadomienia obsady.
+  const lockedDates = (slot.locked_dates ?? []).slice().sort()
+  const lockedLabel = lockedDates.map(d => fmtDayShort(d)).join(' · ')
+  const defaultNotify = `Ustaliliśmy terminy grania „${prod?.title ?? 'tytuł'}".\nTerminy: ${lockedLabel}.\nProsimy o rezerwację tych dni.`
 
   async function sendInvites() {
     setSending(true)
@@ -308,12 +324,47 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
   function toggleDay(d: string) {
     setChosen(prev => { const n = new Set(prev); n.has(d) ? n.delete(d) : n.add(d); return n })
   }
+  // Zatwierdzenie dni NIE powiadamia obsady — to osobny krok (CTA niżej).
   async function lockDays() {
     setSaving(true)
     await supabase.from('repertoire_slots')
       .update({ locked_dates: [...chosen].sort(), status: 'planned' })
       .eq('id', slot.id)
     setSaving(false)
+    onChanged()
+  }
+
+  async function saveEdit() {
+    if (!eStart || !eEnd) return
+    setSaving(true)
+    await supabase.from('repertoire_slots')
+      .update({
+        window_start: eStart, window_end: eEnd, month: eStart.slice(0, 7),
+        target_performances: parseInt(eTarget) || 1,
+      })
+      .eq('id', slot.id)
+    setSaving(false)
+    setEditOpen(false)
+    onChanged()
+  }
+
+  async function removeSlot() {
+    setSaving(true)
+    // slot_invites / slot_availability mają ON DELETE CASCADE — znikają razem ze slotem.
+    await supabase.from('repertoire_slots').delete().eq('id', slot.id)
+    setSaving(false)
+    setDeleteOpen(false)
+    onChanged()
+  }
+
+  async function notifyCast() {
+    setNotifying(true)
+    await fetch('/api/slots/notify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slotId: slot.id, message: notifyText.trim() || undefined }),
+    })
+    setNotifying(false)
+    setNotifyOpen(false)
     onChanged()
   }
 
@@ -327,8 +378,13 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
           <div className="flex items-center gap-2">
             <span className="text-red-500">♥</span>
             <span className="text-sm font-semibold" style={{ color: '#1a1410' }}>{prod?.title ?? 'Tytuł'}</span>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${slot.status === 'planned' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
-              {slot.status === 'planned' ? 'Zaplanowany' : 'Zbieranie dostępności'}
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+              slot.status === 'notified' ? 'bg-green-100 text-green-800'
+              : slot.status === 'planned' ? 'bg-blue-100 text-blue-800'
+              : 'bg-amber-100 text-amber-800'}`}>
+              {slot.status === 'notified' ? 'Obsada powiadomiona'
+                : slot.status === 'planned' ? 'Dni zatwierdzone'
+                : 'Zbieranie dostępności'}
             </span>
           </div>
           <p className="text-[11px] mt-0.5" style={{ color: '#a89e92' }}>
@@ -343,8 +399,77 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
             className="text-xs font-medium px-3 py-1.5 rounded-lg text-white disabled:opacity-40" style={{ background: '#1a1410' }}>
             {sending ? 'Wysyłam…' : respondedCount > 0 ? 'Wyślij ponownie' : 'Wyślij ankiety'}
           </button>
+          <button onClick={() => { setEStart(slot.window_start); setEEnd(slot.window_end); setETarget(String(slot.target_performances)); setEditOpen(o => !o) }}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg" style={{ border: '1px solid #e4ddd4', color: '#7a7068' }}>
+            {editOpen ? 'Zamknij' : 'Edytuj slot'}
+          </button>
+          <button onClick={() => setDeleteOpen(true)}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg" style={{ border: '1px solid #f0c8c8', color: '#c8102e' }}>
+            Usuń slot
+          </button>
         </div>
       </div>
+
+      {/* Edycja slotu — okno grania i docelowa liczba grań */}
+      {editOpen && (
+        <div className="px-4 py-3 grid md:grid-cols-3 gap-3" style={{ background: '#faf8f5', borderBottom: '1px solid #f2ede6' }}>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Okno od</label>
+            <input type="date" value={eStart} onChange={e => setEStart(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Okno do</label>
+            <input type="date" value={eEnd} onChange={e => setEEnd(e.target.value)} min={eStart}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Docelowa liczba grań</label>
+            <div className="flex gap-2">
+              <input type="number" min={1} value={eTarget} onChange={e => setETarget(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" />
+              <button onClick={saveEdit} disabled={saving || !eStart || !eEnd}
+                className="px-4 py-2 text-sm font-medium text-white rounded-xl disabled:opacity-40 whitespace-nowrap" style={{ background: '#16a34a' }}>
+                {saving ? 'Zapisuję…' : 'Zapisz'}
+              </button>
+            </div>
+          </div>
+          <p className="md:col-span-3 text-[11px]" style={{ color: '#a89e92' }}>
+            Zmiana okna nie kasuje zebranych odpowiedzi; dni spoza nowego okna przestaną być widoczne.
+          </p>
+        </div>
+      )}
+
+      {/* Potwierdzenie usunięcia slotu */}
+      {deleteOpen && (
+        <div className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap" style={{ background: '#fef2f2', borderBottom: '1px solid #fee2e2' }}>
+          <p className="text-xs" style={{ color: '#7a2020' }}>
+            Usunąć slot „{prod?.title ?? 'Tytuł'}"? Zebrane odpowiedzi i zaproszenia obsady zostaną skasowane.
+          </p>
+          <div className="flex gap-2">
+            <button onClick={() => setDeleteOpen(false)} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700">Anuluj</button>
+            <button onClick={removeSlot} disabled={saving}
+              className="px-4 py-1.5 text-xs font-medium text-white rounded-lg disabled:opacity-40" style={{ background: '#c8102e' }}>
+              {saving ? 'Usuwam…' : 'Usuń slot'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {notifyOpen && (
+        <SendConfirmModal
+          title={`Powiadomienie o slotach — ${prod?.title ?? 'Tytuł'}`}
+          channelLabel="Powiadomienie o terminach (e-mail / SMS)"
+          recipients={castSorted.map(c => ({ name: c.name }))}
+          content={notifyText}
+          onContentChange={setNotifyText}
+          note={`Terminy: ${lockedLabel || '—'}`}
+          confirmLabel={`Powiadom ${castCount} ${castCount === 1 ? 'osobę' : 'osób'}`}
+          sending={notifying}
+          onConfirm={notifyCast}
+          onCancel={() => setNotifyOpen(false)}
+        />
+      )}
 
       {confirmOpen && (
         <SendConfirmModal
@@ -361,11 +486,36 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
         />
       )}
 
-      {/* Heatmapa */}
+      {/* Bez odpowiedzi: dni można ustawić ręcznie (ankieta jest opcjonalna) */}
       {respondedCount === 0 ? (
-        <p className="text-xs text-center py-6" style={{ color: '#a89e92' }}>
-          Brak odpowiedzi. Wyślij ankiety do obsady, aby zebrać dostępność.
-        </p>
+        <div className="p-4">
+          <p className="text-xs mb-3" style={{ color: '#a89e92' }}>
+            Brak odpowiedzi obsady. Możesz wskazać dni ręcznie albo wysłać ankiety, by poznać dostępność.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {dates.map(d => {
+              const isChosen = chosen.has(d)
+              const dt = new Date(d + 'T12:00:00')
+              return (
+                <button key={d} onClick={() => toggleDay(d)}
+                  className="px-2 py-1 rounded-lg text-[11px] font-medium transition-colors"
+                  style={isChosen
+                    ? { background: '#16a34a', color: '#fff' }
+                    : { background: '#f2ede6', color: '#7a7068', border: '1px solid #e4ddd4' }}>
+                  {DAY_SHORT[dt.getDay()]} {dt.getDate()}
+                </button>
+              )
+            })}
+          </div>
+          <div className="flex items-center justify-end gap-2 mt-4">
+            <button onClick={lockDays} disabled={saving || chosen.size === 0}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg text-white disabled:opacity-40" style={{ background: '#16a34a' }}>
+              {saving ? 'Zapisuję…' : `Zatwierdź dni (${chosen.size})`}
+            </button>
+          </div>
+          <NotifyCta lockedDates={lockedDates} lockedLabel={lockedLabel} status={slot.status} castCount={castCount}
+            onOpen={() => { setNotifyText(defaultNotify); setNotifyOpen(true) }} />
+        </div>
       ) : (
         <div className="p-4">
           <div className="overflow-x-auto">
@@ -435,8 +585,41 @@ function SlotCard({ slot, prod, availability, submittedSet, onChanged }: {
               Wybrane grania: {[...chosen].sort().map(d => fmtDayShort(d)).join(' · ')}
             </p>
           )}
+
+          <NotifyCta lockedDates={lockedDates} lockedLabel={lockedLabel} status={slot.status} castCount={castCount}
+            onOpen={() => { setNotifyText(defaultNotify); setNotifyOpen(true) }} />
         </div>
       )}
+    </div>
+  )
+}
+
+/* ── CTA: powiadomienie obsady o zatwierdzonych slotach ────────────
+   Świadomie osobny krok — zatwierdzenie dni samo w sobie NIC nie wysyła. */
+function NotifyCta({ lockedDates, lockedLabel, status, castCount, onOpen }: {
+  lockedDates: string[]
+  lockedLabel: string
+  status: SlotRow['status']
+  castCount: number
+  onOpen: () => void
+}) {
+  if (lockedDates.length === 0) return null
+  const done = status === 'notified'
+  return (
+    <div className="mt-4 pt-3 flex items-center justify-between gap-3 flex-wrap" style={{ borderTop: '1px dashed #e4ddd4' }}>
+      <div>
+        <p className="text-[11px] font-semibold" style={{ color: '#1a1410' }}>
+          {done ? 'Obsada powiadomiona o terminach' : 'Obsada nie została jeszcze powiadomiona'}
+        </p>
+        <p className="text-[11px]" style={{ color: '#a89e92' }}>Terminy: {lockedLabel}</p>
+      </div>
+      <button onClick={onOpen} disabled={castCount === 0}
+        className="text-xs font-semibold px-4 py-2 rounded-xl disabled:opacity-40"
+        style={done
+          ? { border: '1px solid #e4ddd4', color: '#7a7068', background: '#fff' }
+          : { background: '#c8102e', color: '#fff' }}>
+        {done ? 'Powiadom ponownie' : '♥ Powiadom aktorów o fav slots'}
+      </button>
     </div>
   )
 }

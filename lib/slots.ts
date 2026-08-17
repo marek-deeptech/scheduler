@@ -7,7 +7,9 @@ export interface SlotRow {
   window_start: string   // 'YYYY-MM-DD'
   window_end: string
   target_performances: number
-  status: 'collecting' | 'planned'
+  // collecting = zbieranie dostępności · planned = dni zatwierdzone (jeszcze bez
+  // powiadomienia obsady) · notified = obsada powiadomiona o slotach Favourites.
+  status: 'collecting' | 'planned' | 'notified'
   locked_dates: string[] | null
 }
 
