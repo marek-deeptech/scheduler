@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useTheatre } from '@/lib/theatre-context'
 import { CategoryMarks } from '@/components/CategoryMarks'
 import {
-  DEFAULT_PARAMS, CATEGORY_DEFAULTS, FAVOURITE_ATTENDANCE, forecastEvent, breakEvenAttendance,
+  DEFAULT_PARAMS, CATEGORY_DEFAULTS, FAVOURITE_ATTENDANCE, forecastEvent,
   stageCapacity, asp, fmtPln, fmtPct, isWeekend, stageLabel,
   type FinanceParams, type ProductionFinance, type PriceCategory, type Stage,
 } from '@/lib/finance'
@@ -159,7 +159,6 @@ export default function FinancePage() {
       margin: t.revenue - t.cost,
       attendance: t.capSum > 0 ? t.soldSum / t.capSum : 0,
       aspGross: asp(t.prod, effParams.ticketMix),
-      breakEven: breakEvenAttendance(t.prod, t.capSum / Math.max(1, t.count), effParams.ticketMix),
       isFavourite: t.prod.isFavourite,
     })).sort((a, b) =>
       // Ulubione na górze, potem wg marży
@@ -283,8 +282,7 @@ export default function FinancePage() {
                     <th className="text-right font-medium px-3 py-2">Śr. frekw.</th>
                     <th className="text-right font-medium px-3 py-2">ASP</th>
                     <th className="text-right font-medium px-3 py-2">Przychód</th>
-                    <th className="text-right font-medium px-3 py-2">Dochód</th>
-                    <th className="text-right font-medium px-4 py-2">Próg rent.</th>
+                    <th className="text-right font-medium px-4 py-2">Dochód</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -298,23 +296,12 @@ export default function FinancePage() {
                           {stageLabel(t.prod.stage, t.prod.theatreId ?? null)}
                         </span>
                         <CategoryMarks favLevel={t.prod.favLevel ?? 0} hitLevel={t.prod.hitLevel ?? 0} size={13} className="ml-2 align-middle" />
-                        {!t.isFavourite && (t.prod.hitLevel ?? 0) === 0 && (
-                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#f2ede6', color: '#7a7068' }}>
-                            {CATEGORY_DEFAULTS[t.prod.priceCategory]?.label ?? t.prod.priceCategory}
-                          </span>
-                        )}
                       </td>
                       <td className="text-right px-3 py-2.5" style={{ color: '#7a7068' }}>{t.count}</td>
                       <td className="text-right px-3 py-2.5 font-medium" style={{ color: t.isFavourite ? '#15803d' : '#1a1410' }}>{fmtPct(t.attendance)}</td>
                       <td className="text-right px-3 py-2.5" style={{ color: '#7a7068' }}>{fmtPln(t.aspGross)}</td>
                       <td className="text-right px-3 py-2.5 font-medium" style={{ color: '#1a1410' }}>{fmtPln(t.revenue)}</td>
-                      <td className="text-right px-3 py-2.5 font-semibold" style={{ color: t.margin >= 0 ? '#15803d' : '#c8102e' }}>{fmtPln(t.margin)}</td>
-                      <td className="text-right px-4 py-2.5">
-                        <span className="text-xs px-2 py-0.5 rounded-full" style={{
-                          background: t.attendance >= t.breakEven ? '#f0fdf4' : '#fff5f5',
-                          color: t.attendance >= t.breakEven ? '#15803d' : '#c8102e',
-                        }}>{fmtPct(t.breakEven)}</span>
-                      </td>
+                      <td className="text-right px-4 py-2.5 font-semibold" style={{ color: t.margin >= 0 ? '#15803d' : '#c8102e' }}>{fmtPln(t.margin)}</td>
                     </tr>
                   ))}
                 </tbody>

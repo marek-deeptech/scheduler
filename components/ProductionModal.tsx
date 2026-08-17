@@ -191,9 +191,6 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
     { priceNormal: parseFloat(fin.priceNormal) || 0, priceReduced: parseFloat(fin.priceReduced) || 0, priceLastMinute: parseFloat(fin.priceLastMinute) || 0 },
     DEFAULT_PARAMS.ticketMix,
   )
-  const previewBreakEven = previewCapacity * previewAsp > 0
-    ? (parseFloat(fin.fixedCost) || 0) / (previewCapacity * previewAsp)
-    : 0
   const previewRevenueFull = Math.round(previewCapacity * (parseFloat(fin.attendancePct) / 100 || 0)) * previewAsp
   const previewMargin = previewRevenueFull - (parseFloat(fin.fixedCost) || 0)
 
@@ -270,18 +267,6 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
         }))
       })
   }, [production?.id])
-
-  // Zmiana kategorii cenowej podstawia domyślne ceny biletów
-  function applyCategory(cat: PriceCategory) {
-    const def = CATEGORY_DEFAULTS[cat]
-    setFin(f => ({
-      ...f,
-      priceCategory: cat,
-      priceNormal:     String(def.normal),
-      priceReduced:    String(def.reduced),
-      priceLastMinute: String(def.lastMinute),
-    }))
-  }
 
   // Zmiana sceny podstawia sugerowany koszt ryczałtowy (pojemność liczy się automatycznie)
   function applyStage(stage: Stage) {
@@ -721,30 +706,10 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
 
          {tab === 'finance' && (
           <div className="space-y-5">
-            {/* Kategoria cenowa */}
-            <div>
-              <label className={labelCls}>
-                Kategoria cenowa
-                <span className="ml-2 font-normal text-gray-400">Scena: {stageLabel(fin.stage, form.theatre_id || null)} ({previewCapacity} miejsc) — zmień w „Szczegóły"</span>
-              </label>
-              <div className="flex p-0.5 bg-gray-100 rounded-xl">
-                {(['premium', 'standard'] as PriceCategory[]).map(cat => (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => applyCategory(cat)}
-                    className={`flex-1 py-2 text-xs font-semibold rounded-[10px] transition-colors ${
-                      fin.priceCategory === cat ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {CATEGORY_DEFAULTS[cat].label}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-1 text-[11px] text-gray-400">
-                Podstawia domyślne ceny biletów — możesz je nadpisać poniżej.
-              </p>
-            </div>
+            {/* Ceny biletów wpisuje się wprost — bez podziału na kategorie */}
+            <p className="text-[11px] text-gray-400">
+              Scena: {stageLabel(fin.stage, form.theatre_id || null)} ({previewCapacity} miejsc) — zmień w „Szczegóły".
+            </p>
 
             {/* Ceny biletów */}
             <div className="grid grid-cols-3 gap-3">
@@ -788,10 +753,9 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
             </div>
 
             {/* Podgląd na żywo */}
-            <div className="rounded-xl p-4 grid grid-cols-3 gap-3" style={{ background: '#faf8f5', border: '1px solid #e4ddd4' }}>
+            <div className="rounded-xl p-4 grid grid-cols-2 gap-3" style={{ background: '#faf8f5', border: '1px solid #e4ddd4' }}>
               <Stat label="Śr. cena (ASP)" value={fmtPln(previewAsp)} />
               <Stat label={`Dochód/spektakl (${previewCapacity} miejsc)`} value={fmtPln(previewMargin)} accent={previewMargin >= 0 ? '#15803d' : '#c8102e'} />
-              <Stat label="Próg rentowności" value={fmtPct(previewBreakEven)} accent={previewBreakEven <= (parseFloat(fin.attendancePct) / 100) ? '#15803d' : '#c8102e'} />
             </div>
             <p className="text-[11px] text-gray-400 -mt-2">
               Podgląd dla reprezentatywnej pojemności sceny ({previewCapacity} miejsc, mix biletów 70/20/10).
