@@ -23,3 +23,22 @@ export const IconXCircle      = ({ size=14, className='' }: IconProps) => ic(siz
 export const IconWrench       = ({ size=14, className='' }: IconProps) => ic(size, className, <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>)
 export const IconHanger       = ({ size=14, className='' }: IconProps) => ic(size, className, <><path d="M12 3a2 2 0 100 4c1.1 0 2-.9 2-2s-.9-2-2-2z"/><path d="M12 7v2.5L2 17h20L12 9.5V7"/></>)
 export const IconTheatre      = ({ size=14, className='' }: IconProps) => ic(size, className, <><path d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h1.5C5.496 19.5 6 18.996 6 18.375m-3.75.125v-5.625A1.125 1.125 0 013.375 12H4.5M3.375 19.5v-5.625M21 19.5h-1.5a1.125 1.125 0 01-1.125-1.125M21 19.5v-5.625A1.125 1.125 0 0019.875 12H18.75M3.375 12h17.25M3.375 12V7.875A1.125 1.125 0 014.5 6.75H6M21 12V7.875A1.125 1.125 0 0019.875 6.75H18.75M6 6.75h12M6 6.75A1.125 1.125 0 014.875 5.625V4.5M18.75 6.75A1.125 1.125 0 0019.875 5.625V4.5m-15.375 0h15.375"/></>)
+
+// Maski teatralne (komedia + tragedia) — dwie maski obok siebie, każda z oczami
+// i wyrazem ust. Zarys w stylu ikon menu. Używane przy liczbie tytułów.
+export const IconMasks = ({ size=14, className='' }: IconProps) => ic(size, className, <>
+  <path d="M2 7.2A2.2 2.2 0 0 1 4.2 5h5A2.2 2.2 0 0 1 11.4 7.2v4.86c0 2.72-1.77 4.94-4.7 4.94S2 14.78 2 12.06Z"/>
+  <path d="M4.4 10.2h.01M8.4 10.2h.01"/>
+  <path d="M4.9 13.1c.9.9 1.9.9 2.8 0"/>
+  <path d="M12.8 7.2A2.2 2.2 0 0 1 15 5h5a2.2 2.2 0 0 1 2.2 2.2v4.86c0 2.72-1.77 4.94-4.7 4.94s-4.7-2.22-4.7-4.94Z"/>
+  <path d="M15.2 10.2h.01M19.2 10.2h.01"/>
+  <path d="M15.7 13.8c.9-.9 1.9-.9 2.8 0"/>
+</>)
+
+// Klaszczące ręce (brawa) — dwie dłonie pochylone ku sobie, z linią palców,
+// plus iskry oklasków. Używane przy liczbie spektakli.
+export const IconClap = ({ size=14, className='' }: IconProps) => ic(size, className, <>
+  <g transform="rotate(-28 12 15)"><rect x="6.6" y="9.6" width="5.2" height="10" rx="2.6"/><path d="M9.2 12.2v5.4"/></g>
+  <g transform="rotate(28 12 15)"><rect x="12.2" y="9.6" width="5.2" height="10" rx="2.6"/><path d="M14.8 12.2v5.4"/></g>
+  <path d="M12 3.2v2.4M7 4.8l1.3 2.1M17 4.8l-1.3 2.1"/>
+</>)

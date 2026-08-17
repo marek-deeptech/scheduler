@@ -16,6 +16,7 @@ import {
 } from '@/lib/conflicts'
 import { sortByLastName } from '@/lib/names'
 import { scenesForTheatre, type Scene } from '@/lib/finance'
+import { IconMasks, IconClap } from '@/lib/icons'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -938,8 +939,8 @@ export default function RepertuarPage() {
           className="-mx-4 px-4 md:-mx-8 md:px-8 py-3 flex items-center gap-4 md:gap-6 flex-wrap"
           style={{ background: '#faf8f5', borderBottom: '1px solid #e4ddd4' }}
         >
-          <StatBit icon="🎬" value={Object.keys(byProdVisible).length} label="tytułów" />
-          <StatBit icon="🎭" value={visibleEvents.length} label="spektakli" />
+          <StatBit icon={<IconMasks size={17} />} value={Object.keys(byProdVisible).length} label="tytułów" />
+          <StatBit icon={<IconClap size={17} />} value={visibleEvents.length} label="spektakli" />
           {propConflicts.length > 0 && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
                  style={{ background: '#fff0f0', border: '1px solid #fecaca' }}>
@@ -1012,10 +1013,10 @@ export default function RepertuarPage() {
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
-function StatBit({ icon, value, label }: { icon: string; value: number; label: string }) {
+function StatBit({ icon, value, label }: { icon: React.ReactNode; value: number; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-sm">{icon}</span>
+      <span style={{ color: '#7a7068' }}>{icon}</span>
       <span className="text-sm font-bold" style={{ color: '#3e3830' }}>{value}</span>
       <span className="text-xs" style={{ color: '#a89e92' }}>{label}</span>
     </div>
