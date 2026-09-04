@@ -252,7 +252,7 @@ export default function FinancePage() {
             <div className={`grid md:grid-cols-2 gap-4 ${simOn ? '' : 'opacity-40 pointer-events-none'}`}>
               <div>
                 <div className="flex justify-between text-xs mb-1" style={{ color: '#7a7068' }}>
-                  <span>Założona frekwencja (♥ Favourites zawsze 100%)</span><b style={{ color: '#1a1410' }}>{fmtPct(simAttendance)}</b>
+                  <span>Założona frekwencja (♥ Ulubione zawsze 100%)</span><b style={{ color: '#1a1410' }}>{fmtPct(simAttendance)}</b>
                 </div>
                 <input type="range" min={0.3} max={1} step={0.05} value={simAttendance}
                   onChange={e => setSimAttendance(parseFloat(e.target.value))} className="fin-slider w-full"

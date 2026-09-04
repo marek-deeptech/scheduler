@@ -228,7 +228,7 @@ export async function POST(request: Request) {
     const avgAtt = t.capacity > 0 ? t.sold / t.capacity : 0
     const reasoning =
       learnNote +
-      `Cel: ${OBJECTIVE_LABEL[objective]}. ${t.count} spektakli (w tym ${lockedCount} z zatwierdzonych Favourites). ` +
+      `Cel: ${OBJECTIVE_LABEL[objective]}. ${t.count} spektakli (w tym ${lockedCount} z zatwierdzonych ulubionych setów). ` +
       `Prognoza: przychód ${fmtPln(t.revenue)}, koszt ${fmtPln(t.cost)}, dochód ${fmtPln(t.margin)}, śr. frekwencja ${fmtPct(avgAtt)}.`
 
     const proposal_data = res.performances.map(p => ({

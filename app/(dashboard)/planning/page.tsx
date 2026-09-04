@@ -431,7 +431,7 @@ export default function PlanningPage() {
           <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>Planowanie repertuaru</h1>
           <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>
             Tutaj zaplanujesz repertuar. Stefan przygotuje dla Ciebie parę propozycji.<br />
-            Wpisz poniżej Twoje potrzeby. Możesz zacząć od zaplanowania ulubionych spektakli (<Link href="/planning/slots" className="underline underline-offset-2" style={{ color: '#7a2020' }}>Fav Slots</Link>).
+            Wpisz poniżej Twoje potrzeby. Możesz zacząć od zaplanowania ulubionych spektakli (<Link href="/planning/slots" className="underline underline-offset-2" style={{ color: '#7a2020' }}>Ulubione sety</Link>).
           </p>
         </div>
       </div>
@@ -439,9 +439,9 @@ export default function PlanningPage() {
       {/* ── Zakładki: Generowanie + edycja warunków ── */}
       <div className="flex gap-1.5 overflow-x-auto -mt-2 pb-1">
         {([
-          ['gen', 'Generowanie'], ['slots', 'Sloty Favourites'], ['finance', 'Założenia finansowe'], ['core', 'Dostępność CORE'], ['extra', 'Założenia dodatkowe'], ['import', 'Import Excel'],
+          ['gen', 'Generowanie'], ['slots', 'Ulubione sety'], ['finance', 'Założenia finansowe'], ['core', 'Dostępność CORE'], ['extra', 'Założenia dodatkowe'], ['import', 'Import Excel'],
         ] as const).map(([k, lbl]) => (
-          // „Sloty Favourites" prowadzi wprost do edytora slotów (bez ekranu pośredniego).
+          // „Ulubione sety" prowadzi wprost do edytora slotów (bez ekranu pośredniego).
           k === 'slots' ? (
             <Link key={k} href="/planning/slots"
               className="px-3.5 py-2 text-sm font-semibold rounded-xl whitespace-nowrap transition-colors shrink-0"
@@ -480,7 +480,7 @@ export default function PlanningPage() {
           <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#b8b0a4' }}>Uwzględnij warunki</label>
           <div className="flex gap-2 flex-wrap">
             {([
-              ['slots', '♥', 'Sloty Favourites', '#ef4444'],
+              ['slots', '♥', 'Ulubione sety', '#ef4444'],
               ['finance', '◆', 'Założenia finansowe', '#34d399'],
               ['core', '★', 'Dostępność CORE', '#eab308'],
               ['extra', '▣', 'Założenia dodatkowe', '#60a5fa'],

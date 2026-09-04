@@ -1,6 +1,6 @@
 // Powiadomienie obsady o ZATWIERDZONYCH terminach slotu Favourite.
 // Świadomie osobny krok od zatwierdzania dni: ustawienie slotu niczego nie wysyła,
-// dopiero CTA „Powiadom aktorów o fav slots" w edytorze slotów wywołuje tę trasę.
+// dopiero CTA „Powiadom aktorów o ulubionych setach" w edytorze setów wywołuje tę trasę.
 import { createClient } from '@supabase/supabase-js'
 import { sessionOrgId } from '@/lib/session-org'
 import { sendEmail, emailWrapper } from '@/lib/email'

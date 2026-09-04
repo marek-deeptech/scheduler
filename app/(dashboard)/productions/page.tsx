@@ -913,7 +913,7 @@ export default function ProductionsPage() {
               title="Sortowanie"
             >
               <option value="alpha">Sortuj: Alfabetycznie</option>
-              <option value="fav">Sortuj: Favourites</option>
+              <option value="fav">Sortuj: Ulubione</option>
               <option value="hit">Sortuj: Hit Kasowy</option>
               <option value="premiere">Sortuj: Data premiery</option>
             </select>

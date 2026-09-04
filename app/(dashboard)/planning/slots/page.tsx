@@ -130,7 +130,7 @@ export default function SlotsPage() {
             <Link href="/planning" className="text-xs" style={{ color: '#a89e92' }}>← Planowanie</Link>
           </div>
           <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>
-            Sloty Favourites
+            Ulubione sety
           </h1>
           <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>Etap 1–2: okna grania i dostępność aktorów</p>
         </div>
@@ -158,7 +158,7 @@ export default function SlotsPage() {
           </div>
           <p className="text-sm font-medium" style={{ color: '#7a7068' }}>Repertuar na {monthLabel(month)} jest zatwierdzony</p>
           <p className="text-xs mt-1 max-w-sm mx-auto" style={{ color: '#a89e92' }}>
-            Sloty Favourites planuje się tylko dla miesięcy, których repertuar jest dopiero w planowaniu. Przejdź do miesiąca jeszcze niezatwierdzonego (strzałką „›").
+            Ulubione sety planuje się tylko dla miesięcy, których repertuar jest dopiero w planowaniu. Przejdź do miesiąca jeszcze niezatwierdzonego (strzałką „›").
           </p>
         </div>
       ) : (
@@ -171,8 +171,8 @@ export default function SlotsPage() {
           {/* Sloty */}
           {slots.length === 0 ? (
             <div className="text-center py-16">
-              <p className="text-sm font-medium" style={{ color: '#7a7068' }}>Brak slotów w tym miesiącu</p>
-              <p className="text-xs mt-1" style={{ color: '#a89e92' }}>Dodaj slot dla tytułu Favourite powyżej, aby rozpocząć Etap 1.</p>
+              <p className="text-sm font-medium" style={{ color: '#7a7068' }}>Brak setów w tym miesiącu</p>
+              <p className="text-xs mt-1" style={{ color: '#a89e92' }}>Dodaj set dla ulubionego tytułu powyżej, aby rozpocząć Etap 1.</p>
             </div>
           ) : (
             <div className="flex flex-col gap-4 mt-4">
@@ -224,7 +224,7 @@ function SlotCreator({ month, favs, onCreated }: { month: string; favs: FavProd[
       <button onClick={() => setOpen(true)}
         className="w-full py-3 rounded-xl text-sm font-medium transition-colors"
         style={{ background: '#fff', border: '1px dashed #d6c9b8', color: '#7a2020' }}>
-        + Dodaj slot Favourite
+        + Dodaj set
       </button>
     )
   }
@@ -233,7 +233,7 @@ function SlotCreator({ month, favs, onCreated }: { month: string; favs: FavProd[
     <div className="rounded-2xl p-4" style={{ background: '#fff', border: '1px solid #e4ddd4' }}>
       <div className="grid md:grid-cols-2 gap-3">
         <div className="md:col-span-2">
-          <label className="block text-xs font-medium text-gray-500 mb-1">Tytuł (Favourite)</label>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Tytuł (ulubiony)</label>
           <select value={prodId} onChange={e => setProdId(e.target.value)}
             className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c8102e]">
             <option value="">Wybierz tytuł…</option>
@@ -427,11 +427,11 @@ function SlotCard({ slot, prod, availability, submittedSet, signature, onChanged
           </button>
           <button onClick={() => { setEStart(slot.window_start); setEEnd(slot.window_end); setETarget(String(slot.target_performances)); setEditOpen(o => !o) }}
             className="text-xs font-medium px-3 py-1.5 rounded-lg" style={{ border: '1px solid #e4ddd4', color: '#7a7068' }}>
-            {editOpen ? 'Zamknij' : 'Edytuj slot'}
+            {editOpen ? 'Zamknij' : 'Edytuj set'}
           </button>
           <button onClick={() => setDeleteOpen(true)}
             className="text-xs font-medium px-3 py-1.5 rounded-lg" style={{ border: '1px solid #f0c8c8', color: '#c8102e' }}>
-            Usuń slot
+            Usuń set
           </button>
         </div>
       </div>
@@ -470,13 +470,13 @@ function SlotCard({ slot, prod, availability, submittedSet, signature, onChanged
       {deleteOpen && (
         <div className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap" style={{ background: '#fef2f2', borderBottom: '1px solid #fee2e2' }}>
           <p className="text-xs" style={{ color: '#7a2020' }}>
-            Usunąć slot „{prod?.title ?? 'Tytuł'}"? Zebrane odpowiedzi i zaproszenia obsady zostaną skasowane.
+            Usunąć set „{prod?.title ?? 'Tytuł'}"? Zebrane odpowiedzi i zaproszenia obsady zostaną skasowane.
           </p>
           <div className="flex gap-2">
             <button onClick={() => setDeleteOpen(false)} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700">Anuluj</button>
             <button onClick={removeSlot} disabled={saving}
               className="px-4 py-1.5 text-xs font-medium text-white rounded-lg disabled:opacity-40" style={{ background: '#c8102e' }}>
-              {saving ? 'Usuwam…' : 'Usuń slot'}
+              {saving ? 'Usuwam…' : 'Usuń set'}
             </button>
           </div>
         </div>
@@ -484,7 +484,7 @@ function SlotCard({ slot, prod, availability, submittedSet, signature, onChanged
 
       {notifyOpen && (
         <SendConfirmModal
-          title={`Powiadomienie o slotach — ${prod?.title ?? 'Tytuł'}`}
+          title={`Powiadomienie o setach — ${prod?.title ?? 'Tytuł'}`}
           channelLabel="Powiadomienie o terminach (e-mail / SMS)"
           recipients={castSorted.map(c => ({ name: c.name }))}
           content={notifyText}
@@ -644,7 +644,7 @@ function NotifyCta({ lockedDates, lockedLabel, status, castCount, onOpen }: {
         style={done
           ? { border: '1px solid #e4ddd4', color: '#7a7068', background: '#fff' }
           : { background: '#c8102e', color: '#fff' }}>
-        {done ? 'Powiadom ponownie' : '♥ Powiadom aktorów o fav slots'}
+        {done ? 'Powiadom ponownie' : '♥ Powiadom aktorów o ulubionych setach'}
       </button>
     </div>
   )

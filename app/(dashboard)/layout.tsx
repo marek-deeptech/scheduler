@@ -98,7 +98,7 @@ function Breadcrumbs() {
       '/calendar': t.nav.calendar,
       '/planning': 'Planowanie',
       '/planning/implementation': 'Wdrożenie',
-      '/planning/slots': 'Sloty Favourites',
+      '/planning/slots': 'Ulubione sety',
       '/artists': t.nav.artists,
       '/productions': t.nav.productions,
       '/events': t.nav.events,

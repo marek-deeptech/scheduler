@@ -16,9 +16,9 @@ const WEEKDAYS = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Nd'] // 1..7 (ISO)
 export function SlotsTab() {
   return (
     <div className={card}>
-      <h2 className="text-sm font-semibold mb-1" style={{ color: '#1a1410' }}>Sloty Favourites</h2>
+      <h2 className="text-sm font-semibold mb-1" style={{ color: '#1a1410' }}>Ulubione sety</h2>
       <p className="text-xs mb-4" style={{ color: '#a89e92' }}>
-        Zatwierdzone dni spektakli Favourites brane jako stałe przy generowaniu (gdy warunek włączony).
+        Zatwierdzone dni ulubionych setów brane jako stałe przy generowaniu (gdy warunek włączony).
       </p>
       <Link href="/planning/slots"
         className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-xl"
