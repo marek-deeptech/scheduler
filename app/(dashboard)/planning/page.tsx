@@ -430,7 +430,7 @@ export default function PlanningPage() {
         <div>
           <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>Planowanie repertuaru</h1>
           <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>
-            Tutaj zaplanujesz repertuar. Stefan przygotuje dla Ciebie parę propozycji.<br />
+            Tutaj zaplanujesz repertuar. Wojciech przygotuje dla Ciebie parę propozycji.<br />
             Wpisz poniżej Twoje potrzeby. Możesz zacząć od zaplanowania ulubionych spektakli (<Link href="/planning/slots" className="underline underline-offset-2" style={{ color: '#7a2020' }}>Ulubione sety</Link>).
           </p>
         </div>
@@ -545,7 +545,7 @@ export default function PlanningPage() {
                 <svg className="animate-spin w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" strokeLinecap="round"/>
                 </svg>
-                Stefan analizuje…
+                Wojciech analizuje…
               </>
             ) : (
               <>
@@ -579,7 +579,7 @@ export default function PlanningPage() {
               <span className="animate-bounce" style={{ animationDelay: '150ms' }}>●</span>
               <span className="animate-bounce" style={{ animationDelay: '300ms' }}>●</span>
             </span>
-            Stefan analizuje obsadę, dostępność aktorów i sale… Może to potrwać 20–30 sekund.
+            Wojciech analizuje obsadę, dostępność aktorów i sale… Może to potrwać 20–30 sekund.
           </div>
         )}
       </div>
@@ -752,7 +752,7 @@ function EmptyState() {
         <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" strokeLinecap="round"/>
       </svg>
       <p className="text-sm font-semibold" style={{ color: '#7a7068' }}>Brak propozycji dla tego miesiąca</p>
-      <p className="text-xs mt-1 max-w-xs" style={{ color: '#a89e92' }}>Kliknij „Generuj propozycje" — Stefan przygotuje kilka wariantów repertuaru uwzględniając obsadę i dostępność aktorów</p>
+      <p className="text-xs mt-1 max-w-xs" style={{ color: '#a89e92' }}>Kliknij „Generuj propozycje" — Wojciech przygotuje kilka wariantów repertuaru uwzględniając obsadę i dostępność aktorów</p>
     </div>
   )
 }

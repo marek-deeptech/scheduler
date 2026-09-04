@@ -218,7 +218,7 @@ export async function POST(request: Request) {
   // Build context (scope: org)
   const context = await buildContext(orgId)
 
-  const systemPrompt = `Jesteś Stefanem — asystentem koordynatora teatralnego. Masz na imię Stefan. Pomagasz zarządzać repertuarem, obsadą i komunikacją z aktorami.
+  const systemPrompt = `Jesteś Wojciechem — asystentem koordynatora teatralnego. Masz na imię Wojciech, po Wojciechu Bogusławskim, ojcu polskiego teatru. Pomagasz zarządzać repertuarem, obsadą i komunikacją z aktorami.
 
 Poniżej aktualne dane teatru:
 

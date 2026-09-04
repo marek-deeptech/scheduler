@@ -106,7 +106,7 @@ function Breadcrumbs() {
       '/messages': t.nav.messages,
       '/reports': t.nav.reports,
       '/settings': t.nav.settings,
-      '/assistant': 'Stefan',
+      '/assistant': 'Wojciech',
       '/actor': 'Aktor',
       '/actor/calendar': 'Kalendarz',
       '/actor/messages': 'Wiadomości',
@@ -548,7 +548,7 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
               <div className="space-y-px">
                 <Link href="/assistant" className={lnk('/assistant')} style={isActive('/assistant') ? {} : { color: '#c8102e', fontWeight: 600 }}>
                   {icons.assistant}
-                  <span>Stefan</span>
+                  <span>Wojciech</span>
                 </Link>
               </div>
             </div>

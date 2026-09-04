@@ -184,7 +184,7 @@ export default function AssistantPage() {
               </svg>
             </div>
             <div>
-              <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>Stefan</h1>
+              <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>Wojciech</h1>
               <p className="text-xs" style={{ color: '#a89e92' }}>Pytaj o repertuar, obsadę, dostępność aktorów</p>
             </div>
           </div>
@@ -223,7 +223,7 @@ export default function AssistantPage() {
                   <circle cx="12" cy="9" r="2" fill="white" stroke="none"/>
                 </svg>
               </div>
-              <p className="text-base font-semibold text-gray-800">Witaj! Jestem Stefan, asystent koordynatora.</p>
+              <p className="text-base font-semibold text-gray-800">Witaj! Jestem Wojciech, asystent koordynatora.</p>
               <p className="text-sm text-gray-500 mt-1">Mam dostęp do aktualnych danych teatru — zapytaj o cokolwiek.</p>
             </div>
             <div className="flex flex-wrap gap-2 justify-center max-w-lg">

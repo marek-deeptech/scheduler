@@ -597,7 +597,7 @@ function SlotCard({ slot, prod, availability, submittedSet, signature, onChanged
             </div>
             <div className="flex items-center gap-2">
               <button onClick={autoSuggest} className="text-xs font-medium px-3 py-1.5 rounded-lg" style={{ border: '1px solid #e4ddd4', color: '#7a2020' }}>
-                ✨ Stefan: zaproponuj {slot.target_performances} dni
+                ✨ Wojciech: zaproponuj {slot.target_performances} dni
               </button>
               <button onClick={lockDays} disabled={saving || chosen.size === 0}
                 className="text-xs font-medium px-3 py-1.5 rounded-lg text-white disabled:opacity-40" style={{ background: '#16a34a' }}>
