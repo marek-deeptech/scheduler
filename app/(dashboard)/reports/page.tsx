@@ -136,14 +136,12 @@ export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState<'tytuly' | 'aktorzy' | 'aktywnosc'>('tytuly')
   // Przy eksporcie PDF pokazujemy WSZYSTKIE sekcje (pełny raport), nie tylko aktywną zakładkę.
   const [forPrint, setForPrint] = useState(false)
-  function exportPdf() {
-    setForPrint(true)
-    setTimeout(() => { window.print(); setForPrint(false) }, 350)
-  }
   const showTab = (k: 'tytuly' | 'aktorzy' | 'aktywnosc') => forPrint || activeTab === k
   // Obciążenie zespołu — filtr po miesiącu/roku
   const [wlMonth,     setWlMonth]     = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })
   const [wlEvents,    setWlEvents]    = useState<EventRow[]>([])
+  const [wlProdTitles, setWlProdTitles] = useState<Record<string, string>>({})
+  const [wlSearch,    setWlSearch]    = useState('')
   const [wlVac,       setWlVac]       = useState<{ artist_id: string; start_time: string; end_time: string }[]>([])
 
   const today = localDate(new Date())
@@ -366,13 +364,54 @@ export default function ReportsPage() {
     const vq = supabase.from('availabilities').select('artist_id,start_time,end_time')
       .eq('type', 'Urlop')
       .lte('start_time', `${mEnd}T23:59:59`).gte('end_time', `${mStart}T00:00:00`)
-    Promise.all([eq, vq]).then(([{ data: ev }, { data: va }]) => {
+    const pq = supabase.from('productions').select('id, title')
+    Promise.all([eq, vq, pq]).then(([{ data: ev }, { data: va }, { data: pr }]) => {
       setWlEvents((ev ?? []) as unknown as EventRow[])
       setWlVac((va ?? []) as any)
+      setWlProdTitles(Object.fromEntries(((pr ?? []) as { id: string; title: string }[]).map(x => [x.id, x.title])))
     })
   }, [wlMonth, selectedTheatreId])
 
   // Metryki per aktor dla wybranego miesiąca
+  // A21: raport PDF per aktor — otwiera stronę do wydruku (zapis jako PDF), format dla Księgowości.
+  function openArtistPdf(artistId: string, artistName: string) {
+    const [y, m] = wlMonth.split('-').map(Number)
+    const monthName = `${td.months[m - 1]} ${y}`
+    const rows = wlEvents
+      .filter(ev => {
+        const explicit = ev.event_artists.map(e => e.artist_id)
+        const cast = explicit.length > 0 ? explicit : (prodToArtists[(ev as any).production_id] ?? [])
+        return cast.includes(artistId) && (SHOW_TYPES.has(ev.type ?? '') || REHEARSAL_TYPES.has(ev.type ?? ''))
+      })
+      .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)))
+    const line = (ev: EventRow) => {
+      const d = new Date(ev.start_time)
+      const t = wlProdTitles[(ev as any).production_id ?? ''] ?? ''
+      const kind = SHOW_TYPES.has(ev.type ?? '') ? 'Spektakl' : 'Próba'
+      const hrs = Math.round((new Date(ev.end_time).getTime() - d.getTime()) / 3_600_000 * 10) / 10
+      return `<tr><td>${d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' })}</td><td>${d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</td><td>${kind}</td><td>${t || ev.type || ''}</td><td style="text-align:right">${hrs} h</td></tr>`
+    }
+    const shows = rows.filter(ev => SHOW_TYPES.has(ev.type ?? '')).length
+    const rehH  = Math.round(rows.filter(ev => REHEARSAL_TYPES.has(ev.type ?? '')).reduce((s2, ev) => s2 + (new Date(ev.end_time).getTime() - new Date(ev.start_time).getTime()) / 3_600_000, 0))
+    const w = window.open('', '_blank')
+    if (!w) return
+    w.document.write(`<!doctype html><html lang="pl"><head><meta charset="utf-8"><title>Obciążenie — ${artistName} — ${monthName}</title>
+      <style>body{font-family:Georgia,serif;color:#1a1410;max-width:640px;margin:40px auto;padding:0 20px}
+      h1{font-size:22px;margin:0}p.meta{color:#6b6259;font-size:13px;margin:4px 0 24px}
+      table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 8px;border-bottom:1px solid #e4ddd4;text-align:left}
+      th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#9a9086}
+      .sum{margin-top:20px;font-size:14px}.sum b{font-size:16px}
+      footer{margin-top:32px;font-size:11px;color:#9a9086}</style></head><body>
+      <h1>Obciążenie aktora — ${artistName}</h1>
+      <p class="meta">${monthName} · wygenerowano ${new Date().toLocaleDateString('pl-PL')} · Repertuarownia</p>
+      <table><thead><tr><th>Data</th><th>Godz.</th><th>Rodzaj</th><th>Tytuł</th><th style="text-align:right">Czas</th></tr></thead>
+      <tbody>${rows.map(line).join('') || '<tr><td colspan="5" style="color:#9a9086">Brak aktywności w tym miesiącu</td></tr>'}</tbody></table>
+      <p class="sum">Razem: <b>${shows}</b> spektakli · <b>${rehH} h</b> prób</p>
+      <footer>Dokument dla Księgowości — wydrukuj lub zapisz jako PDF (⌘P / Ctrl+P).</footer>
+      <script>window.print()</` + `script></body></html>`)
+    w.document.close()
+  }
+
   const workloadRows = useMemo(() => {
     const [y, m] = wlMonth.split('-').map(Number)
     const daysInMonth = new Date(y, m, 0).getDate()
@@ -405,7 +444,7 @@ export default function ReportsPage() {
     }
     const rows = Object.values(map).map(r => ({
       id: r.id, name: r.name, shows: r.shows, rehHours: Math.round(r.rehHours),
-      titles: r.titles.size, vac: r.vac, freeDays: Math.max(0, daysInMonth - r.worked.size),
+      titles: r.titles.size, vac: r.vac,
     }))
     // tylko aktorzy istotni: obecnie przypisani lub z aktywnością w miesiącu
     const relevant = rows.filter(r => (currentTitles[r.id] ?? 0) > 0 || r.shows > 0 || r.rehHours > 0 || r.titles > 0 || r.vac > 0)
@@ -454,18 +493,6 @@ export default function ReportsPage() {
           >
             {PERIOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <button
-            onClick={exportPdf}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-xl transition-colors"
-            style={{ background: '#c8102e' }}
-            onMouseOver={e => (e.currentTarget.style.background = '#9e0c24')}
-            onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 16l-5-5 1.4-1.4 2.6 2.6V4h2v8.2l2.6-2.6L17 11l-5 5zm-7 4v-4h2v2h10v-2h2v4H5z"/>
-            </svg>
-            {tr.exportPdf}
-          </button>
         </div>
       </div>
 
@@ -569,7 +596,7 @@ export default function ReportsPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4">
 
         {/* Artist workload */}
-        <div className="col-span-3 bg-white border border-gray-200 rounded-2xl p-6">
+        <div className="col-span-5 bg-white border border-gray-200 rounded-2xl p-6">
           <h3 className="text-sm font-semibold mb-5" style={{ color: '#1a1410' }}>{tr.chartArtistWorkload}</h3>
           {loading || artistWorkload.length === 0 ? (
             <div className="flex items-center justify-center h-48 text-xs text-gray-500 italic">
@@ -589,36 +616,6 @@ export default function ReportsPage() {
           )}
         </div>
 
-        {/* Artist status donut */}
-        <div className="col-span-2 bg-white border border-gray-200 rounded-2xl p-6">
-          <h3 className="text-sm font-semibold mb-5" style={{ color: '#1a1410' }}>{tr.chartArtistStatus}</h3>
-          {loading || artistStatus.length === 0 ? (
-            <div className="flex items-center justify-center h-48 text-xs text-gray-500 italic">
-              {loading ? tr.loading : tr.noData}
-            </div>
-          ) : (
-            <div className="flex items-center justify-center gap-6 h-48">
-              <PieChart width={148} height={148}>
-                <Pie data={artistStatus} cx={70} cy={70} innerRadius={44} outerRadius={68}
-                  dataKey="value" paddingAngle={3} stroke="none">
-                  {artistStatus.map((s, i) => <Cell key={i} fill={s.fill} />)}
-                </Pie>
-                <Tooltip content={<ChartTip />} />
-              </PieChart>
-              <div className="space-y-4">
-                {artistStatus.map(s => (
-                  <div key={s.name} className="flex items-start gap-2.5">
-                    <span className="w-2.5 h-2.5 rounded-full mt-0.5 shrink-0" style={{ background: s.fill }} />
-                    <div>
-                      <p className="text-sm font-bold text-gray-900 leading-none">{s.value}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{s.name}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
       </div>
       )}
 
@@ -686,10 +683,13 @@ export default function ReportsPage() {
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
             <div>
-              <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>{tr.workloadSection}</h3>
-              <p className="text-xs text-gray-500 mt-0.5">Obciążenie aktorów w wybranym miesiącu</p>
+              <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>Obciążenie aktorów w wybranym miesiącu</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Najbardziej zajęci u góry · raport PDF per aktor — do Księgowości</p>
             </div>
             <div className="flex items-center gap-2">
+              <input value={wlSearch} onChange={e => setWlSearch(e.target.value)} placeholder="Szukaj aktora…"
+                className="rounded-lg px-3 py-1.5 text-sm bg-white w-40 focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
+                style={{ border: '1px solid #e4ddd4', color: '#3e3830' }} />
               <select value={wm} onChange={e => setYM(wy, +e.target.value)} className={selCls} style={selStyle}>
                 {MONTHS_PL.map((mn: string, idx: number) => <option key={idx} value={idx + 1}>{mn}</option>)}
               </select>
@@ -707,23 +707,25 @@ export default function ReportsPage() {
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Tytuły</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Spektakle</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Godz. prób</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Dni wolne</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Urlop</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Raport</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {workloadRows.length === 0 ? (
-                <tr><td colSpan={7} className="px-6 py-10 text-center text-sm text-gray-400">Brak danych dla wybranego miesiąca</td></tr>
-              ) : workloadRows.map((a, i) => (
+                <tr><td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-400">Brak danych dla wybranego miesiąca</td></tr>
+              ) : workloadRows.filter(a => a.name.toLowerCase().includes(wlSearch.trim().toLowerCase())).map((a, i) => (
                 <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-6 py-3 text-xs text-gray-500 font-medium">{i + 1}</td>
                   <td className="px-4 py-3"><p className="font-semibold text-gray-900 text-sm">{a.name}</p></td>
                   <td className="px-4 py-3 text-center">{cell(a.titles)}</td>
                   <td className="px-4 py-3 text-center">{cell(a.shows)}</td>
                   <td className="px-4 py-3 text-center">{cell(a.rehHours, 'h', true)}</td>
-                  <td className="px-4 py-3 text-center"><span className="text-sm font-bold text-gray-600">{a.freeDays}</span></td>
                   <td className="px-4 py-3 text-center">
-                    {a.vac > 0 ? <span className="text-sm font-bold text-amber-600">{a.vac}</span> : <span className="text-sm text-gray-300">—</span>}
+                    <button onClick={() => openArtistPdf(a.id, a.name)} title="Raport PDF dla Księgowości"
+                      className="text-xs font-semibold px-2.5 py-1 rounded-lg transition-colors"
+                      style={{ border: '1px solid #e4ddd4', color: '#7a2020', background: '#fff' }}>
+                      PDF
+                    </button>
                   </td>
                 </tr>
               ))}

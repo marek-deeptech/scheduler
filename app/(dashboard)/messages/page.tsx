@@ -584,7 +584,7 @@ export default function MessagesPage() {
   const [subs, setSubs] = useState<{ id: string; actorName: string | null; subject: string; sentAt: string | null }[]>([])
   // Zakładki: odbiorcy (domyślnie) + sekcje statusów
   // Domyślnie lądujemy na brakach w komunikacji (najważniejsze); „Odbiorcy" na końcu.
-  const [activeTab, setActiveTab] = useState<'recipients' | 'pending' | 'avail' | 'subs' | 'responses' | 'history' | 'auto'>('pending')
+  const [activeTab, setActiveTab] = useState<'recipients' | 'pending' | 'avail' | 'subs' | 'responses' | 'history' | 'auto'>('avail')
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [teamFilter, setTeamFilter] = useState<string>('all')
@@ -834,8 +834,8 @@ export default function MessagesPage() {
       {/* ── Zakładki sekcji ── */}
       <div className="flex items-center gap-2 mb-5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
         {[
-          { key: 'pending'    as const, label: 'Brak potwierdzeń',   count: pendingPart.length,    alert: pendingPart.some(p => p.changed) },
-          { key: 'avail'      as const, label: 'Brak odpowiedzi',    count: noAvailResp.length,    alert: false },
+          { key: 'avail'      as const, label: 'Ulubione sety — brak odpowiedzi', count: noAvailResp.length, alert: false },
+          { key: 'pending'    as const, label: 'Pozostałe spektakle — brak potwierdzeń', count: pendingPart.length, alert: pendingPart.some(p => p.changed) },
           { key: 'subs'       as const, label: 'Zastępstwa',         count: subs.length,           alert: false },
           { key: 'responses'  as const, label: 'Odpowiedzi aktorów', count: responses.length,      alert: false },
           { key: 'history'    as const, label: 'Historia',           count: sentHistory.length,    alert: false },
