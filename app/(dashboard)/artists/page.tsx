@@ -187,11 +187,10 @@ function ArtistCard({ artist, isSelected, onClick }: {
         <p className="text-xs truncate" style={{ color: '#a89e92' }}>{artist.role ?? '—'}</p>
       </div>
       <div className="flex flex-col items-end gap-1 shrink-0">
-        <StatusBadge status={artist.status} size="sm" />
-        {artist.actor_type && (
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize"
-            style={{ background: '#f2ede6', color: '#7a7068' }}>
-            {artist.actor_type}
+        {artist.is_core && (
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+            style={{ background: '#c8102e', color: '#fff' }}>
+            CORE
           </span>
         )}
         {artist.productionCount > 0 && (
@@ -771,11 +770,10 @@ function ProfilePanel({ artist, detail, loading, onEdit, onClose, onDetailRefres
         {artist.role && <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>{artist.role}</p>}
 
         <div className="flex items-center gap-2 mt-2 flex-wrap">
-          <StatusBadge status={artist.status} size="md" />
-          {artist.actor_type && (
-            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full capitalize"
-              style={{ background: '#f2ede6', color: '#7a7068' }}>
-              {artist.actor_type}
+          {artist.is_core && (
+            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+              style={{ background: '#c8102e', color: '#fff' }}>
+              CORE
             </span>
           )}
         </div>
@@ -1318,12 +1316,7 @@ export default function ArtistsPage() {
       const q = search.toLowerCase()
       list = list.filter(a => a.name.toLowerCase().includes(q) || (a.role ?? '').toLowerCase().includes(q))
     }
-    if (sortMode === 'core') {
-      // CORE najpierw, w obu grupach wg aktywności (liczba spektakli / rok), potem alfabetycznie
-      const alpha = sortByLastName(list)
-      return [...alpha].sort((a, b) =>
-        (Number(b.is_core) - Number(a.is_core)) || (b.playCount - a.playCount))
-    }
+    if (sortMode === 'core') list = list.filter(a => a.is_core)  // A13: sami CORE
     return sortByLastName(list)
   }, [artists, statusFilter, search, sortMode])
 
@@ -1390,7 +1383,7 @@ export default function ArtistsPage() {
             />
             {/* Sortowanie */}
             <div className="flex items-center gap-0.5 rounded-lg p-0.5 shrink-0" style={{ background: '#ede7df' }}>
-              {([['alpha', 'Alfabetycznie'], ['core', 'Core + aktywność']] as const).map(([k, lbl]) => (
+              {([['alpha', 'Wszyscy'], ['core', 'Tylko CORE ★']] as const).map(([k, lbl]) => (
                 <button key={k} onClick={() => setSortMode(k)}
                   className="px-2.5 py-1 rounded-md text-xs font-semibold whitespace-nowrap transition-all"
                   style={sortMode === k
@@ -1399,29 +1392,6 @@ export default function ArtistsPage() {
                   {lbl}
                 </button>
               ))}
-            </div>
-            <div className="flex gap-1 flex-wrap">
-              {[{ key: 'all', label: ta.all }, ...statusOptions.map(s => ({ key: s, label: s }))].map(f => {
-                const isActive = statusFilter === f.key
-                const badgeCls = isActive && f.key !== 'all'
-                  ? (STATUS_STYLE[f.key]?.badge ?? 'bg-[#3e3830] text-white')
-                  : ''
-                return (
-                  <button key={f.key} onClick={() => setStatusFilter(f.key)}
-                    className={`px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${badgeCls}`}
-                    style={isActive && f.key === 'all'
-                      ? { background: '#1a1410', color: '#fff' }
-                      : !isActive
-                        ? { color: '#7a7068' }
-                        : undefined}
-                  >
-                    {f.label}
-                    {statusCounts[f.key] != null && (
-                      <span className="ml-1 opacity-60">{statusCounts[f.key]}</span>
-                    )}
-                  </button>
-                )
-              })}
             </div>
           </div>
 

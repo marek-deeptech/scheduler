@@ -4,6 +4,8 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { sortByLastName, sortNamesByLastName } from '@/lib/names'
 import { findActorClashes, clashMessage, findRoomClash, roomClashMessage } from '@/lib/clash-check'
+import EventModal from '@/components/EventModal'
+import { SHOW_TYPES } from '@/types'
 
 // ── SQL migration (run once in Supabase SQL Editor) ───────────────────────────
 // ALTER TABLE events ADD COLUMN IF NOT EXISTS description text;
@@ -584,6 +586,10 @@ export default function EventsPage() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [editingEvent, setEditingEvent] = useState<EventRow | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<EventRow | null>(null)
+  const [addOpen,     setAddOpen]     = useState(false)
+  const [productions, setProductions] = useState<{ id: string; title: string }[]>([])
+  const [theatres,    setTheatres]    = useState<{ id: string; name: string }[]>([])
+  const [modalArtists, setModalArtists] = useState<{ id: string; name: string; teams: { name: string } | null }[]>([])
 
   useEffect(() => { fetchAll() }, [])
 
@@ -594,19 +600,30 @@ export default function EventsPage() {
       { data: typesData },
       { data: roomsData },
       { data: artistsData },
+      { data: prodData },
+      { data: theatreData },
+      { data: modalArtistData },
     ] = await Promise.all([
       supabase.from('events')
-        .select('id, title, type, start_time, end_time, location, description, image_url, room_id, rooms(id, name), event_artists(artists(id, name))')
-        .is('production_id', null)
+        .select('id, title, type, production_id, start_time, end_time, location, description, image_url, room_id, rooms(id, name), event_artists(artists(id, name))')
         .order('start_time', { ascending: true }),
       supabase.from('event_types').select('id, name').order('name'),
       supabase.from('rooms').select('id, name, theatre_id').order('name'),
       supabase.from('artists').select('id, name').order('name'),
+      supabase.from('productions').select('id, title').order('title'),
+      supabase.from('theatres').select('id, name').order('name'),
+      supabase.from('artists').select('id, name, teams(name)').order('name'),
     ])
-    setEvents((evData ?? []) as any[])
+    // Kalendarz = jedno miejsce na wydarzenia (A7): pokazuj wszystko poza
+    // spektaklami repertuarowymi (te żyją w Podglądzie Repertuaru).
+    const all = (evData ?? []) as any[]
+    setEvents(all.filter(e => !(e.production_id && SHOW_TYPES.has(e.type ?? ''))))
     setEventTypes(typesData ?? [])
     setRooms(roomsData ?? [])
     setArtists(sortByLastName(artistsData ?? []))
+    setProductions(prodData ?? [])
+    setTheatres(theatreData ?? [])
+    setModalArtists(sortByLastName((modalArtistData ?? []) as any[]))
     setLoading(false)
   }
 
@@ -679,11 +696,18 @@ export default function EventsPage() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>
-              Wydarzenia
+              Kalendarz
             </h1>
-            <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>Zdarzenia niepowiązane z żadnym tytułem</p>
+            <p className="text-xs mt-0.5" style={{ color: '#a89e92' }}>Wszystkie wydarzenia teatru — próby, wynajmy, próby dla mediów; możesz je przypisać do tytułu</p>
           </div>
           <div className="flex items-center gap-3">
+            <button onClick={() => setAddOpen(true)}
+              className="px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-colors"
+              style={{ background: '#c8102e', color: '#fff' }}
+              onMouseOver={e => (e.currentTarget.style.background = '#9e0c24')}
+              onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}>
+              + Dodaj wydarzenie
+            </button>
             <div className="flex items-center gap-1 p-0.5 rounded-xl" style={{ background: '#f2ede6' }}>
               {([['calendar','Kalendarz'],['list','Lista']] as const).map(([v, label]) => (
                 <button key={v} onClick={() => setView(v)}
@@ -886,6 +910,18 @@ export default function EventsPage() {
       )}
 
       {/* Edit modal */}
+      {addOpen && (
+        <EventModal
+          event={null}
+          artists={modalArtists}
+          productions={productions}
+          theatres={theatres}
+          rooms={rooms}
+          onClose={() => setAddOpen(false)}
+          onSaved={() => { setAddOpen(false); fetchAll() }}
+        />
+      )}
+
       {editingEvent && (
         <EditModal
           ev={editingEvent}

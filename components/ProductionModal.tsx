@@ -675,17 +675,13 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className={labelCls + ' mb-0'}>Spektakle, próby i wydarzenia</label>
-                <button
-                  type="button"
-                  onClick={() => setEventModal(null)}
-                  className="text-xs font-medium text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
-                >
-                  + Dodaj wydarzenie
-                </button>
+                <a href="/events" className="text-xs font-medium text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors">
+                  Dodaj w Kalendarzu →
+                </a>
               </div>
 
               {events.length === 0 ? (
-                <p className="text-xs text-gray-500 italic py-2">Brak wydarzeń. Kliknij „Dodaj wydarzenie", aby zaplanować próbę, spektakl lub inne wydarzenie.</p>
+                <p className="text-xs text-gray-500 italic py-2">Brak wydarzeń. Wydarzenia (próby, spektakle itd.) dodajesz w zakładce Kalendarz — możesz je tam przypisać do tego tytułu.</p>
               ) : (
                 <div className="flex flex-col gap-1.5">
                   {events.map(ev => (
