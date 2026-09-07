@@ -36,10 +36,16 @@ function sanitizeForSms(message: string): string {
 export const TEST_REDIRECT_PHONE = '608499442'
 
 export async function sendSms(phone: string, message: string): Promise<boolean> {
+  return (await sendSmsDetailed(phone, message)).ok
+}
+
+// Jak sendSms, ale zwraca też treść błędu bramki — do pokazania KPA zamiast
+// cichego połknięcia (bug B1: 16 SMS-ów ankiety padło bez śladu w UI).
+export async function sendSmsDetailed(phone: string, message: string): Promise<{ ok: boolean; error?: string }> {
   const token = process.env.SMSAPI_TOKEN
   if (!token) {
     console.error('SMSAPI_TOKEN is not set')
-    return false
+    return { ok: false, error: 'Brak konfiguracji SMSAPI_TOKEN' }
   }
 
   let targetPhone = phone
@@ -73,12 +79,14 @@ export async function sendSms(phone: string, message: string): Promise<boolean> 
     const body = await res.text()
     if (!res.ok || body.includes('"error"') || body.startsWith('ERROR')) {
       console.error(`SMSAPI error ${res.status}:`, body)
-      return false
+      let msg = body.slice(0, 200)
+      try { const j = JSON.parse(body); msg = j.message ?? j.error ?? msg } catch { /* zostaw surowe */ }
+      return { ok: false, error: `SMSAPI: ${msg}` }
     }
 
-    return true
+    return { ok: true }
   } catch (err) {
     console.error('SMSAPI fetch error:', err)
-    return false
+    return { ok: false, error: String(err) }
   }
 }

@@ -3,7 +3,7 @@ import { sessionOrgId } from '@/lib/session-org'
 import { getBaseUrl } from '@/lib/base-url'
 import { randomUUID } from 'node:crypto'
 import { sendEmail, emailWrapper } from '@/lib/email'
-import { sendSms } from '@/lib/sms'
+import { sendSmsDetailed } from '@/lib/sms'
 import { logMessages, type MessageLogRow } from '@/lib/message-log'
 import { buildWindowImage } from '@/lib/slot-window-image'
 import { windowDates } from '@/lib/slots'
@@ -109,6 +109,9 @@ export async function POST(request: Request) {
 
   const logRows: MessageLogRow[] = []
   let sent = 0
+  let emailsSent = 0
+  let smsSent = 0
+  const smsErrors: string[] = []
 
   for (const m of members) {
     const token = tokenByArtist[m.id]
@@ -134,6 +137,7 @@ export async function POST(request: Request) {
       const ok = await sendEmail(m.email, `[Dostępność] ${title} — ${rangeLabel}`, html, attachments ? { attachments } : undefined)
       if (ok) {
         notified = true
+        emailsSent++
         logRows.push({ artist_id: m.id, type: 'email', kind: 'message', subject: `Ankieta dostępności: ${title}`, body, related_production_id: (slot as any).production_id })
       }
     }
@@ -141,15 +145,22 @@ export async function POST(request: Request) {
       const sms = customMessage
         ? `${customMessage} ${link}`
         : `Dostepnosc na "${title}" (${rangeLabel}). Zaznacz dni, w ktore mozesz zagrac: ${link}`
-      const ok = await sendSms(m.phone, sms)
+      // Odstęp między SMS-ami — bramki tną serie identycznych wiadomości
+      // wysyłanych w tej samej sekundzie (anty-flood), zwłaszcza gdy w trybie
+      // testowym wszystkie idą na jeden numer.
+      const { ok, error: smsErr } = await sendSmsDetailed(m.phone, sms)
       if (ok) {
         notified = true
+        smsSent++
         logRows.push({ artist_id: m.id, type: 'sms', kind: 'message', subject: `Ankieta dostępności: ${title}`, body: sms, related_production_id: (slot as any).production_id })
+      } else if (smsErr && smsErrors.length < 3) {
+        smsErrors.push(`${m.name}: ${smsErr}`)
       }
+      await new Promise(r => setTimeout(r, 400))
     }
     if (notified) sent++
   }
 
   await logMessages(supabase, logRows, orgId)
-  return Response.json({ ok: true, sent, total: members.length })
+  return Response.json({ ok: true, sent, total: members.length, emailsSent, smsSent, smsErrors })
 }

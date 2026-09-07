@@ -446,10 +446,9 @@ export default function ReportsPage() {
       id: r.id, name: r.name, shows: r.shows, rehHours: Math.round(r.rehHours),
       titles: r.titles.size, vac: r.vac,
     }))
-    // tylko aktorzy istotni: obecnie przypisani lub z aktywnością w miesiącu
-    const relevant = rows.filter(r => (currentTitles[r.id] ?? 0) > 0 || r.shows > 0 || r.rehHours > 0 || r.titles > 0 || r.vac > 0)
-    relevant.sort((a, b) => b.shows - a.shows || b.rehHours - a.rehHours || b.titles - a.titles || a.name.localeCompare(b.name, 'pl'))
-    return relevant
+    // B3: pokazujemy CAŁY zespół — aktorzy bez grań z zerami (najbardziej zajęci u góry).
+    rows.sort((a, b) => b.shows - a.shows || b.rehHours - a.rehHours || b.titles - a.titles || a.name.localeCompare(b.name, 'pl'))
+    return rows
   }, [artists, wlEvents, wlVac, prodToArtists, currentTitles, wlMonth])
 
   const absenceList = useMemo(() => {

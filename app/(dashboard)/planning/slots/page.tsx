@@ -20,7 +20,7 @@ function shiftMonth(k: string, d: number) { const [y, m] = k.split('-').map(Numb
 function firstOfMonth(k: string) { return `${k}-01` }
 function lastOfMonth(k: string) { const [y, m] = k.split('-').map(Number); return `${k}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}` }
 
-interface FavProd { id: string; title: string; cast: { id: string; name: string }[] }
+interface FavProd { id: string; title: string; isFavourite?: boolean; cast: { id: string; name: string }[] }
 
 /* ── Page ──────────────────────────────────────────────────────── */
 export default function SlotsPage() {
@@ -66,15 +66,16 @@ export default function SlotsPage() {
   async function load() {
     setLoading(true)
 
-    // Favourites dla teatru
+    // Wszystkie tytuły teatru — set można założyć dla każdego; ulubione ♥ na górze (B2).
     let favQ = supabase
       .from('productions')
       .select('id, title, theatre_id, is_favourite, artist_productions(artists(id, name))')
-      .eq('is_favourite', true)
     if (selectedTheatreId) favQ = favQ.eq('theatre_id', selectedTheatreId)
     const { data: favData } = await favQ
-    const favs: FavProd[] = ((favData ?? []) as any[]).map(p => ({
-      id: p.id, title: p.title,
+    const sorted = ((favData ?? []) as any[]).sort((a, b) =>
+      (Number(!!b.is_favourite) - Number(!!a.is_favourite)) || String(a.title).localeCompare(String(b.title), 'pl'))
+    const favs: FavProd[] = sorted.map(p => ({
+      id: p.id, title: p.title, isFavourite: !!p.is_favourite,
       cast: (p.artist_productions ?? []).map((ap: any) => {
         const a = Array.isArray(ap.artists) ? ap.artists[0] : ap.artists
         return a ? { id: a.id, name: a.name } : null
@@ -242,7 +243,7 @@ function SlotCreator({ month, favs, onCreated }: { month: string; favs: FavProd[
           <select value={prodId} onChange={e => setProdId(e.target.value)}
             className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c8102e]">
             <option value="">Wybierz tytuł…</option>
-            {favs.map(f => <option key={f.id} value={f.id}>{f.title} ({f.cast.length} os.)</option>)}
+            {favs.map(f => <option key={f.id} value={f.id}>{f.isFavourite ? '♥ ' : ''}{f.title} ({f.cast.length} os.)</option>)}
           </select>
         </div>
         <div>
@@ -335,12 +336,21 @@ function SlotCard({ slot, prod, availability, submittedSet, signature, onChanged
 
   async function sendInvites() {
     setSending(true)
-    await fetch('/api/slots/send-invites', {
+    const res = await fetch('/api/slots/send-invites', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slotId: slot.id, message: surveyText.trim() || undefined }),
     })
+    const json = await res.json().catch(() => null)
     setSending(false)
     setConfirmOpen(false)
+    // KPA widzi wynik per kanał — ciche padnięcie SMS-ów (bug B1) ma być widoczne.
+    if (json?.ok) {
+      const parts = [`e-maile: ${json.emailsSent ?? 0}`, `SMS-y: ${json.smsSent ?? 0}`]
+      const errs = (json.smsErrors ?? []).length ? `\nBłędy SMS:\n${json.smsErrors.join('\n')}` : ''
+      alert(`Ankieta wysłana do ${json.sent}/${json.total} osób (${parts.join(', ')}).${errs}`)
+    } else {
+      alert(`Nie udało się wysłać ankiety: ${json?.error ?? 'błąd serwera'}`)
+    }
     onChanged()
   }
 
