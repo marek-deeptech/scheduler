@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { findActorClashes, clashMessage, findRoomClash, roomClashMessage } from '@/lib/clash-check'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/language-context'
-import { EVENT_TYPE_CATEGORIES, EVENT_TYPES } from '@/types'
+import { EVENT_TYPE_CATEGORIES, EVENT_TYPES, isTitleEventType } from '@/types'
 import SendConfirmModal from '@/components/SendConfirmModal'
 import { googleCalendarUrl } from '@/lib/gcal'
 
@@ -210,7 +210,7 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
     const payload = {
       title:         form.title || form.type || 'Wydarzenie',
       type:          form.type || null,
-      production_id: form.production_id || null,
+      production_id: isTitleEventType(form.type) ? (form.production_id || null) : null,
       theatre_id:    form.theatre_id || null,
       room_id:       form.room_id || null,
       location:      form.location || null,
@@ -320,8 +320,8 @@ export default function EventModal({ event, defaultDate, defaultProductionId, ar
             </div>
           )}
 
-          {/* Produkcja — hidden when pre-filled from ProductionModal */}
-          {!defaultProductionId && (
+          {/* Produkcja — tylko dla wydarzeń tytułowych; ukryta też, gdy prefill z karty Tytułu */}
+          {!defaultProductionId && (!form.type || isTitleEventType(form.type)) && (
             <div>
               <label className={labelCls}>{em.production}</label>
               <select

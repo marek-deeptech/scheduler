@@ -112,3 +112,15 @@ export const SHOW_TYPES      = new Set(EVENT_TYPE_CATEGORIES['Spektakle'])
 // Wynajem sceny = blokada sali/sceny (bez obsady); żadne inne wydarzenie nie może
 // zajmować tej samej sali w nakładającym się czasie (egzekwowane w lib/clash-check).
 export const VENUE_BLOCK_TYPES = new Set(EVENT_TYPE_CATEGORIES['Wynajem'])
+
+// Wydarzenia „tytułowe" — jedyne, które wolno przypisać do tytułu i które widać
+// na karcie Tytułu. Organizacyjne (warsztaty, zebrania, wyjazdy) i wynajmy żyją
+// wyłącznie w Kalendarzu, bez przypisania. Porównanie bez rozróżniania wielkości
+// liter — w danych występuje m.in. „spektakl" pisany małą literą.
+export const TITLE_EVENT_TYPES = new Set(
+  ['Próby', 'Przygotowania', 'Spektakle', 'Media / PR']
+    .flatMap(c => EVENT_TYPE_CATEGORIES[c])
+    .map(t => t.toLowerCase())
+)
+export const isTitleEventType = (type: string | null | undefined): boolean =>
+  !!type && TITLE_EVENT_TYPES.has(type.toLowerCase())

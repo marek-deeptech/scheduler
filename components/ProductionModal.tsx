@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import EventModal from '@/components/EventModal'
+import { isTitleEventType } from '@/types'
 import { EVENT_TYPE_CATEGORIES } from '@/types'
 import {
   CATEGORY_DEFAULTS, DEFAULT_PARAMS, stageCapacity, costForStage, stageLabel, scenesForTheatre, asp, fmtPln, fmtPct,
@@ -298,7 +299,9 @@ export default function ProductionModal({ production, theatres, rooms, artists, 
       .select('id, title, type, start_time, end_time, location, room_id, production_id, theatre_id, event_artists(artist_id)')
       .eq('production_id', production.id)
       .order('start_time')
-    setEvents((data ?? []) as EventRecord[])
+    // Na karcie Tytułu tylko wydarzenia tytułowe (próby, spektakle, przygotowania,
+    // media) — warsztaty/wynajmy/zebrania żyją w Kalendarzu.
+    setEvents(((data ?? []) as EventRecord[]).filter(e => isTitleEventType(e.type)))
   }
 
   function toggleActor(id: string) {

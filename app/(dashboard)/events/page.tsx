@@ -617,7 +617,8 @@ export default function EventsPage() {
     // Kalendarz = jedno miejsce na wydarzenia (A7): pokazuj wszystko poza
     // spektaklami repertuarowymi (te żyją w Podglądzie Repertuaru).
     const all = (evData ?? []) as any[]
-    setEvents(all.filter(e => !(e.production_id && SHOW_TYPES.has(e.type ?? ''))))
+    const showTypesLc = new Set([...SHOW_TYPES].map(t => t.toLowerCase()))
+    setEvents(all.filter(e => !(e.production_id && showTypesLc.has((e.type ?? '').toLowerCase()))))
     setEventTypes(typesData ?? [])
     setRooms(roomsData ?? [])
     setArtists(sortByLastName(artistsData ?? []))
