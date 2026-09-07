@@ -7,7 +7,7 @@ import { useTheatre } from '@/lib/theatre-context'
 import { sortByLastName } from '@/lib/names'
 import SendConfirmModal from '@/components/SendConfirmModal'
 import {
-  windowDates, dayCoverage, suggestDays, fmtDayShort,
+  windowDates, dayCoverage, fmtDayShort,
   type SlotRow, type DayFeasibility,
 } from '@/lib/slots'
 
@@ -44,17 +44,22 @@ export default function SlotsPage() {
   }, [])
   const monthLocked = lockedMonths.has(month)
 
-  // Na wejściu: ustaw pierwszy miesiąc, którego repertuar jest dopiero planowany
-  // (pierwszy od bieżącego, który NIE jest zatwierdzony/wdrożony).
+  // Na wejściu: wróć do miesiąca, nad którym KPA ostatnio pracował (A12);
+  // dopiero przy braku zapamiętanego wyboru podpowiedz pierwszy niezatwierdzony.
   useEffect(() => {
     supabase.from('repertoire_proposals').select('month').eq('status', 'approved').then(({ data }) => {
       const locked = new Set<string>((data ?? []).map((r: any) => r.month))
       setLockedMonths(locked)
+      let saved: string | null = null
+      try { saved = localStorage.getItem('slotsMonth') } catch { /* noop */ }
+      if (saved && /^\d{4}-\d{2}$/.test(saved)) { setMonth(saved); return }
       let m = monthKey(new Date())
       for (let i = 0; i < 24 && locked.has(m); i++) m = shiftMonth(m, 1)
       setMonth(m)
     })
   }, [])
+
+  useEffect(() => { try { localStorage.setItem('slotsMonth', month) } catch { /* noop */ } }, [month])
 
   useEffect(() => { load() }, [month, selectedTheatreId])
 
@@ -339,19 +344,17 @@ function SlotCard({ slot, prod, availability, submittedSet, signature, onChanged
     onChanged()
   }
 
-  function autoSuggest() {
-    setChosen(new Set(suggestDays(coverage, slot.target_performances)))
-  }
   function toggleDay(d: string) {
     setChosen(prev => { const n = new Set(prev); n.has(d) ? n.delete(d) : n.add(d); return n })
   }
   // Zatwierdzenie dni NIE powiadamia obsady — to osobny krok (CTA niżej).
   async function lockDays() {
     setSaving(true)
-    await supabase.from('repertoire_slots')
+    const { error } = await supabase.from('repertoire_slots')
       .update({ locked_dates: [...chosen].sort(), status: 'planned' })
       .eq('id', slot.id)
     setSaving(false)
+    if (error) { alert(`Nie udało się zatwierdzić dni: ${error.message}`); return }
     onChanged()
   }
 
@@ -596,9 +599,6 @@ function SlotCard({ slot, prod, availability, submittedSet, signature, onChanged
               <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: '#dc2626' }} /> niewykonalny</span>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={autoSuggest} className="text-xs font-medium px-3 py-1.5 rounded-lg" style={{ border: '1px solid #e4ddd4', color: '#7a2020' }}>
-                ✨ Wojciech: zaproponuj {slot.target_performances} dni
-              </button>
               <button onClick={lockDays} disabled={saving || chosen.size === 0}
                 className="text-xs font-medium px-3 py-1.5 rounded-lg text-white disabled:opacity-40" style={{ background: '#16a34a' }}>
                 {saving ? 'Zapisuję…' : `Zatwierdź dni (${chosen.size})`}

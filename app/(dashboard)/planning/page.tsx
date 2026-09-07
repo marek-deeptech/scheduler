@@ -399,11 +399,11 @@ export default function PlanningPage() {
       {/* Potwierdzenie zatwierdzenia repertuaru (bez powiadamiania obsady) */}
       {approveConfirm && (
         <SendConfirmModal
-          title={`Zatwierdź repertuar — ${monthLabelPl(approveConfirm.month)}`}
+          title={`Wybierz repertuar — ${monthLabelPl(approveConfirm.month)}`}
           recipients={[]}
-          content={`Repertuar „${approveConfirm.label}" na ${monthLabelPl(approveConfirm.month)} zostanie zatwierdzony, a spektakle trafią do kalendarza.`}
+          content={`Repertuar „${approveConfirm.label}" na ${monthLabelPl(approveConfirm.month)} zostanie wybrany, a spektakle trafią do kalendarza.`}
           note={'Obsada NIE jest jeszcze powiadamiana — powiadomienia i zbieranie potwierdzeń wyślesz w kolejnym etapie „Konsultacje".'}
-          confirmLabel="Zatwierdź repertuar"
+          confirmLabel="Wybierz repertuar"
           sending={actionLoading === approveConfirm.id + 'approve'}
           allowEmpty
           onConfirm={() => handleAction(approveConfirm.id, 'approve')}
@@ -958,7 +958,7 @@ function ProposalCard({
               onMouseOver={e => !e.currentTarget.disabled && (e.currentTarget.style.background = '#9e0c24')}
               onMouseOut={e => (e.currentTarget.style.background = '#c8102e')}
             >
-              {isApproving ? 'Zatwierdzam…' : '✓ Zatwierdź'}
+              {isApproving ? 'Wybieram…' : '✓ Wybierz'}
             </button>
             <button
               onClick={onReject}

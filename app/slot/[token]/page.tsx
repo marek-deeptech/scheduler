@@ -29,7 +29,7 @@ export default function SlotPollPage() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [data, setData] = useState<SlotData | null>(null)
-  const [avail, setAvail] = useState<Record<string, boolean>>({})  // date -> mogę
+  const [avail, setAvail] = useState<Record<string, boolean | null>>({})  // date -> mogę / nie mogę / null = nie wiem
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
 
@@ -43,11 +43,11 @@ export default function SlotPollPage() {
 
     const dates = windowDates(sd.windowStart, sd.windowEnd)
     // Wczytaj istniejące odpowiedzi; brak = domyślnie "mogę"
-    const existingMap: Record<string, boolean> = {}
-    for (const r of (json.availability ?? []) as { date: string; available: boolean }[]) existingMap[r.date] = r.available
+    const existingMap: Record<string, boolean | null> = {}
+    for (const r of (json.availability ?? []) as { date: string; available: boolean | null }[]) existingMap[r.date] = r.available
 
-    const init: Record<string, boolean> = {}
-    for (const d of dates) init[d] = existingMap[d] ?? true
+    const init: Record<string, boolean | null> = {}
+    for (const d of dates) init[d] = existingMap[d] !== undefined ? existingMap[d] : true
     setAvail(init)
     if (sd.submittedAt) setSubmitted(true)
     setLoading(false)
@@ -59,7 +59,7 @@ export default function SlotPollPage() {
     if (!data) return
     setSubmitting(true)
     const dates = windowDates(data.windowStart, data.windowEnd)
-    const payload = dates.map(date => ({ date, available: avail[date] ?? true }))
+    const payload = dates.map(date => ({ date, available: avail[date] !== undefined ? avail[date] : true }))
     const res = await fetch('/api/slots/respond', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -112,22 +112,30 @@ export default function SlotPollPage() {
         ) : (
           <>
             <p className="text-sm font-semibold text-gray-700 text-center mb-1">Zaznacz dni, w które możesz zagrać</p>
-            <p className="text-xs text-gray-400 text-center mb-4">Domyślnie „mogę" — odznacz dni, w które nie możesz.</p>
+            <p className="text-xs text-gray-400 text-center mb-4">Klikaj, aby przełączać: mogę → nie mogę → nie wiem.</p>
 
             <div className="flex flex-col gap-2 mb-5 max-h-[50vh] overflow-y-auto">
               {dates.map(d => {
-                const can = avail[d] ?? true
+                const state = avail[d] !== undefined ? avail[d] : true  // true / false / null
+                const next  = state === true ? false : state === false ? null : true
+                const cls   = state === true  ? 'bg-green-50 border-green-300'
+                            : state === false ? 'bg-red-50 border-red-200'
+                            :                   'bg-gray-50 border-gray-300 border-dashed'
+                const txt   = state === true  ? 'text-green-900'
+                            : state === false ? 'text-red-700 line-through'
+                            :                   'text-gray-500'
+                const badge = state === true  ? 'bg-green-600 text-white'
+                            : state === false ? 'bg-red-500 text-white'
+                            :                   'bg-gray-400 text-white'
                 return (
                   <button
                     key={d}
-                    onClick={() => setAvail(a => ({ ...a, [d]: !can }))}
-                    className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${
-                      can ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-200'
-                    }`}
+                    onClick={() => setAvail(a => ({ ...a, [d]: next }))}
+                    className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${cls}`}
                   >
-                    <span className={`text-sm font-medium ${can ? 'text-green-900' : 'text-red-700 line-through'}`}>{fmtDay(d)}</span>
-                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${can ? 'bg-green-600 text-white' : 'bg-red-500 text-white'}`}>
-                      {can ? 'MOGĘ' : 'NIE MOGĘ'}
+                    <span className={`text-sm font-medium ${txt}`}>{fmtDay(d)}</span>
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${badge}`}>
+                      {state === true ? 'MOGĘ' : state === false ? 'NIE MOGĘ' : 'NIE WIEM'}
                     </span>
                   </button>
                 )

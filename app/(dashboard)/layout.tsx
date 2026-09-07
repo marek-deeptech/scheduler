@@ -527,18 +527,13 @@ function Sidebar({ mobile = false }: { mobile?: boolean }) {
                 <Link href="/artists"     className={lnk('/artists')}    >{icons.user}    {t.nav.artists}</Link>
                 <Link href="/productions" className={lnk('/productions')}>{icons.film}    {t.nav.productions}</Link>
                 <Link href="/events"      className={lnk('/events')}     >{icons.events}  {t.nav.events}</Link>
-                <Link href="/finance"     className={lnk('/finance')}    >{icons.finance} Finanse</Link>
-              </div>
-            </div>
-            <div>
-              <p className="sidebar-section mb-1.5">{t.nav.sections.communication}</p>
-              <div className="space-y-px">
-                <Link href="/messages" className={lnk('/messages')}>{icons.mail}{t.nav.messages}</Link>
+                <Link href="/messages"    className={lnk('/messages')}   >{icons.mail}    {t.nav.messages}</Link>
               </div>
             </div>
             <div>
               <p className="sidebar-section mb-1.5">{t.nav.sections.extra}</p>
               <div className="space-y-px">
+                <Link href="/finance"  className={lnk('/finance')} >{icons.finance}Finanse</Link>
                 <Link href="/reports"  className={lnk('/reports')} >{icons.chart}{t.nav.reports}</Link>
                 <Link href="/settings" className={lnk('/settings')}>{icons.gear}{t.nav.settings}</Link>
               </div>

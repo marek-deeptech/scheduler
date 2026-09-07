@@ -46,7 +46,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const { token, availability } = await request.json() as {
     token: string
-    availability: { date: string; available: boolean }[]
+    availability: { date: string; available: boolean | null }[]  // null = „nie wiem"
   }
 
   if (!token || !Array.isArray(availability)) {

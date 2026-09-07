@@ -6,6 +6,18 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { IconSun, IconCalendar, IconHeart, IconMapPin } from '@/lib/icons'
+import { useRouter } from 'next/navigation'
+
+// Cytat dnia — rotacja po dniu roku (A17); docelowo do wyboru: cytat albo news dnia.
+const QUOTES: [string, string][] = [
+  ['Teatr jest aktywną samowiedzą ludzką.', 'Jerzy Grotowski'],
+  ['Teatr to najważniejsza rzecz na świecie, gdyż tam pokazuje się ludziom, jakimi mogliby być.', 'Tove Jansson'],
+  ['Cały świat to scena, a ludzie na nim to tylko aktorzy.', 'William Szekspir'],
+  ['Teatr nie jest lustrem rzeczywistości, lecz młotem, który jej nadaje kształt.', 'Bertolt Brecht'],
+  ['Sztuka nie jest po to, by uspokajać, lecz by niepokoić.', 'Konrad Swinarski'],
+  ['Teatr mój widzę ogromny, wielkie powietrzne przestrzenie.', 'Stanisław Wyspiański'],
+  ['Granie to nie udawanie, to bycie naprawdę w okolicznościach zmyślonych.', 'Tadeusz Łomnicki'],
+]
 
 interface Brief {
   name: string
@@ -20,6 +32,13 @@ interface Brief {
 
 export default function WelcomePage() {
   const [brief, setBrief] = useState<Brief | null>(null)
+  const router = useRouter()
+  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000)
+  const [quote, author] = QUOTES[dayOfYear % QUOTES.length]
+  function disableWelcome() {
+    try { localStorage.setItem('welcomeDisabled', '1') } catch { /* noop */ }
+    router.push('/dashboard')
+  }
 
   useEffect(() => {
     fetch('/api/daily-brief').then(r => r.json()).then(setBrief).catch(() => setBrief(null))
@@ -58,12 +77,17 @@ export default function WelcomePage() {
           <Row icon={<IconCalendar className="w-4 h-4" />} label="Kartka z kalendarza">
             {brief?.fact ?? '…'}
           </Row>
+          <Row icon={<IconHeart className="w-4 h-4" />} label="Cytat dnia">
+            <span style={{ fontStyle: 'italic' }}>„{quote}"</span> — {author}
+          </Row>
         </div>
 
         {/* Wejście do aplikacji */}
         <div className="px-6 md:px-9 py-5 flex items-center justify-between gap-3 flex-wrap"
           style={{ borderTop: '1px solid #f2ede6', background: '#faf8f5' }}>
-          <p className="text-xs" style={{ color: '#a89e92' }}>Miłego dnia — repertuar czeka.</p>
+          <button onClick={disableWelcome} className="text-xs hover:underline underline-offset-2" style={{ color: '#a89e92' }}>
+            Nie pokazuj więcej tego powitania
+          </button>
           <Link href="/dashboard"
             className="px-5 py-2.5 text-sm font-semibold rounded-xl"
             style={{ background: '#1a1410', color: '#fff' }}>

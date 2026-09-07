@@ -537,7 +537,9 @@ export default function DashboardPage() {
     : `${td.daysShort[slidingDay.getDay()]}. ${dayMonth(slidingDay)}`
 
   // Upcoming shows only
-  const upcomingShows = upcoming.filter(e => SHOW_TYPES.has(e.type ?? ''))
+  // „Kalendarz na ten tydzień" — wszystkie wydarzenia najbliższych 7 dni (A16)
+  const weekAhead = new Date(); weekAhead.setDate(weekAhead.getDate() + 7)
+  const upcomingShows = upcoming.filter(e => new Date(e.start_time) <= weekAhead)
 
   const STATUS_LABEL: Record<string, string> = {
     'Na urlopie':    td.statusVacation,
@@ -1094,14 +1096,14 @@ export default function DashboardPage() {
         {/* RIGHT — Nadchodzące spektakle ────────────────────────── */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>Nadchodzące spektakle</h3>
-            <span className="text-xs text-gray-500">{td.upcomingDays}</span>
+            <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>Kalendarz na ten tydzień</h3>
+            <Link href="/events" className="text-xs hover:underline underline-offset-2" style={{ color: '#7a2020' }}>Pełny kalendarz →</Link>
           </div>
 
           {upcomingShows.length === 0 ? (
             <div className="text-center py-12" style={{ color: '#a89e92' }}>
               <div className="flex justify-center mb-2"><span style={{ color: '#a89e92' }}><IconCalendar size={28} /></span></div>
-              <p className="text-xs">Brak nadchodzących spektakli</p>
+              <p className="text-xs">Brak wydarzeń w tym tygodniu</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-50">

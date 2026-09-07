@@ -45,7 +45,8 @@ function LoginForm() {
       // Koordynator dostaje ekran powitalny raz dziennie; potem wprost na Pulpit.
       let coordHome = '/dashboard'
       try {
-        if (localStorage.getItem('welcomeSeenOn') !== new Date().toDateString()) coordHome = '/welcome'
+        if (localStorage.getItem('welcomeDisabled') !== '1'
+            && localStorage.getItem('welcomeSeenOn') !== new Date().toDateString()) coordHome = '/welcome'
       } catch { /* noop */ }
 
       const next = params.get('next')
