@@ -823,8 +823,8 @@ export default function EventsPage() {
   return (
     <div className="-m-4 md:-m-8 flex flex-col min-h-full">
 
-      {/* Header */}
-      <div className="px-4 md:px-8 py-4 md:py-5 bg-white shrink-0" style={{ borderBottom: '1px solid #e4ddd4' }}>
+      {/* Header — przyklejony, żeby przełącznik widoku nie uciekał ze scrollem */}
+      <div className="px-4 md:px-8 py-4 md:py-5 bg-white shrink-0 sticky top-0 z-30" style={{ borderBottom: '1px solid #e4ddd4' }}>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h1 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: '1.75rem', fontWeight: 700, color: '#1a1410', letterSpacing: '-0.015em', lineHeight: 1.2 }}>
@@ -938,9 +938,9 @@ export default function EventsPage() {
                           return (
                             <span key={di} className="text-[9px] leading-tight px-1 py-0.5 rounded truncate flex items-center gap-0.5 cursor-pointer"
                               style={{ background: isSel ? 'rgba(255,255,255,0.15)' : s.bg, color: isSel ? '#fff' : s.color }}
-                              onMouseEnter={me => setHoverTip({ ev: e, x: me.clientX, y: me.clientY })}
-                              onMouseMove={me => setHoverTip(t => t ? { ...t, x: me.clientX, y: me.clientY } : t)}
+                              onMouseEnter={me => { const r = me.currentTarget.getBoundingClientRect(); setHoverTip({ ev: e, x: r.left, y: r.bottom }) }}
                               onMouseLeave={() => setHoverTip(null)}
+                              onMouseDown={ce => ce.stopPropagation()}
                               onClick={ce => { ce.stopPropagation(); setHoverTip(null); setSelectedEvent(e) }}>
                               {/urodzin/i.test(e.type ?? '') && <span className="shrink-0"><TypeIcon type={e.type} size={9} /></span>}
                               <span className="truncate">{e.title}</span>
@@ -1043,8 +1043,8 @@ export default function EventsPage() {
         const st = typeStyle(e.type, extraIndexMap.get(e.type ?? '') ?? 0)
         const cast = (e.event_artists ?? []).length
         const room = (e as any).rooms?.name ?? e.location ?? null
-        const left = Math.min(hoverTip.x + 14, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 290)
-        const top  = Math.min(hoverTip.y + 14, (typeof window !== 'undefined' ? window.innerHeight : 800) - 150)
+        const left = Math.min(hoverTip.x, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 290)
+        const top  = Math.min(hoverTip.y + 6, (typeof window !== 'undefined' ? window.innerHeight : 800) - 160)
         return (
           <div className="fixed z-[70] w-[270px] rounded-xl shadow-xl p-3 pointer-events-none"
             style={{ left, top, background: '#fff', border: '1px solid #e4ddd4' }}>
