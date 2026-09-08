@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { sortByLastName, sortNamesByLastName } from '@/lib/names'
 import { findActorClashes, clashMessage, findRoomClash, roomClashMessage } from '@/lib/clash-check'
 import EventModal from '@/components/EventModal'
+import SendConfirmModal from '@/components/SendConfirmModal'
+import { googleCalendarUrl } from '@/lib/gcal'
 import { SHOW_TYPES } from '@/types'
 
 // ── SQL migration (run once in Supabase SQL Editor) ───────────────────────────
@@ -148,15 +150,84 @@ function EventTile({ ev, extraIdx, now, onOpen }: {
 
 // ── EventDrawer (panel z prawej) ─────────────────────────────────────────────────
 
-function EventDrawer({ ev, onClose, onEdit }: {
-  ev: EventRow; onClose: () => void; onEdit: (ev: EventRow) => void
+function EventDrawer({ ev, productions, allArtists, onClose, onEdit, onChanged }: {
+  ev: EventRow
+  productions: { id: string; title: string }[]
+  allArtists: { id: string; name: string }[]
+  onClose: () => void
+  onEdit: (ev: EventRow) => void
+  onChanged: () => void
 }) {
   const [open, setOpen] = useState(false)
   useEffect(() => { const t = setTimeout(() => setOpen(true), 10); return () => clearTimeout(t) }, [])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey)
+  }, [])
   const close = () => { setOpen(false); setTimeout(onClose, 200) }
   const s = typeStyle(ev.type, 0)
-  const cast = (ev.event_artists ?? []).map((a: any) => (Array.isArray(a.artists) ? a.artists[0] : a.artists)).filter(Boolean)
   const room = (ev as any).rooms?.name ?? null
+  const prodTitle = productions.find(p => p.id === (ev as any).production_id)?.title ?? null
+
+  // Uczestnicy — edycja inline (dodaj/usuń), zapis od razu do bazy
+  const initCast = (ev.event_artists ?? []).map((a: any) => (Array.isArray(a.artists) ? a.artists[0] : a.artists)).filter(Boolean) as { id: string; name: string }[]
+  const [cast, setCast] = useState(initCast)
+  const [addSel, setAddSel] = useState('')
+  const [castSaving, setCastSaving] = useState(false)
+  async function addPerson(artistId: string) {
+    if (!artistId || cast.some(c => c.id === artistId)) { setAddSel(''); return }
+    setCastSaving(true)
+    const { error } = await supabase.from('event_artists').insert({ event_id: ev.id, artist_id: artistId })
+    setCastSaving(false); setAddSel('')
+    if (error) { alert(`Nie udało się dodać osoby: ${error.message}`); return }
+    const a = allArtists.find(x => x.id === artistId)
+    if (a) setCast(c => [...c, a])
+    onChanged()
+  }
+  async function removePerson(artistId: string) {
+    setCastSaving(true)
+    const { error } = await supabase.from('event_artists').delete().eq('event_id', ev.id).eq('artist_id', artistId)
+    setCastSaving(false)
+    if (error) { alert(`Nie udało się usunąć osoby: ${error.message}`); return }
+    setCast(c => c.filter(x => x.id !== artistId))
+    onChanged()
+  }
+
+  // Powiadomienie uczestników (mail + SMS + zaproszenie .ics)
+  const [notifyOpen, setNotifyOpen] = useState(false)
+  const [notifyText, setNotifyText] = useState('')
+  const [notifying, setNotifying] = useState(false)
+  async function notifyCast() {
+    setNotifying(true)
+    const res = await fetch('/api/events/notify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventId: ev.id, message: notifyText.trim() || undefined }),
+    })
+    const json = await res.json().catch(() => null)
+    setNotifying(false); setNotifyOpen(false)
+    if (json?.ok) {
+      const errs = (json.smsErrors ?? []).length ? `\nBłędy SMS:\n${json.smsErrors.join('\n')}` : ''
+      alert(`Powiadomiono ${json.sent}/${json.total} osób (e-maile: ${json.emailsSent}, SMS-y: ${json.smsSent}).${errs}`)
+    } else alert(`Nie udało się powiadomić: ${json?.error ?? 'błąd serwera'}`)
+  }
+
+  // Usuwanie
+  const [deleteAsk, setDeleteAsk] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  async function removeEvent() {
+    setDeleting(true)
+    const { error } = await supabase.from('events').delete().eq('id', ev.id)
+    setDeleting(false)
+    if (error) { alert(`Nie udało się usunąć: ${error.message}`); return }
+    close(); onChanged()
+  }
+
+  const gcalUrl = googleCalendarUrl({
+    title: ev.title, start: ev.start_time, end: ev.end_time,
+    details: (ev as any).description ?? undefined,
+    location: [room, ev.location].filter(Boolean).join(', ') || undefined,
+  })
+
   return (
     <div className="fixed inset-0 z-[80]">
       <div className={`absolute inset-0 bg-black/30 transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0'}`} onClick={close} />
@@ -183,33 +254,92 @@ function EventDrawer({ ev, onClose, onEdit }: {
             </div>
             {room && <div className="flex items-center gap-2.5 text-sm" style={{ color: '#3e3830' }}><span style={{ color: '#a89e92' }}><PinIc /></span>{room}</div>}
             {ev.location && <div className="flex items-center gap-2.5 text-sm" style={{ color: '#3e3830' }}><span style={{ color: '#a89e92' }}><PinIc /></span>{ev.location}</div>}
+            {prodTitle && (
+              <div className="flex items-center gap-2.5 text-sm" style={{ color: '#3e3830' }}>
+                <span style={{ color: '#a89e92' }}><TypeIcon type="Spektakl" size={15} /></span>
+                Tytuł: <b>{prodTitle}</b>
+              </div>
+            )}
           </div>
 
-          {ev.description && (
+          {(ev as any).description && (
             <div className="mt-5">
               <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#b8b0a4' }}>Opis</p>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: '#5a524a' }}>{ev.description}</p>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: '#5a524a' }}>{(ev as any).description}</p>
             </div>
           )}
 
-          {cast.length > 0 && (
-            <div className="mt-5">
-              <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#b8b0a4' }}>Obsada / udział ({cast.length})</p>
-              <div className="flex flex-wrap gap-1.5">
-                {cast.map((a: any) => (
-                  <span key={a.id} className="text-xs px-2.5 py-1 rounded-full" style={{ background: '#f2ede6', color: '#5a524a' }}>{a.name}</span>
-                ))}
+          {/* Uczestnicy — chipy z usuwaniem + szybkie dodawanie */}
+          <div className="mt-5">
+            <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: '#b8b0a4' }}>Uczestnicy ({cast.length})</p>
+            <div className="flex flex-wrap gap-1.5">
+              {cast.map(a => (
+                <span key={a.id} className="text-xs pl-2.5 pr-1 py-1 rounded-full inline-flex items-center gap-1" style={{ background: '#f2ede6', color: '#5a524a' }}>
+                  {a.name}
+                  <button onClick={() => removePerson(a.id)} disabled={castSaving} title="Usuń z wydarzenia"
+                    className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-black/10" style={{ color: '#a89e92' }}>×</button>
+                </span>
+              ))}
+              {cast.length === 0 && <span className="text-xs" style={{ color: '#a89e92' }}>Nikt nie jest przypisany</span>}
+            </div>
+            <select value={addSel} onChange={e => addPerson(e.target.value)} disabled={castSaving}
+              className="mt-2 w-full rounded-lg px-2.5 py-1.5 text-xs bg-white" style={{ border: '1px solid #e4ddd4', color: '#5a524a' }}>
+              <option value="">+ Dodaj osobę…</option>
+              {allArtists.filter(a => !cast.some(c => c.id === a.id)).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+
+          {/* Akcje */}
+          <div className="mt-6 space-y-2">
+            <button onClick={() => setNotifyOpen(true)} disabled={cast.length === 0}
+              className="w-full px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors disabled:opacity-40"
+              style={{ background: '#c8102e', color: '#fff' }}>
+              Powiadom uczestników (mail + SMS + kalendarz)
+            </button>
+            <div className="flex gap-2">
+              <button onClick={() => { onEdit(ev); close() }}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors"
+                style={{ background: '#1a1410', color: '#fff' }}>
+                Edytuj
+              </button>
+              <a href={gcalUrl} target="_blank" rel="noreferrer"
+                className="flex-1 px-4 py-2.5 text-sm font-semibold rounded-xl text-center"
+                style={{ border: '1px solid #e4ddd4', color: '#3e3830' }}>
+                Google Calendar
+              </a>
+            </div>
+            {deleteAsk ? (
+              <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+                <span className="text-xs flex-1" style={{ color: '#b91c1c' }}>Usunąć „{ev.title}"? Przypisania i zaproszenia znikną.</span>
+                <button onClick={removeEvent} disabled={deleting} className="text-xs font-bold px-2.5 py-1.5 rounded-lg text-white" style={{ background: '#dc2626' }}>{deleting ? '…' : 'Usuń'}</button>
+                <button onClick={() => setDeleteAsk(false)} className="text-xs px-2 py-1.5" style={{ color: '#7a7068' }}>Anuluj</button>
               </div>
-            </div>
-          )}
-
-          <button onClick={() => { onEdit(ev); close() }}
-            className="mt-6 w-full px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors"
-            style={{ background: '#1a1410', color: '#fff' }}>
-            Edytuj wydarzenie
-          </button>
+            ) : (
+              <button onClick={() => setDeleteAsk(true)}
+                className="w-full px-4 py-2 text-xs font-medium rounded-xl"
+                style={{ color: '#b91c1c' }}>
+                Usuń wydarzenie
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      {notifyOpen && (
+        <SendConfirmModal
+          title={`Powiadomienie — ${ev.title}`}
+          channelLabel="E-mail z zaproszeniem .ics + SMS"
+          recipients={cast.map(c => ({ name: c.name }))}
+          content={notifyText}
+          onContentChange={setNotifyText}
+          note={'Każdy uczestnik dostanie szczegóły terminu, załącznik do kalendarza (.ics) i link „Dodaj do Google Calendar".'}
+          confirmLabel={`Wyślij do ${cast.length} ${cast.length === 1 ? 'osoby' : 'osób'}`}
+          sending={notifying}
+          allowEmpty
+          onConfirm={notifyCast}
+          onCancel={() => setNotifyOpen(false)}
+        />
+      )}
     </div>
   )
 }
@@ -587,6 +717,7 @@ export default function EventsPage() {
   const [editingEvent, setEditingEvent] = useState<EventRow | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<EventRow | null>(null)
   const [addOpen,     setAddOpen]     = useState(false)
+  const [hoverTip,    setHoverTip]    = useState<{ ev: EventRow; x: number; y: number } | null>(null)
   const [productions, setProductions] = useState<{ id: string; title: string }[]>([])
   const [theatres,    setTheatres]    = useState<{ id: string; name: string }[]>([])
   const [modalArtists, setModalArtists] = useState<{ id: string; name: string; teams: { name: string } | null }[]>([])
@@ -805,8 +936,12 @@ export default function EventsPage() {
                         {dayEvs.slice(0, 2).map((e, di) => {
                           const s = typeStyle(e.type, extraIndexMap.get(e.type ?? '') ?? 0)
                           return (
-                            <span key={di} className="text-[9px] leading-tight px-1 py-0.5 rounded truncate flex items-center gap-0.5"
-                              style={{ background: isSel ? 'rgba(255,255,255,0.15)' : s.bg, color: isSel ? '#fff' : s.color }}>
+                            <span key={di} className="text-[9px] leading-tight px-1 py-0.5 rounded truncate flex items-center gap-0.5 cursor-pointer"
+                              style={{ background: isSel ? 'rgba(255,255,255,0.15)' : s.bg, color: isSel ? '#fff' : s.color }}
+                              onMouseEnter={me => setHoverTip({ ev: e, x: me.clientX, y: me.clientY })}
+                              onMouseMove={me => setHoverTip(t => t ? { ...t, x: me.clientX, y: me.clientY } : t)}
+                              onMouseLeave={() => setHoverTip(null)}
+                              onClick={ce => { ce.stopPropagation(); setHoverTip(null); setSelectedEvent(e) }}>
                               {/urodzin/i.test(e.type ?? '') && <span className="shrink-0"><TypeIcon type={e.type} size={9} /></span>}
                               <span className="truncate">{e.title}</span>
                             </span>
@@ -902,11 +1037,37 @@ export default function EventsPage() {
       </div>
 
       {/* Drawer ze szczegółami (z prawej) */}
+      {/* Chmurka podglądu wydarzenia (hover na siatce) */}
+      {hoverTip && (() => {
+        const e = hoverTip.ev
+        const st = typeStyle(e.type, extraIndexMap.get(e.type ?? '') ?? 0)
+        const cast = (e.event_artists ?? []).length
+        const room = (e as any).rooms?.name ?? e.location ?? null
+        const left = Math.min(hoverTip.x + 14, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 290)
+        const top  = Math.min(hoverTip.y + 14, (typeof window !== 'undefined' ? window.innerHeight : 800) - 150)
+        return (
+          <div className="fixed z-[70] w-[270px] rounded-xl shadow-xl p-3 pointer-events-none"
+            style={{ left, top, background: '#fff', border: '1px solid #e4ddd4' }}>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full" style={{ background: st.bg, color: st.color }}>{e.type ?? 'Inne'}</span>
+              <span className="text-[10px]" style={{ color: '#a89e92' }}>{formatTime(e.start_time)}–{formatTime(e.end_time)}</span>
+            </div>
+            <p className="text-sm font-bold leading-snug" style={{ color: '#1a1410' }}>{e.title}</p>
+            {room && <p className="text-[11px] mt-1" style={{ color: '#7a7068' }}>📍 {room}</p>}
+            {cast > 0 && <p className="text-[11px] mt-0.5" style={{ color: '#7a7068' }}>👤 {cast} {cast === 1 ? 'osoba' : cast < 5 ? 'osoby' : 'osób'}</p>}
+            <p className="text-[10px] mt-1.5" style={{ color: '#b8b0a4' }}>Kliknij, aby otworzyć panel</p>
+          </div>
+        )
+      })()}
+
       {selectedEvent && (
         <EventDrawer
           ev={selectedEvent}
+          productions={productions}
+          allArtists={artists}
           onClose={() => setSelectedEvent(null)}
           onEdit={(e) => setEditingEvent(e)}
+          onChanged={fetchAll}
         />
       )}
 
