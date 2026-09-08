@@ -380,18 +380,44 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
-function RetryButton({ done, onClick }: { done: boolean; onClick: () => void }) {
+function RetryButton({ done, onClick, channels }: { done: boolean; onClick: () => void; channels?: string }) {
   return (
     <button
       onClick={onClick}
       disabled={done}
+      title={channels ? `Ponowienie pójdzie kanałami: ${channels}` : undefined}
       className="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors disabled:opacity-60"
       style={done ? { background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' } : { background: '#1a1410', color: '#fff' }}
     >
-      {done ? '✓ Wysłano' : '↻ Ponów'}
+      {done ? '✓ Wysłano' : `↻ Ponów${channels ? ` (${channels})` : ''}`}
     </button>
   )
 }
+
+// Chipy kanałów kontaktu aktora — pokazują, którędy pójdzie (po)naglenie.
+function ChannelChips({ email, phone }: { email?: string | null; phone?: string | null }) {
+  return (
+    <span className="inline-flex items-center gap-1 shrink-0">
+      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase"
+        style={email ? { background: '#1a1410', color: '#fff' } : { background: '#f2ede6', color: '#cec5b8', textDecoration: 'line-through' }}
+        title={email ? `E-mail: ${email}` : 'Brak adresu e-mail'}>mail</span>
+      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase"
+        style={phone ? { background: '#dbeafe', color: '#1d4ed8' } : { background: '#f2ede6', color: '#cec5b8', textDecoration: 'line-through' }}
+        title={phone ? `SMS: ${phone}` : 'Brak numeru telefonu'}>sms</span>
+    </span>
+  )
+}
+
+// Pasek filtrów listy — wspólny wygląd dla zakładek Komunikacji.
+function FilterBar({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 flex-wrap" style={{ background: '#faf8f5' }}>
+      {children}
+    </div>
+  )
+}
+const fbInput = 'rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#c8102e]'
+const fbStyle = { border: '1px solid #e4ddd4', color: '#3e3830' } as const
 
 // ── Szablony wiadomości (canned responses) ──────────────────────
 const MSG_TEMPLATES: { label: string; subject: string; body: string }[] = [
@@ -577,6 +603,13 @@ export default function MessagesPage() {
   const [theatres, setTheatres] = useState<Theatre[]>([])
   const [responses, setResponses] = useState<ActorResponse[]>([])
   const [sentHistory, setSentHistory] = useState<SentMessage[]>([])
+  // Filtry i sortowanie list (poprawki KPA: zaawansowane filtrowanie wszędzie)
+  const [pSearch, setPSearch] = useState(''); const [pSort, setPSort] = useState<'wait' | 'name' | 'date'>('wait'); const [pOnlyChanged, setPOnlyChanged] = useState(false)
+  const [aSearch, setASearch] = useState('')
+  const [rSearch, setRSearch] = useState(''); const [rStatus, setRStatus] = useState<'all' | 'confirmed' | 'maybe' | 'declined'>('all')
+  const [hSearch, setHSearch] = useState(''); const [hChannel, setHChannel] = useState('all'); const [hKind, setHKind] = useState('all'); const [hSort, setHSort] = useState<'newest' | 'oldest'>('newest')
+  const [hExpanded, setHExpanded] = useState<Set<string>>(new Set())
+  const [surveySentAt, setSurveySentAt] = useState<Record<string, string>>({})
   // Tablica statusów: braki potwierdzeń + zastępstwa
   const [pendingPart, setPendingPart] = useState<{ id: string; event_id: string; artist_id: string; actorName: string; eventTitle: string; eventStart: string | null; sentAt: string | null; changed: boolean; eventDetails: any }[]>([])
   const [noAvailResp, setNoAvailResp] = useState<{ id: string; slotId: string; artistId: string; actorName: string; title: string; range: string }[]>([])
@@ -668,6 +701,17 @@ export default function MessagesPage() {
         .map(r => ({ ...r, changed: changed.has(`${r.event_id}:${r.artist_id}`) }))
       setPendingPart(rows)
     })
+
+    // Kiedy ostatnio poszła ankieta dostępności do aktora (do „czeka N dni")
+    supabase.from('actor_messages')
+      .select('artist_id, sent_at')
+      .ilike('subject', 'Ankieta dostępności%')
+      .order('sent_at', { ascending: false }).limit(500)
+      .then(({ data }) => {
+        const m: Record<string, string> = {}
+        for (const r of (data ?? []) as any[]) if (r.artist_id && !m[r.artist_id]) m[r.artist_id] = r.sent_at
+        setSurveySentAt(m)
+      })
 
     // Brak odpowiedzi na zapytanie o dostępność — slot_invites bez submitted_at
     supabase.from('slot_invites')
@@ -766,6 +810,64 @@ export default function MessagesPage() {
       body: JSON.stringify({ slotId: row.slotId, artistId: row.artistId }),
     })
   }
+
+  // Kontakt aktora (kanały ponagleń) po id
+  const contactById = useMemo(() => {
+    const m: Record<string, { email: string | null; phone: string | null }> = {}
+    for (const p of people) m[p.id] = { email: p.email || null, phone: p.phone || null }
+    return m
+  }, [people])
+  const channelsLabel = (aid: string) => {
+    const c = contactById[aid]
+    const parts = [c?.email ? 'mail' : null, c?.phone ? 'SMS' : null].filter(Boolean)
+    return parts.length ? parts.join('+') : 'brak kontaktu!'
+  }
+
+  // Pozostałe spektakle: szukaj / sortuj / tylko zmiany
+  const pendingView = useMemo(() => {
+    const q = pSearch.trim().toLowerCase()
+    let list = pendingPart
+    if (pOnlyChanged) list = list.filter(r => r.changed)
+    if (q) list = list.filter(r => r.actorName.toLowerCase().includes(q) || r.eventTitle.toLowerCase().includes(q))
+    const wait = (r: typeof list[number]) => r.sentAt ? Date.now() - new Date(r.sentAt).getTime() : 0
+    return [...list].sort((a, b) =>
+      pSort === 'name' ? lastName(a.actorName).localeCompare(lastName(b.actorName), 'pl')
+      : pSort === 'date' ? String(a.eventStart ?? '').localeCompare(String(b.eventStart ?? ''))
+      : wait(b) - wait(a))
+  }, [pendingPart, pSearch, pSort, pOnlyChanged])
+
+  // Ulubione sety: szukaj + grupowanie po secie
+  const availGroups = useMemo(() => {
+    const q = aSearch.trim().toLowerCase()
+    const list = q ? noAvailResp.filter(r => r.actorName.toLowerCase().includes(q) || r.title.toLowerCase().includes(q)) : noAvailResp
+    const groups = new Map<string, { title: string; range: string; rows: typeof noAvailResp }>()
+    for (const r of list) {
+      const key = r.slotId
+      if (!groups.has(key)) groups.set(key, { title: r.title, range: r.range, rows: [] })
+      groups.get(key)!.rows.push(r)
+    }
+    for (const g of groups.values()) g.rows.sort((a, b) => lastName(a.actorName).localeCompare(lastName(b.actorName), 'pl'))
+    return [...groups.entries()]
+  }, [noAvailResp, aSearch])
+
+  // Odpowiedzi: szukaj + status
+  const responsesView = useMemo(() => {
+    const q = rSearch.trim().toLowerCase()
+    let list = responses
+    if (rStatus !== 'all') list = list.filter(r => r.status === rStatus)
+    if (q) list = list.filter(r => r.actorName.toLowerCase().includes(q) || (r.eventTitle ?? '').toLowerCase().includes(q))
+    return list
+  }, [responses, rSearch, rStatus])
+
+  // Historia: szukaj / kanał / rodzaj / kierunek sortowania
+  const historyView = useMemo(() => {
+    const q = hSearch.trim().toLowerCase()
+    let list = sentHistory
+    if (hChannel !== 'all') list = list.filter(m => m.channel === hChannel)
+    if (hKind !== 'all') list = list.filter(m => m.kind === hKind)
+    if (q) list = list.filter(m => (m.artistName ?? '').toLowerCase().includes(q) || m.subject.toLowerCase().includes(q) || m.body.toLowerCase().includes(q))
+    return hSort === 'oldest' ? [...list].reverse() : list
+  }, [sentHistory, hSearch, hChannel, hKind, hSort])
 
   const filtered = useMemo(() => {
     let list = people
@@ -870,16 +972,38 @@ export default function MessagesPage() {
               Możesz <b>potwierdzić w imieniu aktora</b> (np. po rozmowie telefonicznej) — zapisze się z adnotacją „w imieniu koordynatora".
             </p>
           </div>
+          <FilterBar>
+            <input value={pSearch} onChange={e => setPSearch(e.target.value)} placeholder="Szukaj: aktor lub tytuł…" className={fbInput + ' w-44'} style={fbStyle} />
+            <select value={pSort} onChange={e => setPSort(e.target.value as any)} className={fbInput} style={fbStyle}>
+              <option value="wait">Najdłużej czekające</option>
+              <option value="date">Wg terminu spektaklu</option>
+              <option value="name">Wg nazwiska</option>
+            </select>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: '#7a7068' }}>
+              <input type="checkbox" checked={pOnlyChanged} onChange={e => setPOnlyChanged(e.target.checked)} />
+              tylko zmiany grafiku
+            </label>
+            <span className="ml-auto text-[11px]" style={{ color: '#a89e92' }}>{pendingView.length} z {pendingPart.length}</span>
+          </FilterBar>
           <div className="divide-y divide-gray-50 max-h-[62vh] overflow-y-auto">
-            {pendingPart.map(r => {
+            {pendingView.map(r => {
               const days = r.sentAt ? Math.max(0, Math.floor((Date.now() - new Date(r.sentAt).getTime()) / 86_400_000)) : null
+              const ed = r.eventDetails ?? {}
               return (
               <div key={r.id} className="flex items-center gap-3 px-5 py-2.5 flex-wrap">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">{r.actorName}</p>
+                  <p className="text-sm font-semibold text-gray-900 truncate flex items-center gap-2">
+                    {r.actorName}
+                    <ChannelChips email={contactById[r.artist_id]?.email} phone={contactById[r.artist_id]?.phone} />
+                  </p>
                   <p className="text-xs text-gray-500 truncate">
-                    {r.eventTitle}{r.eventStart ? ` · ${fmtDate(r.eventStart)}` : ''}
-                    {days != null && <span className={`ml-1.5 ${days >= 3 ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>· czeka {days} {days === 1 ? 'dzień' : 'dni'}</span>}
+                    Potwierdzenie udziału: <b className="text-gray-700">{r.eventTitle}</b>
+                    {r.eventStart ? ` · ${fmtDate(r.eventStart)}` : ''}
+                    {ed.location ? ` · ${ed.location}` : ''}
+                  </p>
+                  <p className="text-[11px] text-gray-400 truncate">
+                    {r.sentAt ? `prośba wysłana ${fmtDate(r.sentAt)}` : 'prośba nie została jeszcze wysłana'}
+                    {days != null && <span className={`ml-1 ${days >= 3 ? 'text-red-500 font-semibold' : ''}`}>· czeka {days} {days === 1 ? 'dzień' : 'dni'}</span>}
                   </p>
                 </div>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${r.changed ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
@@ -892,12 +1016,12 @@ export default function MessagesPage() {
                   <button onClick={() => confirmOnBehalf(r, 'declined', false)} title="W imieniu aktora: nie będzie" className="px-2 py-1 text-[10px] font-bold rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors">Nie</button>
                   <button onClick={() => confirmOnBehalf(r, 'confirmed', true)} title="Potwierdził telefonicznie" className="px-2 py-1 text-[12px] rounded-lg border transition-colors hover:bg-gray-50" style={{ borderColor: '#e4ddd4' }}>📞</button>
                 </div>
-                <RetryButton done={resent.has('c' + r.id)} onClick={() => resendConfirmation(r)} />
+                <RetryButton done={resent.has('c' + r.id)} onClick={() => resendConfirmation(r)} channels={channelsLabel(r.artist_id)} />
               </div>
               )
             })}
-            {pendingPart.length === 0 && (
-              <p className="px-5 py-8 text-center text-sm text-gray-400">Wszyscy potwierdzili 🎉</p>
+            {pendingView.length === 0 && (
+              <p className="px-5 py-8 text-center text-sm text-gray-400">{pendingPart.length === 0 ? 'Wszyscy potwierdzili 🎉' : 'Brak wyników dla tych filtrów'}</p>
             )}
           </div>
         </div>
@@ -905,18 +1029,52 @@ export default function MessagesPage() {
 
       {/* ── Brak odpowiedzi na dostępność (zapytania KPA) ── */}
       {activeTab === 'avail' && (
-        <div className="mb-4 bg-white border border-gray-200 rounded-2xl overflow-hidden">
-          <div className="divide-y divide-gray-50 max-h-[62vh] overflow-y-auto">
-              {noAvailResp.map(r => (
-                <div key={r.id} className="flex items-center gap-3 px-5 py-2.5">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{r.actorName}</p>
-                    <p className="text-xs text-gray-500 truncate">{r.title}{r.range ? ` · okno ${r.range}` : ''}</p>
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-600">NIE ODPOWIEDZIAŁ</span>
-                  <RetryButton done={resent.has('s' + r.id)} onClick={() => resendSlot(r)} />
+        <div className="mb-4 bg-white border rounded-2xl overflow-hidden" style={{ borderColor: '#f5c6cd' }}>
+          <FilterBar>
+            <input value={aSearch} onChange={e => setASearch(e.target.value)} placeholder="Szukaj: aktor lub tytuł…" className={fbInput + ' w-44'} style={fbStyle} />
+            <span className="ml-auto text-[11px]" style={{ color: '#a89e92' }}>
+              {availGroups.reduce((n, [, g]) => n + g.rows.length, 0)} osób w {availGroups.length} {availGroups.length === 1 ? 'secie' : 'setach'}
+            </span>
+          </FilterBar>
+          <div className="max-h-[62vh] overflow-y-auto">
+            {availGroups.map(([slotId, g]) => (
+              <div key={slotId}>
+                {/* Nagłówek setu — ponaglenia zgrupowane per set */}
+                <div className="flex items-center gap-2 px-5 py-2 sticky top-0" style={{ background: '#fdf2f4', borderTop: '1px solid #f5c6cd', borderBottom: '1px solid #f5c6cd' }}>
+                  <span style={{ color: '#c8102e' }}>♥</span>
+                  <p className="text-xs font-bold" style={{ color: '#7a2020' }}>{g.title}</p>
+                  {g.range && <p className="text-[11px]" style={{ color: '#a06a6a' }}>okno {g.range}</p>}
+                  <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: '#fff', color: '#c8102e', border: '1px solid #f5c6cd' }}>
+                    {g.rows.length} bez odpowiedzi
+                  </span>
                 </div>
-              ))}
+                <div className="divide-y divide-gray-50">
+                  {g.rows.map(r => {
+                    const sentAt = surveySentAt[r.artistId]
+                    const days = sentAt ? Math.max(0, Math.floor((Date.now() - new Date(sentAt).getTime()) / 86_400_000)) : null
+                    return (
+                      <div key={r.id} className="flex items-center gap-3 pl-8 pr-5 py-2.5" style={{ borderLeft: '3px solid #f5c6cd' }}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate flex items-center gap-2">
+                            {r.actorName}
+                            <ChannelChips email={contactById[r.artistId]?.email} phone={contactById[r.artistId]?.phone} />
+                          </p>
+                          <p className="text-[11px] text-gray-400 truncate">
+                            Ankieta dostępności — {sentAt ? `wysłana ${fmtDate(sentAt)}` : 'data wysyłki nieznana'}
+                            {days != null && <span className={`ml-1 ${days >= 3 ? 'text-red-500 font-semibold' : ''}`}>· czeka {days} {days === 1 ? 'dzień' : 'dni'}</span>}
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 bg-gray-100 text-gray-600">NIE ODPOWIEDZIAŁ</span>
+                        <RetryButton done={resent.has('s' + r.id)} onClick={() => resendSlot(r)} channels={channelsLabel(r.artistId)} />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+            {availGroups.length === 0 && (
+              <p className="px-5 py-8 text-center text-sm text-gray-400">{noAvailResp.length === 0 ? 'Wszyscy odpowiedzieli 🎉' : 'Brak wyników dla tego filtra'}</p>
+            )}
           </div>
         </div>
       )}
@@ -941,15 +1099,23 @@ export default function MessagesPage() {
       {/* ── Odpowiedzi aktorów ── */}
       {activeTab === 'responses' && (
         <div className="mb-6 bg-white border border-gray-200 rounded-2xl overflow-hidden">
-          <div className="flex items-center gap-1 px-5 py-2.5 border-b border-gray-100" style={{ background: '#faf8f5' }}>
-            {(['confirmed','maybe','declined'] as const).map(s => {
-              const n = responses.filter(r => r.status === s).length
-              if (!n) return null
-              return <span key={s} className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${RESP_CFG[s].cls}`}>{RESP_CFG[s].label}: {n}</span>
+          <FilterBar>
+            <input value={rSearch} onChange={e => setRSearch(e.target.value)} placeholder="Szukaj: aktor lub tytuł…" className={fbInput + ' w-44'} style={fbStyle} />
+            {(['all', 'confirmed', 'maybe', 'declined'] as const).map(st => {
+              const n = st === 'all' ? responses.length : responses.filter(r => r.status === st).length
+              const on = rStatus === st
+              return (
+                <button key={st} onClick={() => setRStatus(st)}
+                  className={`text-[10px] font-bold px-2 py-1 rounded-full transition-all ${st !== 'all' ? RESP_CFG[st].cls : ''}`}
+                  style={{ opacity: on ? 1 : 0.45, outline: on ? '2px solid #1a1410' : 'none', ...(st === 'all' ? { background: '#f2ede6', color: '#3e3830' } : {}) }}>
+                  {st === 'all' ? 'Wszystkie' : RESP_CFG[st].label}: {n}
+                </button>
+              )
             })}
-          </div>
+            <span className="ml-auto text-[11px]" style={{ color: '#a89e92' }}>{responsesView.length} z {responses.length}</span>
+          </FilterBar>
           <div className="divide-y divide-gray-50 max-h-[62vh] overflow-y-auto">
-              {responses.map(r => (
+              {responsesView.map(r => (
                 <div key={r.id} className="flex items-center gap-3 px-5 py-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-900 truncate">{r.actorName}</p>
@@ -975,9 +1141,31 @@ export default function MessagesPage() {
       {/* ── Historia wysłanych ── */}
       {activeTab === 'history' && (
         <div className="mb-6 bg-white border border-gray-200 rounded-2xl overflow-hidden">
+          <FilterBar>
+            <input value={hSearch} onChange={e => setHSearch(e.target.value)} placeholder="Szukaj: aktor, temat, treść…" className={fbInput + ' w-48'} style={fbStyle} />
+            <select value={hChannel} onChange={e => setHChannel(e.target.value)} className={fbInput} style={fbStyle}>
+              <option value="all">Kanał: wszystkie</option>
+              <option value="email">E-mail</option>
+              <option value="sms">SMS</option>
+              <option value="app">Aplikacja</option>
+            </select>
+            <select value={hKind} onChange={e => setHKind(e.target.value)} className={fbInput} style={fbStyle}>
+              <option value="all">Rodzaj: wszystkie</option>
+              {Object.entries(KIND_LABELS).map(([k, lbl]) => <option key={k} value={k}>{lbl}</option>)}
+            </select>
+            <select value={hSort} onChange={e => setHSort(e.target.value as any)} className={fbInput} style={fbStyle}>
+              <option value="newest">Najnowsze</option>
+              <option value="oldest">Najstarsze</option>
+            </select>
+            <span className="ml-auto text-[11px]" style={{ color: '#a89e92' }}>{historyView.length} z {sentHistory.length}</span>
+          </FilterBar>
           <div className="divide-y divide-gray-50 max-h-[62vh] overflow-y-auto">
-              {sentHistory.map(m => (
-                <div key={m.id} className="flex items-start gap-3 px-5 py-3">
+              {historyView.map(m => {
+                const expanded = hExpanded.has(m.id)
+                return (
+                <div key={m.id} className="cursor-pointer hover:bg-gray-50/60 transition-colors"
+                  onClick={() => setHExpanded(prev => { const n = new Set(prev); n.has(m.id) ? n.delete(m.id) : n.add(m.id); return n })}>
+                <div className="flex items-start gap-3 px-5 py-3">
                   <span className={`mt-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${
                     m.channel === 'sms' ? 'bg-blue-100 text-blue-700' : 'bg-gray-900 text-white'
                   }`}>
@@ -1002,9 +1190,28 @@ export default function MessagesPage() {
                         ? <span className="text-[9px] font-bold text-green-600" title={`Przeczytane w apce: ${fmtDate(m.readAt)}`}>✓✓ Przeczytane</span>
                         : <span className="text-[9px] font-medium text-gray-400" title="Wysłane — aktor nie otworzył w aplikacji">✓ Wysłane</span>
                     )}
+                    <span className="text-[10px]" style={{ color: '#cec5b8' }}>{expanded ? '▲ zwiń' : '▼ podgląd'}</span>
                   </div>
                 </div>
-              ))}
+                {expanded && (
+                  <div className="px-5 pb-4 -mt-1" onClick={e => e.stopPropagation()}>
+                    <div className="rounded-xl px-4 py-3" style={{ background: '#faf8f5', border: '1px solid #e4ddd4' }}>
+                      <div className="flex items-center gap-3 mb-2 text-[11px] flex-wrap" style={{ color: '#7a7068' }}>
+                        <span><b>Do:</b> {m.artistName ?? '—'}</span>
+                        <span><b>Kanał:</b> {m.channel === 'sms' ? 'SMS' : m.channel === 'email' ? 'e-mail' : m.channel}</span>
+                        <span><b>Rodzaj:</b> {KIND_LABELS[m.kind] ?? m.kind}</span>
+                        <span><b>Wysłano:</b> {fmtDate(m.sentAt)}</span>
+                      </div>
+                      {m.subject && <p className="text-xs font-bold mb-1.5" style={{ color: '#1a1410' }}>{m.subject}</p>}
+                      <p className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: '#3e3830' }}>{m.body || '(brak treści)'}</p>
+                    </div>
+                  </div>
+                )}
+                </div>
+              )})}
+              {historyView.length === 0 && (
+                <p className="px-5 py-8 text-center text-sm text-gray-400">Brak wiadomości dla tych filtrów</p>
+              )}
           </div>
         </div>
       )}

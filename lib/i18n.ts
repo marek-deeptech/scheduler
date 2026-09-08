@@ -780,7 +780,7 @@ export const translations = {
       productionTitlePlaceholder: 'Hamlet',
     },
     messages: {
-      title: 'Wiadomości',
+      title: 'Komunikacja',
       subtitle: (n: number) => `${n} osób · hurtowa komunikacja z zespołem`,
       searchPlaceholder: 'Szukaj osoby, roli…',
       allTeams: 'Wszyscy',
