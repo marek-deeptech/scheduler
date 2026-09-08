@@ -139,6 +139,12 @@ export default function ReportsPage() {
   const showTab = (k: 'tytuly' | 'aktorzy' | 'aktywnosc') => forPrint || activeTab === k
   // Obciążenie zespołu — filtr po miesiącu/roku
   const [wlMonth,     setWlMonth]     = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })
+  // Okres raportu obciążenia: miesiąc / kwartał / sezon (IX–VIII) / rok / dowolny zakres
+  const [wlMode,   setWlMode]   = useState<'month' | 'quarter' | 'season' | 'year' | 'custom'>('month')
+  const [wlYearP,  setWlYearP]  = useState(() => new Date().getFullYear())
+  const [wlQ,      setWlQ]      = useState(() => Math.floor(new Date().getMonth() / 3) + 1)
+  const [wlSeason, setWlSeason] = useState(() => { const d = new Date(); return d.getMonth() >= 8 ? d.getFullYear() : d.getFullYear() - 1 })
+  const [wlCustom, setWlCustom] = useState<{ start: string; end: string }>({ start: '', end: '' })
   const [wlEvents,    setWlEvents]    = useState<EventRow[]>([])
   const [wlProdTitles, setWlProdTitles] = useState<Record<string, string>>({})
   const [wlSearch,    setWlSearch]    = useState('')
@@ -352,11 +358,26 @@ export default function ReportsPage() {
     return c
   }, [assignments, selectedTheatreId])
 
-  // ── Obciążenie zespołu — dane wybranego miesiąca ──
-  useEffect(() => {
+  // Zakres dat okresu + etykieta (do nagłówka i raportów PDF)
+  const wlRange = useMemo(() => {
+    if (wlMode === 'quarter') {
+      const m0 = (wlQ - 1) * 3
+      return { start: localDate(new Date(wlYearP, m0, 1)), end: localDate(new Date(wlYearP, m0 + 3, 0)), label: `${wlQ}. kwartał ${wlYearP}` }
+    }
+    if (wlMode === 'season')
+      return { start: `${wlSeason}-09-01`, end: `${wlSeason + 1}-08-31`, label: `Sezon ${wlSeason}/${wlSeason + 1}` }
+    if (wlMode === 'year')
+      return { start: `${wlYearP}-01-01`, end: `${wlYearP}-12-31`, label: `Rok ${wlYearP}` }
+    if (wlMode === 'custom' && wlCustom.start && wlCustom.end && wlCustom.start <= wlCustom.end)
+      return { start: wlCustom.start, end: wlCustom.end, label: `${wlCustom.start} – ${wlCustom.end}` }
     const [y, m] = wlMonth.split('-').map(Number)
-    const mStart = `${wlMonth}-01`
-    const mEnd   = localDate(new Date(y, m, 0))
+    return { start: `${wlMonth}-01`, end: localDate(new Date(y, m, 0)), label: `${td.months[m - 1]} ${y}` }
+  }, [wlMode, wlMonth, wlYearP, wlQ, wlSeason, wlCustom, td.months])
+
+  // ── Obciążenie zespołu — dane wybranego okresu ──
+  useEffect(() => {
+    const mStart = wlRange.start
+    const mEnd   = wlRange.end
     let eq = supabase.from('events')
       .select('id,type,start_time,end_time,production_id,theatre_id,event_artists(artist_id)')
       .gte('start_time', `${mStart}T00:00:00`).lte('start_time', `${mEnd}T23:59:59`)
@@ -370,13 +391,12 @@ export default function ReportsPage() {
       setWlVac((va ?? []) as any)
       setWlProdTitles(Object.fromEntries(((pr ?? []) as { id: string; title: string }[]).map(x => [x.id, x.title])))
     })
-  }, [wlMonth, selectedTheatreId])
+  }, [wlRange.start, wlRange.end, selectedTheatreId])
 
   // Metryki per aktor dla wybranego miesiąca
   // A21: raport PDF per aktor — otwiera stronę do wydruku (zapis jako PDF), format dla Księgowości.
   function openArtistPdf(artistId: string, artistName: string) {
-    const [y, m] = wlMonth.split('-').map(Number)
-    const monthName = `${td.months[m - 1]} ${y}`
+    const monthName = wlRange.label
     const rows = wlEvents
       .filter(ev => {
         const explicit = ev.event_artists.map(e => e.artist_id)
@@ -413,10 +433,8 @@ export default function ReportsPage() {
   }
 
   const workloadRows = useMemo(() => {
-    const [y, m] = wlMonth.split('-').map(Number)
-    const daysInMonth = new Date(y, m, 0).getDate()
-    const monStart = new Date(y, m - 1, 1).getTime()
-    const monEnd   = new Date(y, m, 0).getTime() + 86_400_000
+    const monStart = new Date(wlRange.start + 'T00:00:00').getTime()
+    const monEnd   = new Date(wlRange.end + 'T00:00:00').getTime() + 86_400_000
     type Row = { id: string; name: string; shows: number; rehHours: number; titles: Set<string>; worked: Set<string>; vac: number }
     const map: Record<string, Row> = {}
     for (const a of artists) map[a.id] = { id: a.id, name: a.name, shows: 0, rehHours: 0, titles: new Set(), worked: new Set(), vac: 0 }
@@ -449,7 +467,7 @@ export default function ReportsPage() {
     // B3: pokazujemy CAŁY zespół — aktorzy bez grań z zerami (najbardziej zajęci u góry).
     rows.sort((a, b) => b.shows - a.shows || b.rehHours - a.rehHours || b.titles - a.titles || a.name.localeCompare(b.name, 'pl'))
     return rows
-  }, [artists, wlEvents, wlVac, prodToArtists, currentTitles, wlMonth])
+  }, [artists, wlEvents, wlVac, prodToArtists, currentTitles, wlRange])
 
   const absenceList = useMemo(() => {
     return avails
@@ -682,19 +700,55 @@ export default function ReportsPage() {
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
             <div>
-              <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>Obciążenie aktorów w wybranym miesiącu</h3>
-              <p className="text-xs text-gray-500 mt-0.5">Najbardziej zajęci u góry · raport PDF per aktor — do Księgowości</p>
+              <h3 className="text-sm font-semibold" style={{ color: '#1a1410' }}>Obciążenie aktorów — {wlRange.label}</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Liczba spektakli, tytułów i godzin prób · najbardziej zajęci u góry · raport PDF per aktor — do Księgowości</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <input value={wlSearch} onChange={e => setWlSearch(e.target.value)} placeholder="Szukaj aktora…"
                 className="rounded-lg px-3 py-1.5 text-sm bg-white w-40 focus:outline-none focus:ring-2 focus:ring-[#c8102e]"
                 style={{ border: '1px solid #e4ddd4', color: '#3e3830' }} />
-              <select value={wm} onChange={e => setYM(wy, +e.target.value)} className={selCls} style={selStyle}>
-                {MONTHS_PL.map((mn: string, idx: number) => <option key={idx} value={idx + 1}>{mn}</option>)}
-              </select>
-              <select value={wy} onChange={e => setYM(+e.target.value, wm)} className={selCls} style={selStyle}>
-                {years.map(yy => <option key={yy} value={yy}>{yy}</option>)}
-              </select>
+              <div className="flex items-center gap-0.5 rounded-lg p-0.5" style={{ background: '#ede7df' }}>
+                {([['month','Miesiąc'],['quarter','Kwartał'],['season','Sezon'],['year','Rok'],['custom','Daty']] as const).map(([k, lbl]) => (
+                  <button key={k} onClick={() => setWlMode(k)}
+                    className="px-2.5 py-1 rounded-md text-xs font-semibold whitespace-nowrap transition-all"
+                    style={wlMode === k
+                      ? { background: '#fff', color: '#1a1410', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+                      : { color: '#a89e92' }}>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              {wlMode === 'month' && (<>
+                <select value={wm} onChange={e => setYM(wy, +e.target.value)} className={selCls} style={selStyle}>
+                  {MONTHS_PL.map((mn: string, idx: number) => <option key={idx} value={idx + 1}>{mn}</option>)}
+                </select>
+                <select value={wy} onChange={e => setYM(+e.target.value, wm)} className={selCls} style={selStyle}>
+                  {years.map(yy => <option key={yy} value={yy}>{yy}</option>)}
+                </select>
+              </>)}
+              {wlMode === 'quarter' && (<>
+                <select value={wlQ} onChange={e => setWlQ(+e.target.value)} className={selCls} style={selStyle}>
+                  {[1, 2, 3, 4].map(q => <option key={q} value={q}>{q}. kwartał</option>)}
+                </select>
+                <select value={wlYearP} onChange={e => setWlYearP(+e.target.value)} className={selCls} style={selStyle}>
+                  {years.map(yy => <option key={yy} value={yy}>{yy}</option>)}
+                </select>
+              </>)}
+              {wlMode === 'season' && (
+                <select value={wlSeason} onChange={e => setWlSeason(+e.target.value)} className={selCls} style={selStyle}>
+                  {years.map(yy => <option key={yy} value={yy}>Sezon {yy}/{yy + 1}</option>)}
+                </select>
+              )}
+              {wlMode === 'year' && (
+                <select value={wlYearP} onChange={e => setWlYearP(+e.target.value)} className={selCls} style={selStyle}>
+                  {years.map(yy => <option key={yy} value={yy}>{yy}</option>)}
+                </select>
+              )}
+              {wlMode === 'custom' && (<>
+                <input type="date" value={wlCustom.start} onChange={e => setWlCustom(c => ({ ...c, start: e.target.value }))} className={selCls} style={selStyle} />
+                <span className="text-xs" style={{ color: '#a89e92' }}>–</span>
+                <input type="date" value={wlCustom.end} onChange={e => setWlCustom(c => ({ ...c, end: e.target.value }))} className={selCls} style={selStyle} />
+              </>)}
             </div>
           </div>
           <div className="overflow-x-auto">

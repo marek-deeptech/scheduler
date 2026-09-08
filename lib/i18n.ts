@@ -211,7 +211,7 @@ export const translations = {
       absencesCount: (n: number) => `${n} record${n === 1 ? '' : 's'}`,
       days: (n: number) => `${n} day${n === 1 ? '' : 's'}`,
       // charts
-      chartArtistWorkload: 'Artist workload — rehearsal count',
+      chartArtistWorkload: 'Artist workload — shows and rehearsals',
       chartArtistStatus: 'Artist status',
       chartRehearsalsPerProd: 'Rehearsals per title',
       chartRoomUsage: 'Room usage (hrs)',
@@ -686,7 +686,7 @@ export const translations = {
       absencesCount: (n: number) => `${n} wpisów`,
       days: (n: number) => n === 1 ? '1 dzień' : `${n} dni`,
       // charts
-      chartArtistWorkload: 'Obciążenie aktorów — liczba prób',
+      chartArtistWorkload: 'Obciążenie aktorów — spektakle i próby',
       chartArtistStatus: 'Status aktorów',
       chartRehearsalsPerProd: 'Próby per tytuł',
       chartRoomUsage: 'Wykorzystanie sal (godz.)',
